@@ -1,33 +1,36 @@
 version: "3.8"
 services:
-  db:
+  ts-db:
+    container_name: ts-db
     image: postgres:16
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: komeya
     volumes:
-      - dbdata:/var/lib/postgresql/data
+      - ts-dbdata:/var/lib/postgresql/data
       - ./server/migrations:/docker-entrypoint-initdb.d:ro
     networks:
-      - web
-  server:
+      - ts-web
+  ts-server:
+    container_name: ts-server
     build:
       context: ./server
       dockerfile: Dockerfile
     environment:
-      DB_HOST: db
+      DB_HOST: ts-db
       DB_PORT: 5432
       DB_USER: postgres
       DB_PASSWORD: postgres
       DB_NAME: komeya
       JWT_SECRET: change_me_in_env
     depends_on:
-      - db
+      - ts-db
     volumes:
       - ./server/src:/app/src
     networks:
-      - web
-  nginx:
+      - ts-web
+  ts-nginx:
+    container_name: ts-nginx
     image: nginx:1.25
     volumes:
       - ./server/nginx.conf:/etc/nginx/nginx.conf:ro
@@ -37,11 +40,11 @@ services:
       - "8080:80"
       - "8443:443"
     depends_on:
-      - server
+      - ts-server
     networks:
-      - web
+      - ts-web
 volumes:
-  dbdata:
+  ts-dbdata:
 networks:
-  web:
+  ts-web:
     driver: bridge
