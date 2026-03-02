@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐿️</text></svg>">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>三只松鼠财务管理 · 登录</title>
+    <style>
+      :root { --bg1:#0ea5e9; --bg2:#3b82f6; --card:#ffffff; --text:#0f172a; --muted:#64748b; --blue:#2563eb; --line:#e5e7eb; }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "PingFang SC", "Noto Sans SC", "Microsoft Yahei", sans-serif; background: linear-gradient(135deg, var(--bg1), var(--bg2)); display:flex; align-items:center; justify-content:center; }
+      .wrap { width: min(1000px, 92vw); display:grid; grid-template-columns: 1fr 1fr; gap:0; background: var(--card); border-radius: 18px; box-shadow: 0 24px 64px rgba(0,0,0,0.2); border: 1px solid var(--line); overflow:hidden; }
+      .left { position:relative; padding:24px 28px; background: linear-gradient(180deg, #eff6ff, #ffffff); }
+      .hero { position:absolute; inset:0; padding:24px; display:flex; align-items:center; justify-content:center; }
+      .hero .circle { width:160px; height:160px; border-radius:50%; background:#dbeafe; position:absolute; left:50px; top:60px; }
+      .hero .circle2 { width:120px; height:120px; border-radius:50%; background:#bfdbfe; position:absolute; right:60px; bottom:80px; }
+      .hero .desk { width:70%; height:160px; background:#1e40af; border-radius:16px; opacity:0.1; }
+      .right { padding:36px 40px; display:flex; flex-direction:column; }
+      .brand { color: var(--blue); font-weight:700; font-size:28px; }
+      .sub { color: var(--muted); margin-top:4px; }
+      .form { margin-top:24px; display:flex; flex-direction:column; gap:14px; }
+      .label { font-size:13px; color: var(--muted); }
+      input, select { width:100%; padding:12px 14px; border:1px solid var(--line); border-radius:10px; outline:none; font-size:15px; background:#fff; }
+      input:focus, select:focus { border-color: var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,0.12); }
+      .chips { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }
+      .chip { display:inline-flex; align-items:center; padding:8px 12px; border:1px solid var(--line); border-radius:999px; cursor:pointer; background:#fff; color:#0f172a; }
+      .chip.active { border-color: var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,0.12); }
+      .selected { margin-top:8px; font-size:13px; color: var(--muted); }
+      .selected b { color:#0f172a; }
+      .btn { width:100%; padding:12px 14px; border:none; border-radius:10px; background: var(--blue); color:#fff; font-weight:600; cursor:pointer; }
+      .tip { margin-top:10px; font-size:13px; color: var(--muted); }
+      .error { margin-top:8px; padding:8px 10px; border:1px solid #fecaca; background:#fff1f2; color:#ef4444; border-radius:8px; display:none; }
+      .footer { margin-top:20px; color:#93c5fd; text-align:center; font-size:12px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="left">
+        <div class="hero">
+          <div class="desk"></div>
+          <div class="circle"></div>
+          <div class="circle2"></div>
+        </div>
+      </div>
+      <div class="right">
+        <div class="brand">🐿️ 三只松鼠财务管理</div>
+        <div class="sub">欢迎使用三只松鼠财务系统</div>
+        <form id="login-form" class="form">
+          <div>
+            <div class="label">账号</div>
+            <div id="login-chips" class="chips"></div>
+            <div class="selected">已选择账号：<b id="login-selected"></b></div>
+          </div>
+          <div>
+            <div class="label">密码</div>
+            <input id="login-pass" type="password" placeholder="请输入密码">
+          </div>
+          <div style="display:flex; align-items:center; gap:8px">
+            <input id="login-default" type="checkbox" style="width:auto">
+            <span class="label">设为此电脑默认帐号</span>
+          </div>
+          <button id="login-submit" class="btn" type="submit">登录</button>
+          <div id="login-error" class="error">账号或密码错误</div>
+        </form>
+        <div class="footer">Copyright © 三只松鼠</div>
+      </div>
+    </div>
+    <script>
+      const form = document.getElementById('login-form');
+      const chips = document.getElementById('login-chips');
+      const p = document.getElementById('login-pass');
+      const err = document.getElementById('login-error');
+      const def = document.getElementById('login-default');
+      const sel = document.getElementById('login-selected');
+      const API_BASE = '';
+      function setAuthUser(user) { if (user) localStorage.setItem('authUser', JSON.stringify(user)); else localStorage.removeItem('authUser'); }
+      function setSelected(name) {
+        selectedName = name || '';
+        if (sel) sel.textContent = selectedName || '未选择';
+      }
+      let selectedName = '';
+      (function fillUsers(){
+        const users = (function(){ try { return JSON.parse(localStorage.getItem('userAccounts')||'[]'); } catch { return []; } })();
+        const names = ['aaaaaa','shuangqun','caiwu', ...users.map(x=>x.name).filter(Boolean)];
+        const uniq = Array.from(new Set(names));
+        chips.innerHTML = '';
+        uniq.forEach(n => {
+          const c = document.createElement('button');
+          c.type='button';
+          c.className='chip';
+          c.textContent = n;
+          c.addEventListener('click', () => {
+            setSelected(n);
+            [...chips.querySelectorAll('.chip')].forEach(x => x.classList.toggle('active', x===c));
+            err.style.display = 'none';
+            p.value = '';
+          });
+          chips.appendChild(c);
+        });
+        const d = localStorage.getItem('defaultLoginUser');
+        if (d && uniq.includes(d)) {
+          setSelected(d);
+          const btn = [...chips.querySelectorAll('.chip')].find(x => x.textContent===d);
+          if (btn) btn.classList.add('active');
+        } else {
+          setSelected('aaaaaa');
+          const btn = [...chips.querySelectorAll('.chip')].find(x => x.textContent==='aaaaaa');
+          if (btn) btn.classList.add('active');
+        }
+      })();
+      form.addEventListener('submit', async e => {
+        e.preventDefault();
+        const name = (selectedName || '').trim();
+        const pass = p.value || '';
+        if (!name) { err.textContent = '请先选择账号'; err.style.display = 'block'; return; }
+        let authData = null;
+        try {
+          const r = await fetch(API_BASE + '/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, password: pass }) });
+          if (!r.ok) { err.textContent = `账号或密码错误（当前账号：${name}）`; err.style.display = 'block'; return; }
+          authData = await r.json();
+          if (!authData || !authData.token || !authData.user) { err.textContent = `账号或密码错误（当前账号：${name}）`; err.style.display = 'block'; return; }
+          localStorage.setItem('authToken', authData.token);
+          err.style.display = 'none';
+        } catch { err.textContent = `账号或密码错误（当前账号：${name}）`; err.style.display = 'block'; return; }
+        if (def.checked && name) localStorage.setItem('defaultLoginUser', name);
+        setAuthUser({ name, role: (authData?.user?.role || '') });
+        location.href = './index.html#ledger';
+      });
+    </script>
+  </body>
+  </html>
