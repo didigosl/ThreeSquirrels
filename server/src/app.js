@@ -420,13 +420,22 @@ async function authRequired(req, res, next) {
   req.user = { name: payload.name, role: payload.role };
   next();
 }
+
+const rolePermsCache = new Map();
+
 function ensureAllow(module, action) {
   return async (req, res, next) => {
     if (!req.user) return res.status(401).json({ error:'unauthorized' });
     const roleName = req.user.role || '';
     if (roleName === '超级管理员') return next();
-    const r = await query('select perms from roles where name=$1', [roleName]);
-    const perms = (r.rows[0]?.perms) || {};
+    
+    let perms = rolePermsCache.get(roleName);
+    if (!perms) {
+      const r = await query('select perms from roles where name=$1', [roleName]);
+      perms = (r.rows[0]?.perms) || {};
+      rolePermsCache.set(roleName, perms);
+    }
+    
     if (perms[module] && perms[module][action]) return next();
     return res.status(403).json({ error:'forbidden' });
   };
@@ -854,6 +863,7 @@ app.put('/api/roles/:id', authRequired, ensureAllow('role_accounts','edit_role')
   if (!r0.rows[0]) return res.status(404).json({ error: 'not_found' });
   if (r0.rows[0].immutable) return res.status(400).json({ error: 'immutable' });
   await query('update roles set name=$1, description=$2 where id=$3', [x.name||'', x.desc||'', id]);
+  rolePermsCache.clear();
   res.json({ ok: true });
 });
 app.put('/api/roles/:id/perms', authRequired, ensureAllow('role_accounts','edit_role'), async (req, res) => {
@@ -863,6 +873,7 @@ app.put('/api/roles/:id/perms', authRequired, ensureAllow('role_accounts','edit_
   if (!r0.rows[0]) return res.status(404).json({ error: 'not_found' });
   if ((r0.rows[0].name || '') === '超级管理员') return res.status(400).json({ error: 'immutable' });
   await query('update roles set perms=$1 where id=$2', [JSON.stringify(x.perms||{}), id]);
+  rolePermsCache.clear();
   res.json({ ok: true });
 });
 app.delete('/api/roles/:id', authRequired, ensureAllow('role_accounts','delete_role'), async (req, res) => {
@@ -873,6 +884,7 @@ app.delete('/api/roles/:id', authRequired, ensureAllow('role_accounts','delete_r
   const used = await query('select count(*)::int as c from users where role=$1', [r0.rows[0].name]);
   if (used.rows[0].c > 0) return res.status(400).json({ error: 'in_use' });
   await query('delete from roles where id=$1', [id]);
+  rolePermsCache.clear();
   res.json({ ok: true });
 });
 // Users endpoints

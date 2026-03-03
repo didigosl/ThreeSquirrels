@@ -15,7 +15,15 @@ const connectionString = DATABASE_URL || `postgres://${encodeURIComponent(DB_USE
 
 export const pool = new Pool({
   connectionString,
-  max: 10
+  max: 30, // Increased from 10 to 30 to handle more concurrent requests
+  connectionTimeoutMillis: 2000, // Fail fast after 2s if pool is full
+  idleTimeoutMillis: 30000 // Close idle clients after 30s
+});
+
+// Handle unexpected errors on idle clients
+pool.on('error', (err, client) => {
+  console.error('Unexpected error on idle client', err);
+  // process.exit(-1); // Let Docker restart the container
 });
 
 export async function query(sql, params = []) {
