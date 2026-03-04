@@ -443,6 +443,15 @@ function ensureAdmin(req, res, next) {
 }
 
 // Auth endpoints
+app.get('/api/auth/users', async (req, res) => {
+  try {
+    const r = await query('select name, role from users where enabled=true order by id asc');
+    res.json(r.rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
 app.post('/api/auth/login', async (req, res) => {
   const { name='', password='' } = req.body || {};
   const r = await query('select name, role, enabled, password, password_hash from users where name=$1', [name]);

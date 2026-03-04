@@ -58,7 +58,7 @@
           </div>
           <div style="display:flex; align-items:center; gap:8px">
             <input id="login-default" type="checkbox" style="width:auto">
-            <span class="label">设为此电脑默认帐号</span>
+            <span class="label">记住密码</span>
           </div>
           <button id="login-submit" class="btn" type="submit">登录</button>
           <div id="login-error" class="error">账号或密码错误</div>
@@ -80,10 +80,23 @@
         if (sel) sel.textContent = selectedName || '未选择';
       }
       let selectedName = '';
-      (function fillUsers(){
-        const users = (function(){ try { return JSON.parse(localStorage.getItem('userAccounts')||'[]'); } catch { return []; } })();
-        const names = ['aaaaaa','shuangqun','caiwu', ...users.map(x=>x.name).filter(Boolean)];
-        const uniq = Array.from(new Set(names));
+      
+      async function fillUsers(){
+        let users = [];
+        try {
+          const res = await fetch(API_BASE + '/api/auth/users');
+          if (res.ok) {
+            const data = await res.json();
+            users = data.map(u => u.name);
+          }
+        } catch (e) { console.error(e); }
+        
+        // If fetch fails or empty, fallback to hardcoded
+        if (!users.length) {
+          users = ['aaaaaa','shuangqun','caiwu'];
+        }
+        
+        const uniq = Array.from(new Set(users));
         chips.innerHTML = '';
         uniq.forEach(n => {
           const c = document.createElement('button');
@@ -94,21 +107,39 @@
             setSelected(n);
             [...chips.querySelectorAll('.chip')].forEach(x => x.classList.toggle('active', x===c));
             err.style.display = 'none';
-            p.value = '';
+            // Only clear password if we are switching to a user different from the remembered one
+            const rem = JSON.parse(localStorage.getItem('rememberedUser')||'{}');
+            if (rem.name !== n) {
+              p.value = '';
+              def.checked = false;
+            } else {
+              p.value = rem.password || '';
+              def.checked = true;
+            }
           });
           chips.appendChild(c);
         });
-        const d = localStorage.getItem('defaultLoginUser');
-        if (d && uniq.includes(d)) {
-          setSelected(d);
-          const btn = [...chips.querySelectorAll('.chip')].find(x => x.textContent===d);
+
+        // Check remembered user
+        const rem = JSON.parse(localStorage.getItem('rememberedUser')||'{}');
+        if (rem.name && uniq.includes(rem.name)) {
+          setSelected(rem.name);
+          const btn = [...chips.querySelectorAll('.chip')].find(x => x.textContent===rem.name);
           if (btn) btn.classList.add('active');
+          p.value = rem.password || '';
+          def.checked = true;
         } else {
-          setSelected('aaaaaa');
-          const btn = [...chips.querySelectorAll('.chip')].find(x => x.textContent==='aaaaaa');
-          if (btn) btn.classList.add('active');
+          // Default select first one if no memory
+          if (uniq.length > 0) {
+            setSelected(uniq[0]);
+            const btn = [...chips.querySelectorAll('.chip')].find(x => x.textContent===uniq[0]);
+            if (btn) btn.classList.add('active');
+          }
         }
-      })();
+      }
+      
+      fillUsers();
+
       form.addEventListener('submit', async e => {
         e.preventDefault();
         const name = (selectedName || '').trim();
@@ -123,7 +154,13 @@
           localStorage.setItem('authToken', authData.token);
           err.style.display = 'none';
         } catch { err.textContent = `账号或密码错误（当前账号：${name}）`; err.style.display = 'block'; return; }
-        if (def.checked && name) localStorage.setItem('defaultLoginUser', name);
+        
+        if (def.checked && name) {
+          localStorage.setItem('rememberedUser', JSON.stringify({ name, password: pass }));
+        } else {
+          localStorage.removeItem('rememberedUser');
+        }
+        
         setAuthUser({ name, role: (authData?.user?.role || '') });
         location.href = './index.html#ledger';
       });
