@@ -348,7 +348,6 @@ async function ensureDefaults() {
     console.log('Inserting missing user: aaaaaa');
     await query('insert into users(name, role, created, enabled, password) values($1,$2,$3,true,$4)', ['aaaaaa','超级管理员', now, '999000']);
   }
-  await query("update users set password=$1 where name=$2", ['999000','aaaaaa']);
   await query("update users set enabled=true where name=$1 and enabled is null", ['aaaaaa']);
   await query("update users set password_hash=password where name=$1 and (password_hash is null or password_hash='')", ['aaaaaa']);
   
@@ -358,7 +357,6 @@ async function ensureDefaults() {
     console.log('Inserting missing user: shuangqun');
     await query('insert into users(name, role, created, enabled, password) values($1,$2,$3,true,$4)', ['shuangqun','股东', now, '111111']);
   }
-  await query("update users set password=$1 where name=$2", ['111111','shuangqun']);
   await query("update users set enabled=true where name=$1 and enabled is null", ['shuangqun']);
   await query("update users set password_hash=password where name=$1 and (password_hash is null or password_hash='')", ['shuangqun']);
   
@@ -367,7 +365,6 @@ async function ensureDefaults() {
     console.log('Inserting missing user: caiwu');
     await query('insert into users(name, role, created, enabled, password) values($1,$2,$3,true,$4)', ['caiwu','财务', now, '111111']);
   }
-  await query("update users set password=$1 where name=$2", ['111111','caiwu']);
   await query("update users set enabled=true where name=$1 and enabled is null", ['caiwu']);
   await query("update users set password_hash=password where name=$1 and (password_hash is null or password_hash='')", ['caiwu']);
   
