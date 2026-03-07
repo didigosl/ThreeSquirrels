@@ -233,7 +233,7 @@
   </head>
   <body>
     <div class="layout">
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-2</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-3</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -561,7 +561,7 @@
             </div>
             <div class="field" style="flex:1">
               <span class="label">关键词</span>
-              <input id="filter-key" type="text" placeholder="搜索关键词" autocomplete="off" name="search_ledger_key">
+              <input id="filter-key" type="text" placeholder="搜索关键词" autocomplete="new-password" name="search_ledger_key_random" readonly onfocus="this.removeAttribute('readonly');">
             </div>
           </div>
           <div class="row" id="ledger-row" style="display:grid; grid-template-columns:1fr 280px; gap:24px">
@@ -932,7 +932,7 @@
                 <div class="summary-item">应付总额 <span id="sum-pay">0.00</span></div>
                 <div class="field" style="margin-left:auto; min-width:320px; display:flex; align-items:center; gap:8px;">
                   <span class="label">关键词</span>
-                  <input id="pay-filter-key" type="text" placeholder="搜索关键词" autocomplete="off" name="search_pay_key">
+                  <input id="pay-filter-key" type="text" placeholder="搜索关键词" autocomplete="new-password" name="search_pay_key_random" readonly onfocus="this.removeAttribute('readonly');">
                 </div>
                 <button id="pay-export" class="btn" style="margin-left:8px; display:flex; align-items:center; gap:6px">
                   <span style="display:inline-block; width:14px; height:14px; background:#22c55e; border-radius:3px"></span>
