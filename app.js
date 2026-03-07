@@ -2071,8 +2071,6 @@ async function renderContacts() {
   const list = contactsData[contactsTab] || [];
   const key = (contactsSearch?.value || '').trim();
   await apiContactsList(contactsTab, key, contactsPage, contactsPageSize);
-  await seedDefaultContacts(contactsTab);
-  await apiContactsList(contactsTab, key, contactsPage, contactsPageSize);
   const fresh = contactsData[contactsTab] || [];
   const filtered = fresh.filter(x => {
     if (!key) return true;
@@ -2276,6 +2274,39 @@ function fillContactsForm(r) {
   document.getElementById('ct-zip').value = r.zip || '';
   document.getElementById('ct-city').value = r.city || '';
   document.getElementById('ct-remark').value = r.remark || '';
+  document.getElementById('ct-email').value = r.email || '';
+  document.getElementById('ct-province').value = r.province || '';
+  document.getElementById('ct-ship-address').value = r.ship_address || '';
+  document.getElementById('ct-ship-zip').value = r.ship_zip || '';
+  document.getElementById('ct-ship-city').value = r.ship_city || '';
+  document.getElementById('ct-ship-province').value = r.ship_province || '';
+  document.getElementById('ct-ship-country').value = r.ship_country || '';
+  document.getElementById('ct-ship-phone').value = r.ship_phone || '';
+  document.getElementById('ct-ship-contact').value = r.ship_contact || '';
+  const ctShipSame = document.getElementById('ct-ship-same');
+  if (ctShipSame) {
+    const sAddr = r.ship_address || '';
+    const sZip = r.ship_zip || '';
+    const sCity = r.ship_city || '';
+    const sProv = r.ship_province || '';
+    const sCountry = r.ship_country || '';
+    const sPhone = r.ship_phone || '';
+    const sContact = r.ship_contact || '';
+    
+    const cAddr = r.address || '';
+    const cZip = r.zip || '';
+    const cCity = r.city || '';
+    const cProv = r.province || '';
+    const cCountry = r.country || '';
+    const cPhone = r.phone || '';
+    const cContact = r.contact || '';
+    
+    // Check if identical and at least one field has content
+    const isSame = (sAddr === cAddr && sZip === cZip && sCity === cCity && sProv === cProv && sCountry === cCountry && sPhone === cPhone && sContact === cContact);
+    const hasContent = (sAddr || sZip || sCity || sProv || sCountry || sPhone || sContact);
+    
+    ctShipSame.checked = isSame && hasContent;
+  }
   const ctSales = document.getElementById('ct-sales'); if (ctSales) ctSales.value = r.sales || '';
   const ctPrice = document.getElementById('ct-price'); if (ctPrice) ctPrice.value = r.use_price || 'price1';
   // Default is_iva to true if undefined
@@ -2293,10 +2324,11 @@ function clearContactsForm() {
   tempContactNotes = [];
   editingNoteId = null;
   document.getElementById('ct-id').value = '';
-  ['ct-name','ct-company','ct-code','ct-contact','ct-phone','ct-country','ct-address','ct-zip','ct-city','ct-remark'].forEach(id => {
+  ['ct-name','ct-company','ct-code','ct-contact','ct-phone','ct-country','ct-address','ct-zip','ct-city','ct-remark','ct-email','ct-province','ct-ship-address','ct-ship-zip','ct-ship-city','ct-ship-province','ct-ship-country','ct-ship-phone','ct-ship-contact'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  const ctShipSame = document.getElementById('ct-ship-same'); if(ctShipSame) ctShipSame.checked = false;
   const ctSales = document.getElementById('ct-sales'); if (ctSales) ctSales.value = '';
   const ctPrice = document.getElementById('ct-price'); if (ctPrice) ctPrice.value = 'price1';
   const ctIva = document.getElementById('ct-iva'); if (ctIva) ctIva.value = 'true';
@@ -2330,6 +2362,15 @@ ctForm?.addEventListener('submit', async e => {
   const zip = document.getElementById('ct-zip').value.trim();
   const city = document.getElementById('ct-city').value.trim();
   const remark = document.getElementById('ct-remark').value.trim();
+  const email = (document.getElementById('ct-email')?.value || '').trim();
+  const province = (document.getElementById('ct-province')?.value || '').trim();
+  const ship_address = (document.getElementById('ct-ship-address')?.value || '').trim();
+  const ship_zip = (document.getElementById('ct-ship-zip')?.value || '').trim();
+  const ship_city = (document.getElementById('ct-ship-city')?.value || '').trim();
+  const ship_province = (document.getElementById('ct-ship-province')?.value || '').trim();
+  const ship_country = (document.getElementById('ct-ship-country')?.value || '').trim();
+  const ship_phone = (document.getElementById('ct-ship-phone')?.value || '').trim();
+  const ship_contact = (document.getElementById('ct-ship-contact')?.value || '').trim();
   const sales = (document.getElementById('ct-sales')?.value || '').trim();
   const use_price = (document.getElementById('ct-price')?.value || 'price1').trim();
   const is_iva = (document.getElementById('ct-iva')?.value === 'true');
@@ -2337,15 +2378,7 @@ ctForm?.addEventListener('submit', async e => {
   // Validation
   let isValid = true;
   const requiredFields = [
-    { id: 'ct-name', val: name },
-    { id: 'ct-company', val: company },
-    { id: 'ct-code', val: code },
-    { id: 'ct-phone', val: phone },
-    { id: 'ct-address', val: address },
-    { id: 'ct-zip', val: zip },
-    { id: 'ct-city', val: city },
-    { id: 'ct-price', val: use_price },
-    { id: 'ct-iva', val: String(is_iva) }
+    { id: 'ct-name', val: name }
   ];
 
   requiredFields.forEach(f => {
@@ -2381,15 +2414,25 @@ ctForm?.addEventListener('submit', async e => {
     target.sales = sales || '';
     target.use_price = use_price;
     target.is_iva = is_iva;
+    target.email = email;
+    target.province = province;
+    target.ship_address = ship_address;
+    target.ship_zip = ship_zip;
+    target.ship_city = ship_city;
+    target.ship_province = ship_province;
+    target.ship_country = ship_country;
+    target.ship_phone = ship_phone;
+    target.ship_contact = ship_contact;
     editingIndex = null;
     editingTab = null;
     ctSubmitBtn.textContent = '保存';
-    await apiContactsUpdateByName({ name, company, code, contact, phone, city, remark, owner: contactsTab==='customers'?'客户':contactsTab==='merchants'?'商家':'其它', country, address, zip, sales: sales||'', use_price, is_iva });
+    await apiContactsUpdateByName({ name, company, code, contact, phone, city, remark, owner: contactsTab==='customers'?'客户':contactsTab==='merchants'?'商家':'其它', country, address, zip, sales: sales||'', use_price, is_iva, email, province, ship_address, ship_zip, ship_city, ship_province, ship_country, ship_phone, ship_contact });
   } else {
     const now = new Date();
     const created = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-    contactsData[contactsTab].push({ name, contact, phone, city, remark, owner: contactsTab==='customers'?'客户':contactsTab==='merchants'?'商家':'其它', created, company, code, country, address, zip, sales: sales || '', use_price, is_iva });
-    const newId = await apiContactsCreate({ name, contact, phone, city, remark, owner: contactsTab==='customers'?'客户':contactsTab==='merchants'?'商家':'其它', created, company, code, country, address, zip, sales: sales || '', use_price, is_iva });
+    contactsData[contactsTab].push({ name, contact, phone, city, remark, owner: contactsTab==='customers'?'客户':contactsTab==='merchants'?'商家':'其它', created, company, code, country, address, zip, sales: sales || '', use_price, is_iva, email, province, ship_address, ship_zip, ship_city, ship_province, ship_country, ship_phone, ship_contact });
+    const newId = await apiContactsCreate({ name, contact, phone, city, remark, owner: contactsTab==='customers'?'客户':contactsTab==='merchants'?'商家':'其它', created, company, code, country, address, zip, sales: sales || '', use_price, is_iva, email, province, ship_address, ship_zip, ship_city, ship_province, ship_country, ship_phone, ship_contact });
+
     if (newId && tempContactNotes.length > 0) {
       for (const n of tempContactNotes) {
         await apiFetchJSON(`/api/contacts/${newId}/notes`, {
@@ -2406,6 +2449,20 @@ ctForm?.addEventListener('submit', async e => {
   renderContacts();
   saveJSON('contactsData', contactsData);
 });
+const ctShipSame = document.getElementById('ct-ship-same');
+if (ctShipSame) {
+  ctShipSame.addEventListener('change', () => {
+    if (ctShipSame.checked) {
+      document.getElementById('ct-ship-address').value = document.getElementById('ct-address').value;
+      document.getElementById('ct-ship-zip').value = document.getElementById('ct-zip').value;
+      document.getElementById('ct-ship-city').value = document.getElementById('ct-city').value;
+      document.getElementById('ct-ship-province').value = document.getElementById('ct-province').value;
+      document.getElementById('ct-ship-country').value = document.getElementById('ct-country').value;
+      document.getElementById('ct-ship-phone').value = document.getElementById('ct-phone').value;
+      document.getElementById('ct-ship-contact').value = document.getElementById('ct-contact').value;
+    }
+  });
+}
 const catList = document.getElementById('cat-list');
 const addCatBtn = document.getElementById('add-cat');
 const categoriesData = [
@@ -3036,7 +3093,11 @@ async function apiContactsList(tab, q, page, size) {
       id: x.id,
       name:x.name, contact:x.contact, phone:x.phone, city:x.city, remark:x.remark, owner:x.owner, created:x.created,
       company:x.company, code:x.code, country:x.country, address:x.address, zip:x.zip, sales:x.sales,
-      use_price: x.use_price, is_iva: x.is_iva
+      use_price: x.use_price, is_iva: x.is_iva,
+      email: x.email, province: x.province,
+      ship_address: x.ship_address, ship_zip: x.ship_zip, ship_city: x.ship_city,
+      ship_province: x.ship_province, ship_country: x.ship_country,
+      ship_phone: x.ship_phone, ship_contact: x.ship_contact
     }));
   } catch {}
 }
@@ -3060,36 +3121,6 @@ async function apiContactsDeleteByName(owner, name) {
 }
 function ownerLabelOfTab(tab) {
   return tab==='merchants' ? '商家' : (tab==='others' ? '其它' : '客户');
-}
-async function seedDefaultContacts(tab) {
-  const owner = ownerLabelOfTab(tab);
-  const now = new Date();
-  const created = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-  let seeds = [];
-  if (owner === '商家') {
-    seeds = [
-      { name:'商家A', contact:'刘一', phone:'13900000001', city:'上海', remark:'', owner, created },
-      { name:'商家B', contact:'陈二', phone:'13900000002', city:'杭州', remark:'', owner, created },
-      { name:'商家C', contact:'周三', phone:'13900000003', city:'苏州', remark:'', owner, created }
-    ];
-  } else if (owner === '其它') {
-    seeds = [
-      { name:'单位A', contact:'赵一', phone:'13700000001', city:'上海', remark:'', owner, created },
-      { name:'单位B', contact:'钱二', phone:'13700000002', city:'杭州', remark:'', owner, created },
-      { name:'单位C', contact:'孙三', phone:'13700000003', city:'苏州', remark:'', owner, created }
-    ];
-  } else {
-    seeds = [
-      { name:'客户A', contact:'张一', phone:'13800000001', city:'上海', remark:'', owner, created },
-      { name:'客户B', contact:'李二', phone:'13800000002', city:'杭州', remark:'', owner, created },
-      { name:'客户C', contact:'王三', phone:'13800000003', city:'苏州', remark:'', owner, created }
-    ];
-  }
-  const existing = (contactsData[tab] || []);
-  for (const s of seeds) {
-    const exists = existing.some(x => (x.name === s.name) && (x.owner === owner));
-    if (!exists) { try { await apiContactsCreate(s); } catch {} }
-  }
 }
 async function apiAccountsList() {
   try {
@@ -3324,6 +3355,7 @@ homePeriodSel?.addEventListener('change', () => { const v=homePeriodSel.value||'
 
 // Sales Order UI Logic
 const soCustomer = document.getElementById('so-customer');
+const soCustomerRemark = document.getElementById('so-customer-remark');
 const soCustomerDD = document.getElementById('so-customer-dd');
 const soCustomerList = document.getElementById('so-customer-list');
 let currentSoCustomer = null;
@@ -3398,6 +3430,7 @@ function renderSoCustomerDropdown() {
     div.addEventListener('click', () => {
       soCustomer.value = item.name;
       currentSoCustomer = item;
+      if (soCustomerRemark) soCustomerRemark.textContent = item.remark || '';
       // Update Use Price
       if (soUsePrice) {
         const p = item.use_price || 'price1';
@@ -3450,6 +3483,7 @@ if (soCustomer) {
   soCustomer.addEventListener('input', () => {
     openSoCustomerDropdown();
     renderSoCustomerDropdown();
+    if (soCustomerRemark) soCustomerRemark.textContent = '';
   });
   document.addEventListener('click', e => {
     if (!soCustomer.contains(e.target) && !soCustomerDD.contains(e.target)) {
@@ -3613,16 +3647,12 @@ function renderProductSelector(list) {
     
     // Click row to select
     tr.addEventListener('click', (e) => {
-      addSoItem(p);
-      // prodSelModal.style.display = 'none'; // Optional: keep open to add more? User usually wants to pick one by one or stay. 
-      // Let's keep it open or close? "选择商品" usually implies picking one. But "addSoItem" appends.
-      // If we want multiple selection, we shouldn't close.
-      // But typically user clicks "Close" when done.
-      // Let's NOT close automatically to allow multiple adds, or flash a success?
-      // For now, let's close it to be safe, or just flash.
-      // The prompt didn't specify, but "Search Product" modal usually closes on selection or allows multiple.
-      // Let's close it for now as per previous behavior.
-      prodSelModal.style.display = 'none'; 
+      if (typeof window.onProdSelect === 'function') {
+        window.onProdSelect(p);
+      } else {
+        addSoItem(p);
+        prodSelModal.style.display = 'none'; 
+      }
     });
     
     tbody.appendChild(tr);
@@ -3643,7 +3673,12 @@ if (soAddItem) {
     loadProductSelector();
   });
 }
-if (prodSelClose) prodSelClose.addEventListener('click', () => prodSelModal.style.display = 'none');
+if (prodSelClose) {
+  prodSelClose.addEventListener('click', () => {
+    prodSelModal.style.display = 'none';
+    window.onProdSelect = null;
+  });
+}
 if (prodSelSearch) prodSelSearch.addEventListener('input', () => loadProductSelector());
 
 function addSoItem(p) {
@@ -3847,7 +3882,10 @@ if (soSave) {
         const isPaid = (paid >= total && total > 0);
         const editBtn = isPaid 
           ? `<button class="light-btn" style="font-size:12px; padding:4px 8px; opacity:0.5; cursor:not-allowed" title="已付款不可修改">修改</button>`
-          : `<button class="light-btn btn-blue" style="font-size:12px; padding:4px 8px" onclick="editInvoice('${x.id}')">修改</button>`;
+          : `<button class="light-btn" style="font-size:12px; padding:4px 8px" onclick="editInvoice('${x.id}')">修改</button>`;
+        
+        const shipBtnClass = x.shipping_printed ? 'light-btn' : 'light-btn btn-blue';
+        const shipBtn = `<button class="${shipBtnClass}" style="font-size:12px; padding:4px 8px" onclick="printShippingLabel('${x.id}')">打印收货地址</button>`;
         
         const seq = invTotal - ((invPage - 1) * invPageSize + i);
 
@@ -3861,9 +3899,8 @@ if (soSave) {
           <td><span style="color:${statusColor}; background:${statusColor}20; padding:2px 8px; border-radius:4px; font-size:12px">${status}</span></td>
           <td style="color:#94a3b8; font-size:12px">${x.notes||''}</td>
           <td style="display:flex; gap:8px; justify-content:center">
-            <button class="light-btn btn-blue" style="font-size:12px; padding:4px 8px" onclick="previewInvoice('${x.id}')">预览</button>
-            <button class="light-btn" style="font-size:12px; padding:4px 8px" onclick="printInvoice('${x.id}')">打印</button>
-            <button class="light-btn" style="font-size:12px; padding:4px 8px" onclick="exportPdfInvoice('${x.id}')">导出PDF</button>
+            <button class="light-btn" style="font-size:12px; padding:4px 8px" onclick="previewInvoice('${x.id}')">预览</button>
+            ${shipBtn}
             ${editBtn}
           </td>
         `;
@@ -4435,453 +4472,11 @@ if (invRefresh) invRefresh.addEventListener('click', () => { invPage=1; loadInvo
 if (invSearch) invSearch.addEventListener('change', () => { invPage=1; loadInvoices(); });
 
 async function route() {
-  const hash = location.hash || '#ledger';
-  const au = getAuthUser(); if (au && !au.role) { setAuthUser({ ...au, role: getUserRoleName(au.name) }); }
-  document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('active', a.getAttribute('href') === hash));
-  
-  // Auto-expand nav group if active link is inside
-  document.querySelectorAll('.nav-group').forEach(group => {
-    const hasActive = group.querySelector('a.active');
-    if (hasActive) {
-      const header = group.querySelector('.nav-group-header');
-      const children = group.querySelector('.nav-children');
-      if (header) header.classList.remove('collapsed');
-      if (children) children.classList.remove('collapsed');
-    }
-  });
-
-  (function applyNavPerms(){
-    const u = getAuthUser();
-    const roleName = (u?.role) || getUserRoleName(u?.name || '');
-    const role = roleName ? rolesData.find(r => r.name === roleName) : null;
-    const perms = (roleName==='超级管理员') ? allTruePerms() : (role?.perms || {});
-    const map = {
-      '#home':'home', '#ledger':'ledger', '#payables':'payables', '#contacts':'contacts',
-      '#sales-order':'sales_order', '#sales-invoice':'sales_invoice', '#sales-products':'sales_products',
-      '#system':'system', '#categories':'categories', '#accounts':'accounts', '#user-accounts':'user_accounts', '#role-accounts':'role_accounts', '#sales-accounts':'sales_accounts'
-    };
-    document.querySelectorAll('.nav a').forEach(a => {
-      const m = map[a.getAttribute('href') || ''];
-      const allow = (roleName==='超级管理员') ? true
-        : (m==='home' ? true
-        : (m==='system' ? false
-        : !!(perms[m] && perms[m].view)));
-      a.style.display = allow ? 'block' : 'none';
-    });
-  })();
-  const home = document.getElementById('page-home');
-  const ledger = document.getElementById('page-ledger');
-  const payables = document.getElementById('page-payables');
-  const contacts = document.getElementById('page-contacts');
-  const categories = document.getElementById('page-categories');
-  const salesOrder = document.getElementById('page-sales-order');
-  const salesInvoice = document.getElementById('page-sales-invoice');
-  const salesProducts = document.getElementById('page-sales-products');
-  const accounts = document.getElementById('page-accounts');
-  const userAccounts = document.getElementById('page-user-accounts');
-  const salesAccounts = document.getElementById('page-sales-accounts');
-  const roleAccounts = document.getElementById('page-role-accounts');
-  const companyInfoPage = document.getElementById('page-company-info');
-  const partnerOrdersPage = document.getElementById('page-partner-orders');
-  const systemPage = document.getElementById('page-system');
-  const loginPage = document.getElementById('page-login');
-  const empty = document.getElementById('page-empty');
-  const authed = !!(getAuthUser() && (localStorage.getItem('authToken') || ''));
-  if (!authed) { location.href = './login.html'; return; }
-  if (systemPage) systemPage.style.display = 'none';
-  if (companyInfoPage) companyInfoPage.style.display = 'none';
-  function ensureView(module) {
-    const u = getAuthUser(); const roleName = u?.role || '';
-    const nameWithFallback = roleName || getUserRoleName(u?.name || '');
-    if (nameWithFallback==='超级管理员' || module==='home') return true;
-    const role = rolesData.find(r => r.name === nameWithFallback);
-    const allow = !!(role && role.perms && role.perms[module] && role.perms[module].view);
-    if (!allow) { location.hash = '#home'; return false; }
-    return true;
-  }
-  if (hash === '#home') {
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    if (salesOrder) salesOrder.style.display = 'none';
-    if (salesInvoice) salesInvoice.style.display = 'none';
-    if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'none';
-    contacts.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'none';
-    userAccounts.style.display = 'none';
-    salesAccounts.style.display = 'none';
-    roleAccounts.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    loginPage.style.display = 'none';
-    empty.style.display = 'none';
-    if (home) {
-      home.style.display = 'block';
-      if (homePeriodSel) homePeriodSel.value = 'month';
-      renderHomeChart('month');
-      const gp = document.getElementById('global-pager'); if (gp) gp.style.display = 'none';
-    }
-  } else if (hash === '#ledger') {
-    if (home) home.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    if (!ensureView('ledger')) return;
-    ledger.style.display = 'block';
-    if (salesOrder) salesOrder.style.display = 'none';
-    if (salesInvoice) salesInvoice.style.display = 'none';
-    if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'none';
-    contacts.style.display = 'none';
-    const gpEl = document.getElementById('global-pager'); if (gpEl) gpEl.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'none';
-    salesAccounts.style.display = 'none';
-    userAccounts.style.display = 'none';
-    roleAccounts.style.display = 'none';
-    loginPage.style.display = 'none';
-    empty.style.display = 'none';
-    try {
-      ledgerHdrType = 'all';
-      ledgerHdrCat = '';
-      ledgerHdrOwner = '';
-      setLabel(document.getElementById('ld-type-label'), '类型', false);
-      setLabel(document.getElementById('ld-cat-label'), '子类目', false);
-      setLabel(document.getElementById('ld-owner-label'), '往来单位', false);
-    } catch {}
-    await loadLedgerFromServer();
-    applyFilters();
-  } else if (hash === '#sales-order') {
-    if (home) home.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    if (!ensureView('sales_order')) return;
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    if (salesOrder) salesOrder.style.display = 'block';
-    if (salesInvoice) salesInvoice.style.display = 'none';
-    if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'none';
-    contacts.style.display = 'none';
-    const gp = document.getElementById('global-pager'); if (gp) gp.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'none';
-    salesAccounts.style.display = 'none';
-    userAccounts.style.display = 'none';
-    roleAccounts.style.display = 'none';
-    loginPage.style.display = 'none';
-    empty.style.display = 'none';
-    // init sales order
-    await apiContactsList();
-    await loadSalesPeople();
-    // Pre-fetch products for selector
-    await loadProductSelector();
-    
-    if (pendingEditInvoiceId) {
-      await loadInvoiceForEdit(pendingEditInvoiceId);
-      pendingEditInvoiceId = null;
-    } else {
-      // Normal init for new order
-      soCustomer.value = '';
-      if (soUsePrice) soUsePrice.value = '';
-      soNotes.value = '';
-      soItems.innerHTML = '';
-      updateSoTotal();
-      
-      if (soInvoiceNo) delete soInvoiceNo.dataset.id; // Clear edit ID
-      
-      // Only load next invoice no if not already set (e.g. by editInvoice)
-      // Actually, if we are in "new" mode (pendingEditInvoiceId is null), we SHOULD load next no.
-      // But we check if textContent is empty to avoid double loading if user just switched tabs back and forth?
-      // For "New", we probably want to ensure it's fresh.
-      await loadNextInvoiceNo();
-    }
-  } else if (hash === '#sales-invoice') {
-    if (home) home.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    if (!ensureView('sales_invoice')) return;
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    if (salesOrder) salesOrder.style.display = 'none';
-    if (salesInvoice) salesInvoice.style.display = 'block';
-    if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'none';
-    contacts.style.display = 'none';
-    const gp = document.getElementById('global-pager'); if (gp) gp.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'none';
-    salesAccounts.style.display = 'none';
-    userAccounts.style.display = 'none';
-    roleAccounts.style.display = 'none';
-    loginPage.style.display = 'none';
-    empty.style.display = 'none';
-    invPage = 1;
-    await loadInvoices();
-  } else if (hash === '#sales-products') {
-    if (home) home.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    if (!ensureView('sales_products')) return;
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    if (salesOrder) salesOrder.style.display = 'none';
-    if (salesInvoice) salesInvoice.style.display = 'none';
-    if (salesProducts) salesProducts.style.display = 'block';
-    payables.style.display = 'none';
-    contacts.style.display = 'none';
-    const gp = document.getElementById('global-pager'); if (gp) gp.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'none';
-    salesAccounts.style.display = 'none';
-    userAccounts.style.display = 'none';
-    roleAccounts.style.display = 'none';
-    loginPage.style.display = 'none';
-    empty.style.display = 'none';
-    prodPage = 1;
-    await loadProducts();
-  } else if (hash === '#payables') {
-    if (home) home.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    if (!ensureView('payables')) return;
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'block';
-    contacts.style.display = 'none';
-    const gp = document.getElementById('global-pager'); if (gp) gp.style.display = 'flex';
-    const uw = document.getElementById('undo-wrap'); if (uw) uw.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'none';
-    salesAccounts.style.display = 'none';
-    userAccounts.style.display = 'none';
-    roleAccounts.style.display = 'none';
-    loginPage.style.display = 'none';
-    empty.style.display = 'none';
-    try {
-      payFilterType = 'all';
-      payFilterSalesName = '';
-      payFilterStatus = 'all';
-      payFilterOverdue = 'all';
-      payPage = 1;
-      const setDefault = () => {
-        const reset = (el, text) => { if (el) { el.textContent = text + ' ▾'; el.style.color = ''; } };
-        reset(document.getElementById('th-type-label'), '款项类型');
-        reset(document.getElementById('th-sales-label'), '业务员');
-        reset(document.getElementById('th-arrears-label'), '欠款');
-        reset(document.getElementById('th-trust-label'), '信任天数');
-      };
-      setDefault();
-    } catch {}
-    await loadPayablesFromServer();
-    renderPayables();
-  } else if (hash === '#contacts') {
-    if (home) home.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    if (!ensureView('contacts')) return;
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'none';
-    contacts.style.display = 'block';
-    const gp = document.getElementById('global-pager'); if (gp) gp.style.display = 'flex';
-    const uw = document.getElementById('undo-wrap'); if (uw) uw.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'none';
-    userAccounts.style.display = 'none';
-    roleAccounts.style.display = 'none';
-    loginPage.style.display = 'none';
-    empty.style.display = 'none';
-    await loadSalesPeople();
-    renderContacts();
-  } else if (hash.startsWith('#partner-orders')) {
-    const nameParam = decodeURIComponent((hash.split(':')[1] || '').trim());
-    if (home) home.style.display = 'none';
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'none';
-    contacts.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'none';
-    userAccounts.style.display = 'none';
-    salesAccounts.style.display = 'none';
-    roleAccounts.style.display = 'none';
-    loginPage.style.display = 'none';
-    empty.style.display = 'none';
-    const gp = document.getElementById('global-pager'); if (gp) gp.style.display = 'none';
-    if (partnerOrdersPage) {
-      partnerOrdersPage.style.display = 'block';
-      partnerOrdersHead.textContent = '往来单位：' + (nameParam || '');
-      partnerOrdersRows.innerHTML = '';
-      await loadPayablesFromServer();
-      const list = payRecords.filter(r => (r.partner || '') === (nameParam || ''));
-      list.forEach(r => {
-        const tr = document.createElement('tr');
-        const paid = r.paid || 0;
-        const arrears = Math.max(0, (r.amount || 0) - paid);
-        [r.type, r.partner || '', r.doc || '', (r.amount||0).toFixed(2), (r.invoiceNo||''), (Number(r.invoiceAmount||0).toFixed(2)), paid.toFixed(2), arrears.toFixed(2), r.date || ''].forEach((v,i) => {
-          const td = document.createElement('td');
-          td.textContent = String(v);
-          if (i===7 && arrears>0) td.style.color = '#ef4444';
-          tr.appendChild(td);
-        });
-        partnerOrdersRows.appendChild(tr);
-      });
-    }
-  } else if (hash === '#categories') {
-    if (home) home.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    if (!ensureView('categories')) return;
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'none';
-    contacts.style.display = 'none';
-    categories.style.display = 'block';
-    const uw = document.getElementById('undo-wrap'); if (uw) uw.style.display = 'none';
-    accounts.style.display = 'none';
-    userAccounts.style.display = 'none';
-    roleAccounts.style.display = 'none';
-    loginPage.style.display = 'none';
-    empty.style.display = 'none';
-    await apiCategoriesList();
-    renderCats();
-  } else if (hash === '#accounts') {
-    if (home) home.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    if (!ensureView('accounts')) return;
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'none';
-    contacts.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'block';
-    const uw = document.getElementById('undo-wrap'); if (uw) uw.style.display = 'none';
-    userAccounts.style.display = 'none';
-    salesAccounts.style.display = 'none';
-    const gp = document.getElementById('global-pager'); if (gp) gp.style.display = 'none';
-    roleAccounts.style.display = 'none';
-    loginPage.style.display = 'none';
-    empty.style.display = 'none';
-    await apiAccountsList();
-    refreshAccountOptions();
-    renderAccounts();
-  } else if (hash === '#user-accounts') {
-    if (home) home.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    if (!ensureView('user_accounts')) return;
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'none';
-    contacts.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'none';
-    userAccounts.style.display = 'block';
-    const uw = document.getElementById('undo-wrap'); if (uw) uw.style.display = 'none';
-    salesAccounts.style.display = 'none';
-    const gpEl = document.getElementById('global-pager'); if (gpEl) gpEl.style.display = 'none';
-    roleAccounts.style.display = 'none';
-    loginPage.style.display = 'none';
-    empty.style.display = 'none';
-    await apiUsersList();
-    renderUserAccounts();
-  } else if (hash === '#role-accounts') {
-    if (home) home.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    if (!ensureView('role_accounts')) return;
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'none';
-    contacts.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'none';
-    userAccounts.style.display = 'none';
-    salesAccounts.style.display = 'none';
-    roleAccounts.style.display = 'block';
-    const permsPage = document.getElementById('page-role-perms'); if (permsPage) permsPage.style.display = 'none';
-    const uw = document.getElementById('undo-wrap'); if (uw) uw.style.display = 'none';
-    loginPage.style.display = 'none';
-    empty.style.display = 'none';
-    await apiRolesList();
-    renderRoles();
-  } else if (hash === '#role-perms') {
-    if (home) home.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'none';
-    contacts.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'none';
-    userAccounts.style.display = 'none';
-    salesAccounts.style.display = 'none';
-    roleAccounts.style.display = 'none';
-    const gp = document.getElementById('global-pager'); if (gp) gp.style.display = 'none';
-    const permsPage = document.getElementById('page-role-perms'); if (permsPage) permsPage.style.display = 'block';
-    loginPage.style.display = 'none';
-    empty.style.display = 'none';
-  } else if (hash === '#sales-accounts') {
-    if (home) home.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    if (!ensureView('sales_accounts')) return;
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'none';
-    contacts.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'none';
-    userAccounts.style.display = 'none';
-    salesAccounts.style.display = 'block';
-    roleAccounts.style.display = 'none';
-    const uw = document.getElementById('undo-wrap'); if (uw) uw.style.display = 'none';
-    loginPage.style.display = 'none';
-    empty.style.display = 'none';
-    await apiSalesList();
-    renderSales();
-  } else if (hash === '#company-info') {
-    if (home) home.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    const u = getAuthUser(); const rn = (u?.role) || getUserRoleName(u?.name || '');
-    // Only super admin or those with system.view can see, usually system settings are restricted
-    if (rn !== '超级管理员') { location.hash = '#home'; return; }
-    
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'none';
-    contacts.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'none';
-    userAccounts.style.display = 'none';
-    salesAccounts.style.display = 'none';
-    roleAccounts.style.display = 'none';
-    systemPage.style.display = 'none';
-    if (companyInfoPage) companyInfoPage.style.display = 'block';
-    loginPage.style.display = 'none';
-    empty.style.display = 'none';
-    await loadCompanyInfo();
-  } else if (hash === '#system') {
-    if (home) home.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    const u = getAuthUser(); const rn = (u?.role) || getUserRoleName(u?.name || '');
-    if (rn !== '超级管理员') { location.hash = '#home'; return; }
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'none';
-    contacts.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'none';
-    userAccounts.style.display = 'none';
-    salesAccounts.style.display = 'none';
-    roleAccounts.style.display = 'none';
-    systemPage.style.display = 'block';
-    loginPage.style.display = 'none';
-    empty.style.display = 'none';
-  } else if (hash === '#login') {
-    if (home) home.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'none';
-    contacts.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'none';
-    userAccounts.style.display = 'none';
-    roleAccounts.style.display = 'none';
-    loginPage.style.display = 'block';
-    empty.style.display = 'none';
-  } else {
-    if (home) home.style.display = 'none';
-    if (partnerOrdersPage) partnerOrdersPage.style.display = 'none';
-    ledger.style.display = 'none'; if (salesOrder) salesOrder.style.display = 'none'; if (salesInvoice) salesInvoice.style.display = 'none'; if (salesProducts) salesProducts.style.display = 'none';
-    payables.style.display = 'none';
-    contacts.style.display = 'none';
-    categories.style.display = 'none';
-    accounts.style.display = 'none';
-    userAccounts.style.display = 'none';
-    roleAccounts.style.display = 'none';
-    loginPage.style.display = 'none';
-    empty.style.display = 'block';
-  }
+  return handleRoute();
 }
-window.addEventListener('hashchange', route);
+// window.addEventListener('hashchange', route); // Disabled in favor of handleRoute
 document.querySelectorAll('.nav a').forEach(a => {
-  a.addEventListener('click', () => setTimeout(() => route(), 0));
+  a.addEventListener('click', () => setTimeout(() => handleRoute(), 0));
 });
 initPersist();
 setAuthUI();
@@ -5425,3 +5020,903 @@ if (btnSave) btnSave.onclick = async () => {
   }
 };
 
+
+// New Shipping Label Logic
+const shipPrevModal = document.getElementById('shipping-preview-modal');
+const shipContent = document.getElementById('ship-content');
+const shipPrevPrint = document.getElementById('ship-prev-print');
+const shipPrevClose = document.getElementById('ship-prev-close');
+let currentShippingInvId = null;
+
+if (shipPrevClose) {
+  shipPrevClose.addEventListener('click', () => {
+    if (shipPrevModal) shipPrevModal.style.display = 'none';
+  });
+}
+
+if (shipPrevPrint) {
+  shipPrevPrint.addEventListener('click', async () => {
+    window.print();
+    if (currentShippingInvId) {
+      const inv = currentInvoices.find(x => String(x.id) === String(currentShippingInvId));
+      if (inv && !inv.shipping_printed) {
+         try {
+           await apiFetchJSON(`/api/invoices/${currentShippingInvId}/print-shipping`, { method:'PUT' });
+           inv.shipping_printed = true;
+           loadInvoices(); // Refresh list to show gray button
+         } catch {}
+      }
+    }
+  });
+}
+
+window.printShippingLabel = async function(id) {
+  currentShippingInvId = id;
+  const inv = currentInvoices.find(x => String(x.id) === String(id));
+  if (!inv) return;
+  
+  // Find customer
+  let cust = null;
+  try {
+    const contacts = await apiFetchJSON(`/api/contacts?q=${encodeURIComponent(inv.customer)}`);
+    cust = contacts.find(c => c.name === inv.customer);
+  } catch {}
+  
+  let name = inv.customer; // Store Name
+  let company = '';
+  let address = '';
+  let zip = '';
+  let city = '';
+  let province = '';
+  let country = '';
+  let phone = '';
+  let contact = '';
+  
+  if (cust) {
+    name = cust.name;
+    company = cust.company;
+    if (cust.ship_address) {
+      address = cust.ship_address;
+      zip = cust.ship_zip;
+      city = cust.ship_city;
+      province = cust.ship_province;
+      country = cust.ship_country;
+      phone = cust.ship_phone;
+      contact = cust.ship_contact;
+    } else {
+      address = cust.address;
+      zip = cust.zip;
+      city = cust.city;
+      province = cust.province;
+      country = cust.country;
+      phone = cust.phone;
+      contact = cust.contact;
+    }
+  }
+
+  // HTML Structure matching the CSS classes
+  let html = `
+    <div class="s-name">${name || ''}</div>
+    ${company ? `<div class="s-meta">${company}</div>` : ''}
+    <div class="s-address">${address || ''}</div>
+    <div class="s-city">${zip || ''} ${city || ''}</div>
+    <div class="s-meta">${province || ''} ${country || ''}</div>
+    <div class="s-footer">
+        <div class="s-phone">${phone ? 'Tel: ' + phone : ''}</div>
+        <div class="s-contact">${contact || ''}</div>
+     </div>
+  `;
+  
+  if (shipContent) shipContent.innerHTML = html;
+  if (shipPrevModal) shipPrevModal.style.display = 'flex';
+};
+
+// --- Daily Operations Logic ---
+
+// Hash Change Handler for Daily Ops and General Routing
+window.addEventListener('hashchange', handleRoute);
+window.addEventListener('DOMContentLoaded', handleRoute);
+
+async function handleRoute() {
+  const hash = location.hash.slice(1) || 'home';
+  const u = getAuthUser(); 
+  const roleName = (u?.role) || getUserRoleName(u?.name || '');
+  
+  // Hide all pages first
+  document.querySelectorAll('[id^="page-"]').forEach(el => el.style.display = 'none');
+  const gp = document.getElementById('global-pager'); if (gp) gp.style.display = 'none';
+  const uw = document.getElementById('undo-wrap'); if (uw) uw.style.display = 'none';
+
+  // Helper for permission
+  const ensureView = (module) => {
+    if (roleName==='超级管理员' || module==='home') return true;
+    const role = rolesData.find(r => r.name === roleName);
+    const allow = !!(role && role.perms && role.perms[module] && role.perms[module].view);
+    if (!allow) { location.hash = '#home'; return false; }
+    return true;
+  };
+
+  if (hash === 'home') {
+    document.getElementById('page-home').style.display = 'block';
+    if (typeof homePeriodSel !== 'undefined' && homePeriodSel) homePeriodSel.value = 'month';
+    if (typeof renderHomeChart === 'function') renderHomeChart('month');
+  } 
+  else if (hash === 'tasks') {
+    document.getElementById('page-tasks').style.display = 'block';
+    loadTasks(currentTaskTab);
+  }
+  else if (hash === 'ledger') {
+    if (!ensureView('ledger')) return;
+    document.getElementById('page-ledger').style.display = 'block';
+    try {
+      if (typeof ledgerHdrType !== 'undefined') { ledgerHdrType = 'all'; ledgerHdrCat = ''; ledgerHdrOwner = ''; }
+      if (typeof setLabel === 'function') {
+        setLabel(document.getElementById('ld-type-label'), '类型', false);
+        setLabel(document.getElementById('ld-cat-label'), '子类目', false);
+        setLabel(document.getElementById('ld-owner-label'), '往来单位', false);
+      }
+    } catch {}
+    loadLedgerFromServer().then(() => {
+      if (typeof applyFilters === 'function') applyFilters();
+    });
+  }
+  else if (hash === 'payables') {
+    if (!ensureView('payables')) return;
+    document.getElementById('page-payables').style.display = 'block';
+    if (gp) gp.style.display = 'flex';
+    try {
+      if (typeof payFilterType !== 'undefined') { payFilterType = 'all'; payFilterSalesName = ''; payFilterStatus = 'all'; payFilterOverdue = 'all'; payPage = 1; }
+      const reset = (el, text) => { if (el) { el.textContent = text + ' ▾'; el.style.color = ''; } };
+      reset(document.getElementById('th-type-label'), '款项类型');
+      reset(document.getElementById('th-sales-label'), '业务员');
+      reset(document.getElementById('th-arrears-label'), '欠款');
+      reset(document.getElementById('th-trust-label'), '信任天数');
+    } catch {}
+    loadPayablesFromServer().then(() => {
+      if (typeof renderPayables === 'function') renderPayables();
+    });
+  }
+  else if (hash === 'contacts') {
+    if (!ensureView('contacts')) return;
+    document.getElementById('page-contacts').style.display = 'block';
+    if (gp) gp.style.display = 'flex';
+    loadSalesPeople().then(() => {
+      if (typeof renderContacts === 'function') renderContacts();
+    });
+  }
+  else if (hash === 'sales-order') {
+    if (!ensureView('sales_order')) return;
+    document.getElementById('page-sales-order').style.display = 'block';
+    Promise.all([apiContactsList(), loadSalesPeople()]).then(async () => {
+      if (typeof loadProductSelector === 'function') await loadProductSelector();
+      if (typeof pendingEditInvoiceId !== 'undefined' && pendingEditInvoiceId) {
+        await loadInvoiceForEdit(pendingEditInvoiceId);
+        pendingEditInvoiceId = null;
+      } else {
+        if (typeof soCustomer !== 'undefined') soCustomer.value = '';
+        if (typeof soUsePrice !== 'undefined') soUsePrice.value = '';
+        if (typeof soNotes !== 'undefined') soNotes.value = '';
+        if (typeof soItems !== 'undefined') soItems.innerHTML = '';
+        if (typeof updateSoTotal === 'function') updateSoTotal();
+        if (typeof soInvoiceNo !== 'undefined') delete soInvoiceNo.dataset.id;
+        if (typeof loadNextInvoiceNo === 'function') await loadNextInvoiceNo();
+      }
+    });
+  }
+  else if (hash === 'sales-invoice') {
+    if (!ensureView('sales_invoice')) return;
+    document.getElementById('page-sales-invoice').style.display = 'block';
+    if (typeof invPage !== 'undefined') invPage = 1;
+    loadInvoices();
+  }
+  else if (hash === 'sales-products') {
+    if (!ensureView('sales_products')) return;
+    document.getElementById('page-sales-products').style.display = 'block';
+    if (typeof prodPage !== 'undefined') prodPage = 1;
+    loadProducts();
+  }
+  else if (hash.startsWith('partner-orders')) {
+    const nameParam = decodeURIComponent((hash.split(':')[1] || '').trim());
+    const page = document.getElementById('page-partner-orders');
+    if (page) {
+        page.style.display = 'block';
+        if (typeof partnerOrdersHead !== 'undefined') partnerOrdersHead.textContent = '往来单位：' + (nameParam || '');
+        if (typeof partnerOrdersRows !== 'undefined') partnerOrdersRows.innerHTML = '';
+        loadPayablesFromServer().then(() => {
+          const list = payRecords.filter(r => (r.partner || '') === (nameParam || ''));
+          list.forEach(r => {
+              const tr = document.createElement('tr');
+              const paid = r.paid || 0;
+              const arrears = Math.max(0, (r.amount || 0) - paid);
+              [r.type, r.partner || '', r.doc || '', (r.amount||0).toFixed(2), (r.invoiceNo||''), (Number(r.invoiceAmount||0).toFixed(2)), paid.toFixed(2), arrears.toFixed(2), r.date || ''].forEach((v,i) => {
+              const td = document.createElement('td');
+              td.textContent = String(v);
+              if (i===7 && arrears>0) td.style.color = '#ef4444';
+              tr.appendChild(td);
+              });
+              partnerOrdersRows.appendChild(tr);
+          });
+        });
+    }
+  }
+  else if (hash === 'categories') {
+    if (!ensureView('categories')) return;
+    document.getElementById('page-categories').style.display = 'block';
+    apiCategoriesList().then(() => {
+      if (typeof renderCats === 'function') renderCats();
+    });
+  }
+  else if (hash === 'accounts') {
+    if (!ensureView('accounts')) return;
+    document.getElementById('page-accounts').style.display = 'block';
+    apiAccountsList().then(() => {
+      if (typeof refreshAccountOptions === 'function') refreshAccountOptions();
+      if (typeof renderAccounts === 'function') renderAccounts();
+    });
+  }
+  else if (hash === 'user-accounts') {
+    if (!ensureView('user_accounts')) return;
+    document.getElementById('page-user-accounts').style.display = 'block';
+    apiUsersList().then(() => {
+      if (typeof renderUserAccounts === 'function') renderUserAccounts();
+    });
+  }
+  else if (hash === 'role-accounts') {
+    if (!ensureView('role_accounts')) return;
+    document.getElementById('page-role-accounts').style.display = 'block';
+    apiRolesList().then(() => {
+      if (typeof renderRoles === 'function') renderRoles();
+    });
+  }
+  else if (hash === 'sales-accounts') {
+    if (!ensureView('sales_accounts')) return;
+    document.getElementById('page-sales-accounts').style.display = 'block';
+    apiSalesList().then(() => {
+      if (typeof renderSales === 'function') renderSales();
+    });
+  }
+  else if (hash === 'role-perms') {
+    document.getElementById('page-role-perms').style.display = 'block';
+  }
+  else if (hash === 'system') {
+    if (roleName !== '超级管理员') { location.hash = '#home'; return; }
+    document.getElementById('page-system').style.display = 'block';
+  }
+  else if (hash === 'company-info') {
+    if (roleName !== '超级管理员') { location.hash = '#home'; return; }
+    document.getElementById('page-company-info').style.display = 'block';
+    loadCompanyInfo();
+  }
+  else if (hash === 'daily-orders') {
+    document.getElementById('page-daily-orders').style.display = 'block';
+    loadDailyOrders();
+  }
+  else if (hash === 'finished-stock') {
+    document.getElementById('page-finished-stock').style.display = 'block';
+    loadFinishedStock();
+  }
+  else if (hash === 'raw-stock') {
+    document.getElementById('page-raw-stock').style.display = 'block';
+    loadRawStock();
+  }
+  else if (hash === 'login') {
+    document.getElementById('page-login').style.display = 'block';
+  }
+  else {
+    const t = document.getElementById('page-' + hash);
+    if (t) t.style.display = 'block';
+    else {
+        const empty = document.getElementById('page-empty');
+        if (empty) empty.style.display = 'block';
+    }
+  }
+
+  // Update nav active state
+  document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
+  const link = document.querySelector(`.nav a[href="#${hash}"]`);
+  if (link) {
+      link.classList.add('active');
+      const group = link.closest('.nav-group');
+      if (group) {
+        const h = group.querySelector('.nav-group-header');
+        const c = group.querySelector('.nav-children');
+        if (h) h.classList.remove('collapsed');
+        if (c) c.classList.remove('collapsed');
+      }
+  }
+}
+
+// Tasks
+let currentTaskTab = 'new';
+let currentTaskPage = 1;
+
+async function loadTasks(tab = 'new', btn = null, page = 1) {
+  currentTaskTab = tab;
+  currentTaskPage = page;
+
+  if (btn) {
+    document.querySelectorAll('#page-tasks .tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  } else {
+    // Sync tab button state if loaded without click
+    const tBtn = document.querySelector(`#page-tasks .tab[data-tab="${tab}"]`);
+    if (tBtn) {
+      document.querySelectorAll('#page-tasks .tab').forEach(b => b.classList.remove('active'));
+      tBtn.classList.add('active');
+    }
+  }
+  
+  // Map tab to status
+  let status = 'new';
+  if (tab === 'review') status = 'review';
+  else if (tab === 'completed') status = 'completed';
+
+  const res = await fetchWithAuth(`/api/tasks?status=${status}&page=${page}&size=100&_t=${Date.now()}`);
+  if (!res.ok) return;
+  const data = await res.json();
+  
+  // Handle response format { list, total, stats }
+  const list = data.list || [];
+  const total = data.total || 0;
+  const stats = data.stats || { new_count: 0, review_count: 0 };
+
+  // Update Badges
+  const newCount = Number(stats.new_count || 0);
+  const reviewCount = Number(stats.review_count || 0);
+  const totalCount = newCount + reviewCount;
+
+  const updateBadge = (id, count) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.textContent = count;
+      el.style.display = count > 0 ? 'inline-block' : 'none';
+    }
+  };
+  updateBadge('nav-task-badge', totalCount);
+  updateBadge('tab-new-badge', newCount);
+  updateBadge('tab-review-badge', reviewCount);
+
+  const tbody = document.getElementById('task-rows');
+  if (!tbody) return;
+  
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr class="empty"><td colspan="6">暂无任务</td></tr>';
+    renderTaskPager(0, 1, 100);
+    return;
+  }
+  
+  const meRes = await fetchWithAuth('/api/auth/me');
+  const me = await meRes.json();
+  const isAdmin = me.user?.role === '超级管理员';
+  const myName = me.user?.name;
+  
+  tbody.innerHTML = list.map(t => {
+    let action = '';
+    if (t.status === 'pending' || !t.status) {
+        if (t.assigned_to === myName || isAdmin) {
+            action = `<button class="btn-sm" onclick="completeTask(${t.id})">完成任务</button>`;
+        }
+    } else if (t.status === 'waiting_audit') {
+        if (isAdmin) {
+            action = `<button class="btn-sm" onclick="auditTask(${t.id})">确认审核</button>`;
+        } else {
+            action = '<span style="color:#666;font-size:12px">等待审核</span>';
+        }
+    }
+
+    return `
+    <tr>
+      <td>${t.title||''}</td>
+      <td>${t.description||''}</td>
+      <td>${t.assigned_to||''}</td>
+      <td>${t.created_by||''}<br><span style="font-size:12px;color:#666">${new Date(Number(t.created_at)).toLocaleString()}</span></td>
+      <td><span class="tag ${t.status==='completed'?'green':(t.status==='waiting_audit'?'orange':'blue')}">
+        ${t.status==='completed'?'已完成':(t.status==='waiting_audit'?'审核中':'新任务')}
+      </span></td>
+      <td>${action}</td>
+    </tr>
+  `}).join('');
+
+  renderTaskPager(total, page, 100);
+}
+
+function renderTaskPager(total, page, size) {
+  const totalPages = Math.ceil(total / size);
+  const pager = document.getElementById('task-pager');
+  if (!pager) return;
+  
+  if (totalPages <= 1) {
+    pager.style.display = 'none';
+    return;
+  }
+  
+  pager.style.display = 'flex';
+  let html = '';
+  
+  // Prev
+  html += `<button class="btn-secondary" ${page <= 1 ? 'disabled' : ''} onclick="loadTasks(currentTaskTab, null, ${page - 1})">上一页</button>`;
+  
+  // Page info
+  html += `<span style="font-size:14px; color:#cbd5e1">第 ${page} / ${totalPages} 页</span>`;
+  
+  // Next
+  html += `<button class="btn-secondary" ${page >= totalPages ? 'disabled' : ''} onclick="loadTasks(currentTaskTab, null, ${page + 1})">下一页</button>`;
+  
+  pager.innerHTML = html;
+}
+
+function openTaskModal() {
+  const m = document.getElementById('task-modal');
+  if (m) {
+    m.style.display = 'flex';
+    document.getElementById('task-title').value = '';
+    document.getElementById('task-desc').value = '';
+    document.getElementById('task-assign').value = '';
+    const listDiv = document.getElementById('task-assign-list');
+    if (listDiv) {
+      listDiv.innerHTML = '加载中...';
+      fetchWithAuth('/api/auth/users')
+        .then(async r => {
+          if (!r.ok) throw new Error('API Error: ' + r.status);
+          const text = await r.text();
+          try {
+            return JSON.parse(text);
+          } catch (e) {
+            console.error('JSON Parse Error:', text.slice(0, 100));
+            throw new Error('Invalid JSON response');
+          }
+        })
+        .then(users => {
+          if (!Array.isArray(users)) throw new Error('Data format error');
+          renderUserChips(users);
+        })
+        .catch(e => {
+          console.warn('Failed to load users, using fallback:', e);
+          // Fallback data for dev/demo purposes or when API fails
+          const fallbackUsers = [
+            { name: '超级管理员', role: '超级管理员' },
+            { name: 'shuangqun', role: '股东' },
+            { name: 'caiwu', role: '财务' },
+            { name: 'kefu', role: '客服' }
+          ];
+          if (!users || users.length === 0) users = fallbackUsers;
+          renderUserChips(users);
+        });
+        
+        function renderUserChips(users) {
+           listDiv.innerHTML = users.map(u => `
+            <div class="user-chip" onclick="selectTaskUser(this, '${u.name}')" 
+                 style="border:1px solid #334155; padding:8px; border-radius:6px; cursor:pointer; text-align:center; background:#0f172a; color:#cbd5e1; user-select:none; display:flex; flex-direction:column; align-items:center; gap:4px">
+              <span style="font-weight:600">${u.name}</span>
+              <span style="font-size:10px; opacity:0.7; background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px">${u.role||'员工'}</span>
+            </div>
+          `).join('');
+        }
+    }
+  }
+}
+window.selectTaskUser = function(el, name) {
+    document.getElementById('task-assign').value = name;
+    document.querySelectorAll('.user-chip').forEach(d => {
+        d.style.borderColor = '#334155';
+        d.style.background = '#0f172a';
+        d.style.color = '#cbd5e1';
+    });
+    el.style.borderColor = '#1a73e8';
+    el.style.background = '#1a73e8';
+    el.style.color = '#fff';
+}
+function closeTaskModal() {
+  const m = document.getElementById('task-modal');
+  if (m) m.style.display = 'none';
+}
+async function saveTask() {
+  const title = document.getElementById('task-title').value;
+  const desc = document.getElementById('task-desc').value;
+  const assign = document.getElementById('task-assign').value;
+  if (!title) return alert('请输入标题');
+  if (!assign) return alert('请选择指派人员');
+  
+  await fetchWithAuth('/api/tasks', {
+    method: 'POST',
+    body: JSON.stringify({ title, desc, assign })
+  });
+  closeTaskModal();
+  loadTasks('new');
+  // Update badge immediately after creation
+  const badge = document.getElementById('nav-task-badge');
+  if (badge) {
+    const count = Number(badge.textContent || 0) + 1;
+    badge.textContent = count;
+    badge.style.display = 'inline-block';
+  }
+}
+async function completeTask(id) {
+  if (!confirm('确认完成任务？')) return;
+  await fetchWithAuth(`/api/tasks/${id}/complete`, { method:'PUT' });
+  loadTasks('new');
+}
+async function auditTask(id) {
+    if (!confirm('确认审核通过？')) return;
+    await fetchWithAuth(`/api/tasks/${id}/audit`, { method:'PUT' });
+    loadTasks('review');
+}
+
+// Daily Orders
+let currentDailyOrders = [];
+async function loadDailyOrders(status = 'new', btn = null) {
+  // Update tabs style
+  if (btn) {
+    // Find parent .tabs container
+    const tabs = btn.closest('.tabs');
+    if (tabs) {
+      tabs.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+  } else {
+    // If loaded without click (e.g. init), highlight correct tab
+    const tabs = document.querySelector('#page-daily-orders .tabs');
+    if (tabs) {
+      tabs.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+      const target = tabs.querySelector(`[data-tab="${status}"]`);
+      if (target) target.classList.add('active');
+    }
+  }
+
+  // Fetch data with timestamp to prevent caching
+  const res = await fetchWithAuth(`/api/daily-orders?status=${status}&_t=${Date.now()}`);
+  if (!res.ok) return;
+  const list = await res.json();
+  currentDailyOrders = list;
+  
+  // Update badges
+  if (status === 'new') {
+    const badge = document.getElementById('tab-order-new-badge');
+    const navBadge = document.getElementById('nav-order-badge');
+    if (badge) {
+      badge.textContent = list.length;
+      badge.style.display = list.length > 0 ? 'inline-block' : 'none';
+    }
+    if (navBadge) {
+      navBadge.textContent = list.length;
+      navBadge.style.display = list.length > 0 ? 'inline-block' : 'none';
+    }
+  } else if (status === 'allocated') {
+    const badge = document.getElementById('tab-order-alloc-badge');
+    if (badge) {
+      badge.textContent = list.length;
+      badge.style.display = list.length > 0 ? 'inline-block' : 'none';
+    }
+  }
+
+  const tbody = document.getElementById('daily-order-rows');
+  if (!tbody) return;
+  
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr class="empty"><td colspan="5">暂无订单</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = list.map(o => `
+    <tr>
+      <td>${o.customer}</td>
+      <td>${o.date}</td>
+      <td><span class="tag ${o.status==='new'?'red':(o.status==='allocated'?'blue':'green')}">
+        ${o.status==='new'?'新订单':(o.status==='allocated'?'已配货':'已发货')}
+      </span></td>
+      <td>
+        ${o.status==='new' ? `<button class="btn-sm" onclick="openAllocateModal(${o.id})">配货</button>` : ''}
+        ${o.status==='allocated' ? `<button class="btn-sm" onclick="confirmShip(${o.id})">发货</button>` : ''}
+      </td>
+    </tr>
+  `).join('');
+}
+
+function openDailyOrderModal() {
+  const m = document.getElementById('daily-order-modal');
+  if (m) {
+    m.style.display = 'flex';
+    document.getElementById('do-items-container').innerHTML = '';
+    
+    // Setup customer dropdown
+    const doCustomer = document.getElementById('do-customer');
+    const doCustomerDd = document.getElementById('do-customer-dd');
+    const doCustomerSearch = document.getElementById('do-customer-search');
+    const doCustomerList = document.getElementById('do-customer-list');
+
+    if (doCustomer) {
+        doCustomer.value = ''; // Reset
+        doCustomer.onfocus = () => {
+            doCustomerDd.style.display = 'block';
+            doCustomerSearch.focus();
+            renderDoCustomerList();
+        };
+        // Close on click outside is handled globally or we add a specific listener here if needed
+        // For simplicity, let's reuse the global click listener logic or add a local one
+        setTimeout(() => {
+             const closeDd = (e) => {
+                if (!m.contains(e.target)) return; // If click outside modal, modal closes anyway
+                if (!doCustomer.parentElement.contains(e.target)) {
+                    doCustomerDd.style.display = 'none';
+                    document.removeEventListener('click', closeDd);
+                }
+             };
+             document.addEventListener('click', closeDd);
+        }, 100);
+    }
+    
+    if (doCustomerSearch) {
+        doCustomerSearch.oninput = () => renderDoCustomerList(doCustomerSearch.value);
+    }
+
+    function renderDoCustomerList(filter = '') {
+        const all = [
+            ...(contactsData.customers || []),
+            ...(contactsData.merchants || []),
+            ...(contactsData.others || [])
+        ];
+        
+        // Ensure we don't have duplicates or empty list if data isn't ready
+        if (all.length === 0) {
+            doCustomerList.innerHTML = '<div class="dd-item" style="color:#64748b">加载中或无数据...</div>';
+            return;
+        }
+
+        const filtered = all.filter(c => c.name.toLowerCase().includes(filter.toLowerCase()));
+        
+        if (filtered.length === 0) {
+            doCustomerList.innerHTML = '<div class="dd-item" style="justify-content:center; color:#64748b">无匹配结果</div>';
+            return;
+        }
+
+        doCustomerList.innerHTML = filtered.map(c => `
+            <div class="dd-item" onclick="selectDoCustomer('${c.name}')">
+                <span>${c.name}</span>
+                <span style="font-size:12px; color:#64748b">${c.phone||''} ${c.city||''}</span>
+            </div>
+        `).join('');
+    }
+    
+    window.selectDoCustomer = function(name) {
+        doCustomer.value = name;
+        doCustomerDd.style.display = 'none';
+    };
+
+    // Ensure contacts are loaded
+    if (!contactsData.customers || contactsData.customers.length === 0) {
+         fetchWithAuth('/api/contacts').then(r=>r.json()).then(data => {
+             // Assuming api returns flat list, we need to categorize if contactsData structure expects categories
+             // Or if contactsData is just flat. Let's check how contactsData is populated elsewhere.
+             // Actually loadContacts populates contactsData. Let's call loadContacts if needed or just use the list.
+             // For safety, let's fetch and categorize or just use the flat list if structure matches.
+             // Re-using loadContacts logic from app.js might be better if available.
+             // Let's just fetch flat and use it for now to be robust.
+             const list = Array.isArray(data) ? data : (data.list || []);
+             // Mock categorizing for the filter above to work if it relies on categories, 
+             // BUT simpler is just to assign to a temp all-list.
+             // Let's patch contactsData for this modal usage
+             contactsData.customers = list.filter(c => c.type === 'customers');
+             contactsData.merchants = list.filter(c => c.type === 'merchants');
+             contactsData.others = list.filter(c => c.type === 'others');
+             // If types are missing, just put all in customers
+             if (list.length > 0 && !list[0].type) contactsData.customers = list;
+         });
+    }
+    
+    document.getElementById('do-date').valueAsDate = new Date();
+  }
+}
+
+function closeDailyOrderModal() {
+  const m = document.getElementById('daily-order-modal');
+  if (m) m.style.display = 'none';
+}
+
+function openDoProdSelector() {
+  const m = document.getElementById('prod-selector-modal');
+  if (m) {
+    m.style.display = 'flex';
+    loadProductSelector(1); // Load first page
+    // Override the select callback for this context
+    window.onProdSelect = function(prod) {
+      addDoItemRow(prod);
+      m.style.display = 'none';
+    };
+  }
+}
+
+function addDoItemRow(prod) {
+  const tbody = document.getElementById('do-items-container');
+  const tr = document.createElement('tr');
+  tr.className = 'do-item-row';
+  tr.innerHTML = `
+    <td>
+      <div style="font-weight:600">${prod.name}</div>
+      <div style="font-size:12px; color:#94a3b8">${prod.sku || ''}</div>
+      <input type="hidden" class="do-item-name" value="${prod.name}">
+    </td>
+    <td><input type="number" class="do-item-qty" value="1" min="1" style="width:80px"></td>
+    <td><input type="number" class="do-item-price" value="${prod.price1||0}" step="0.01" style="width:80px"></td>
+    <td><button class="btn-red btn-icon" onclick="this.closest('tr').remove()" style="width:32px; height:32px">×</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+
+async function saveDailyOrder() {
+  const customer = document.getElementById('do-customer').value;
+  const date = document.getElementById('do-date').value;
+  if (!customer) return alert('请选择客户');
+  
+  const items = [];
+  document.querySelectorAll('.do-item-row').forEach(row => {
+    const name = row.querySelector('.do-item-name').value;
+    const qty = row.querySelector('.do-item-qty').value;
+    const price = row.querySelector('.do-item-price').value;
+    if (name && qty) items.push({ name, qty: Number(qty), price: Number(price) });
+  });
+  
+  if (items.length === 0) return alert('请添加商品');
+  
+  // Note: sales field is removed
+  await fetchWithAuth('/api/daily-orders', {
+    method: 'POST',
+    body: JSON.stringify({ customer, date, items })
+  });
+  closeDailyOrderModal();
+  loadDailyOrders('new');
+}
+
+function openAllocateModal(id) {
+  const order = currentDailyOrders.find(o => o.id === id);
+  if (!order) return;
+  const m = document.getElementById('do-allocate-modal');
+  document.getElementById('do-allocate-id').value = id;
+  const tbody = document.getElementById('do-allocate-rows');
+  const items = Array.isArray(order.items) ? order.items : (typeof order.items === 'string' ? JSON.parse(order.items) : []);
+  
+  tbody.innerHTML = items.map((item, idx) => `
+    <tr>
+      <td>${item.name}</td>
+      <td>${item.qty}</td>
+      <td><input type="number" class="alloc-qty" data-idx="${idx}" value="${item.qty}" style="width:80px"></td>
+    </tr>
+  `).join('');
+  m.style.display = 'flex';
+}
+async function confirmAllocate() {
+  const id = Number(document.getElementById('do-allocate-id').value);
+  const order = currentDailyOrders.find(o => o.id === id);
+  if (!order) return;
+  
+  const items = Array.isArray(order.items) ? order.items : (typeof order.items === 'string' ? JSON.parse(order.items) : []);
+  document.querySelectorAll('.alloc-qty').forEach(inp => {
+    const idx = Number(inp.dataset.idx);
+    if (items[idx]) items[idx].allocated_qty = Number(inp.value);
+  });
+  
+  // Try to match productId for stock deduction
+  // Need to fetch products list first or do it on backend? Backend handles logic if productId is missing (by name).
+  // Ideally frontend sends productId. But simplistic entry didn't enforce it.
+  // Let's rely on backend name matching.
+  
+  await fetchWithAuth(`/api/daily-orders/${id}/allocate`, {
+    method: 'PUT',
+    body: JSON.stringify({ items })
+  });
+  document.getElementById('do-allocate-modal').style.display = 'none';
+  loadDailyOrders('new');
+  alert('配货完成，系统已自动生成发票并扣减库存');
+}
+async function confirmShip(id) {
+  if (!confirm('确认已发货？')) return;
+  await fetchWithAuth(`/api/daily-orders/${id}/ship`, { method:'PUT' });
+  loadDailyOrders('allocated');
+}
+
+// Finished Stock
+async function loadFinishedStock() {
+  const res = await fetchWithAuth('/api/inventory/finished');
+  if (!res.ok) return;
+  const list = await res.json();
+  const tbody = document.getElementById('finished-stock-rows');
+  if (!tbody) return;
+  tbody.innerHTML = list.map(p => `
+    <tr>
+      <td>${p.image ? `<img src="${p.image}" class="thumb-img" style="width:40px;height:40px;object-fit:cover">` : ''}</td>
+      <td>${p.name}</td>
+      <td>${p.total_stock}</td>
+      <td>${p.nearest_expiry || '-'}</td>
+    </tr>
+  `).join('');
+}
+function openFinishedStockModal() {
+  const m = document.getElementById('fs-add-modal');
+  if (m) m.style.display = 'flex';
+  // Product Search Logic
+  const inp = document.getElementById('fs-prod-search');
+  const list = document.getElementById('fs-prod-list');
+  inp.oninput = async () => {
+    const q = inp.value;
+    if (!q) { list.style.display='none'; return; }
+    const res = await fetchWithAuth(`/api/products?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    list.innerHTML = data.list.map(p => `<div class="dd-item" data-id="${p.id}" data-name="${p.name}">${p.name}</div>`).join('');
+    list.style.display = 'block';
+    list.querySelectorAll('.dd-item').forEach(div => {
+      div.onclick = () => {
+        inp.value = div.dataset.name;
+        document.getElementById('fs-prod-id').value = div.dataset.id;
+        list.style.display = 'none';
+      };
+    });
+  };
+}
+async function saveFinishedStock() {
+  const productId = document.getElementById('fs-prod-id').value;
+  const qty = document.getElementById('fs-qty').value;
+  const expiry = document.getElementById('fs-expiry').value;
+  if (!productId || !qty || !expiry) return alert('请填写完整信息');
+  
+  await fetchWithAuth('/api/inventory/finished', {
+    method: 'POST',
+    body: JSON.stringify({ productId, qty, expiry })
+  });
+  document.getElementById('fs-add-modal').style.display = 'none';
+  loadFinishedStock();
+}
+
+// Raw Stock
+async function loadRawStock() {
+  const res = await fetchWithAuth('/api/inventory/raw');
+  if (!res.ok) return;
+  const list = await res.json();
+  const tbody = document.getElementById('raw-stock-rows');
+  if (!tbody) return;
+  tbody.innerHTML = list.map(m => `
+    <tr>
+      <td>${m.name}</td>
+      <td>${m.stock}</td>
+      <td>${m.nearest_expiry || '-'}</td>
+    </tr>
+  `).join('');
+}
+function openRawStockModal() {
+  document.getElementById('rs-add-modal').style.display = 'flex';
+}
+function openRawAuditModal() {
+  // Reuse modal but change title/action? Or create new?
+  // Let's reuse for simplicity, just change onclick handler or add flag
+  const m = document.getElementById('rs-add-modal');
+  m.querySelector('.modal-title').textContent = '盘点库存 (覆盖)';
+  m.querySelector('.btn').onclick = saveRawAudit;
+  m.style.display = 'flex';
+}
+async function saveRawStock() {
+  const name = document.getElementById('rs-name').value;
+  const qty = document.getElementById('rs-qty').value;
+  const expiry = document.getElementById('rs-expiry').value;
+  if (!name || !qty || !expiry) return alert('请填写完整信息');
+  
+  await fetchWithAuth('/api/inventory/raw', {
+    method: 'POST',
+    body: JSON.stringify({ name, qty, expiry })
+  });
+  document.getElementById('rs-add-modal').style.display = 'none';
+  loadRawStock();
+}
+async function saveRawAudit() {
+  const name = document.getElementById('rs-name').value;
+  const qty = document.getElementById('rs-qty').value;
+  if (!name || !qty) return alert('请填写完整信息');
+  
+  await fetchWithAuth('/api/inventory/raw/audit', {
+    method: 'PUT',
+    body: JSON.stringify({ name, qty })
+  });
+  document.getElementById('rs-add-modal').style.display = 'none';
+  loadRawStock();
+  // Reset modal state
+  const m = document.getElementById('rs-add-modal');
+  m.querySelector('.modal-title').textContent = '添加原材料库存';
+  m.querySelector('.btn').onclick = saveRawStock;
+}

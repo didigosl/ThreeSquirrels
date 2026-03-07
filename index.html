@@ -102,11 +102,30 @@
       .invoice-paper .payment-label { font-weight:700; margin-bottom:2px; }
       .invoice-paper .sign-area { display:none; }
       
+      /* Shipping Label Preview */
+      .shipping-paper { background:#fff; color:#000; width:297mm; height:210mm; padding:60px; margin:0 auto; font-family:"Helvetica Neue", Helvetica, Arial, sans-serif; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; position:relative; }
+      .shipping-paper .s-name { font-size: 52px; margin-bottom: 30px; font-weight: 400; }
+      .shipping-paper .s-address { font-size: 80px; font-weight: 800; line-height: 1.2; margin-bottom: 20px; text-transform: lowercase; }
+      .shipping-paper .s-city { font-size: 64px; font-weight: 800; margin-bottom: 50px; text-transform: uppercase; }
+      .shipping-paper .s-meta { font-size: 48px; margin-bottom: 20px; }
+      .shipping-paper .s-footer { display: flex; justify-content: space-between; width: 100%; margin-top: auto; align-items: flex-end; padding: 0 40px; }
+      .shipping-paper .s-phone { font-size: 80px; font-weight:800; }
+      .shipping-paper .s-contact { font-size: 48px; text-align: right; }
+
       @media print {
+        @page { size: landscape; margin: 0; }
         body * { visibility:hidden; }
+        
+        /* Invoice Preview Print */
         #invoice-preview-modal, #invoice-preview-modal * { visibility:visible; }
         #invoice-preview-modal { position:fixed; left:0; top:0; width:100%; height:100%; background:#fff; padding:0; z-index:9999; }
         .invoice-paper { box-shadow:none; margin:0; width:100%; max-width:none; padding:20px; min-height:auto; }
+        
+        /* Shipping Label Print */
+        #shipping-preview-modal, #shipping-preview-modal * { visibility:visible; }
+        #shipping-preview-modal { position:fixed; left:0; top:0; width:100%; height:100%; background:#fff; padding:0; z-index:9999; display:flex !important; align-items:center; justify-content:center; }
+        .shipping-paper { box-shadow:none; margin:0; width:100%; height:100%; padding:0; }
+        
         .modal-header, .modal-actions { display:none !important; }
       }
       .invalid { border-color: var(--red) !important; color: var(--red) !important; animation: shake 0.18s ease-in-out 0s 2; }
@@ -218,6 +237,20 @@
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
           <a href="#home">首页</a>
+
+          <div class="nav-group">
+            <div class="nav-group-header collapsed" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed');">
+              <span>日常运营</span>
+              <span class="arrow">▼</span>
+            </div>
+            <div class="nav-children collapsed">
+              <a href="#tasks">任务信息 <span id="nav-task-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></a>
+              <a href="#daily-orders">订单管理 <span id="nav-order-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></a>
+              <a href="#finished-stock">成品库存</a>
+              <a href="#raw-stock">原材料库存</a>
+            </div>
+          </div>
+
           <a href="#ledger" class="active">收支记账</a>
           <a href="#payables">应收/应付账款</a>
           <a href="#contacts">往来单位</a>
@@ -305,6 +338,208 @@
             </form>
           </div>
         </div>
+        <!-- Tasks Page -->
+        <div id="page-tasks" style="display:none">
+          <div class="card search">
+            <h3 style="margin:0">任务列表</h3>
+            <div style="flex:1"></div>
+            <button class="btn" onclick="openTaskModal()">+ 创建任务</button>
+          </div>
+          <div class="card" style="margin-top:16px">
+            <div class="bar">
+              <div class="tabs">
+                <button class="tab active" data-tab="new" onclick="loadTasks('new',this)">新任务 <span id="tab-new-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></button>
+                <button class="tab" data-tab="review" onclick="loadTasks('review',this)">审核中 <span id="tab-review-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></button>
+                <button class="tab" data-tab="completed" onclick="loadTasks('completed',this)">已完成</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>标题</th>
+                    <th>描述</th>
+                    <th>分配给</th>
+                    <th>创建人/时间</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="task-rows"></tbody>
+              </table>
+            </div>
+            <div id="task-pager" style="display:flex; gap:8px; align-items:center; justify-content:center; padding:12px 0"></div>
+          </div>
+        </div>
+        
+        <!-- Daily Orders Page -->
+        <div id="page-daily-orders" style="display:none">
+          <div class="card search">
+            <h3 style="margin:0">订单管理</h3>
+            <div style="flex:1"></div>
+            <button class="btn" onclick="openDailyOrderModal()">+ 新订单</button>
+          </div>
+          <div class="card" style="margin-top:16px">
+            <div class="bar">
+              <div class="tabs">
+                <button class="tab active" data-tab="new" onclick="loadDailyOrders('new',this)">新订单 <span id="tab-order-new-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></button>
+                <button class="tab" data-tab="allocated" onclick="loadDailyOrders('allocated',this)">已配货 <span id="tab-order-alloc-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></button>
+                <button class="tab" data-tab="shipped" onclick="loadDailyOrders('shipped',this)">已发货</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>客户</th>
+                    <th>日期</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="daily-order-rows"></tbody>
+              </table>
+            </div>
+            <div id="daily-order-pager" style="display:flex; gap:8px; align-items:center; justify-content:center; padding:12px 0"></div>
+          </div>
+        </div>
+
+        <!-- Finished Stock Page -->
+        <div id="page-finished-stock" style="display:none">
+          <div class="card search">
+            <h3 style="margin:0">成品库存</h3>
+            <div style="flex:1"></div>
+            <button class="btn" onclick="openFinishedStockModal()">+ 添加库存</button>
+          </div>
+          <div class="card" style="margin-top:16px">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>图片</th>
+                  <th>名称</th>
+                  <th>总库存</th>
+                  <th>最近过期时间</th>
+                </tr>
+              </thead>
+              <tbody id="finished-stock-rows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Raw Stock Page -->
+        <div id="page-raw-stock" style="display:none">
+          <div class="card search">
+            <h3 style="margin:0">原材料库存</h3>
+            <div style="flex:1"></div>
+            <button class="btn" onclick="openRawStockModal()">+ 添加库存</button>
+            <button class="btn-secondary" onclick="openRawAuditModal()">盘点库存</button>
+          </div>
+          <div class="card" style="margin-top:16px">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>名称</th>
+                  <th>库存</th>
+                  <th>最近过期时间</th>
+                </tr>
+              </thead>
+              <tbody id="raw-stock-rows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Modals for Daily Operations -->
+        <!-- Task Modal -->
+        <div id="task-modal" class="modal-overlay" style="display:none">
+          <div class="modal">
+            <div class="modal-header"><div class="modal-title">创建任务</div><button class="btn-secondary" onclick="closeTaskModal()">关闭</button></div>
+            <div class="modal-body">
+              <div class="group"><span class="label">标题</span><input id="task-title" type="text"></div>
+              <div class="group"><span class="label">描述</span><textarea id="task-desc"></textarea></div>
+              <div class="group">
+                <span class="label">指派给</span>
+                <div id="task-assign-list" style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px"></div>
+                <input type="hidden" id="task-assign">
+              </div>
+            </div>
+            <div class="modal-actions" style="justify-content:center"><button class="btn" onclick="saveTask()" style="width:33%; height:48px; font-size:16px">保存</button></div>
+          </div>
+        </div>
+
+        <!-- Daily Order Create Modal -->
+        <div id="daily-order-modal" class="modal-overlay" style="display:none">
+          <div class="modal" style="width:800px; max-width:95vw">
+            <div class="modal-header"><div class="modal-title">新订单</div><button class="btn-secondary" onclick="closeDailyOrderModal()">关闭</button></div>
+            <div class="modal-body">
+              <div class="group">
+                <span class="label">往来单位 (客户)</span>
+                <div class="select">
+                  <input type="text" id="do-customer" placeholder="搜索或选择客户..." autocomplete="off">
+                  <div id="do-customer-dd" class="dropdown" style="display:none">
+                    <div class="dd-head">
+                      <input id="do-customer-search" type="text" placeholder="这里搜索" style="width:100%">
+                    </div>
+                    <div class="dd-list" id="do-customer-list"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="group"><span class="label">日期</span><input id="do-date" type="date"></div>
+              <div style="border-top:1px solid var(--line); margin:16px 0; padding-top:16px">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
+                  <h4 style="margin:0">商品明细</h4>
+                  <button class="btn-secondary" style="font-size:12px; padding:6px 12px" onclick="openDoProdSelector()">+ 添加商品</button>
+                </div>
+                <table class="table">
+                  <thead><tr><th>商品</th><th style="width:100px">数量</th><th style="width:100px">单价</th><th style="width:60px">操作</th></tr></thead>
+                  <tbody id="do-items-container"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="modal-actions" style="justify-content:center"><button class="btn" onclick="saveDailyOrder()" style="width:33%; height:48px; font-size:16px">提交</button></div>
+          </div>
+        </div>
+
+        <!-- Daily Order Allocate Modal -->
+        <div id="do-allocate-modal" class="modal-overlay" style="display:none">
+          <div class="modal" style="width:800px; max-width:95vw">
+            <div class="modal-header"><div class="modal-title">订单配货</div><button class="btn-secondary" onclick="document.getElementById('do-allocate-modal').style.display='none'">关闭</button></div>
+            <div class="modal-body">
+              <input type="hidden" id="do-allocate-id">
+              <table class="table">
+                <thead><tr><th>商品</th><th>下单数量</th><th>配货数量</th></tr></thead>
+                <tbody id="do-allocate-rows"></tbody>
+              </table>
+            </div>
+            <div class="modal-actions"><button class="btn" onclick="confirmAllocate()">确认配货完成</button></div>
+          </div>
+        </div>
+
+        <!-- Finished Stock Add Modal -->
+        <div id="fs-add-modal" class="modal-overlay" style="display:none">
+          <div class="modal">
+            <div class="modal-header"><div class="modal-title">添加成品库存</div><button class="btn-secondary" onclick="document.getElementById('fs-add-modal').style.display='none'">关闭</button></div>
+            <div class="modal-body">
+              <div class="group"><span class="label">商品</span><input id="fs-prod-search" type="text" placeholder="搜索商品..."><div id="fs-prod-list" class="dropdown-list"></div><input type="hidden" id="fs-prod-id"></div>
+              <div class="group"><span class="label">数量</span><input id="fs-qty" type="number"></div>
+              <div class="group"><span class="label">过期时间</span><input id="fs-expiry" type="date"></div>
+            </div>
+            <div class="modal-actions"><button class="btn" onclick="saveFinishedStock()">保存</button></div>
+          </div>
+        </div>
+
+        <!-- Raw Stock Add Modal -->
+        <div id="rs-add-modal" class="modal-overlay" style="display:none">
+          <div class="modal">
+            <div class="modal-header"><div class="modal-title">添加原材料库存</div><button class="btn-secondary" onclick="document.getElementById('rs-add-modal').style.display='none'">关闭</button></div>
+            <div class="modal-body">
+              <div class="group"><span class="label">名称</span><input id="rs-name" type="text" placeholder="原材料名称"></div>
+              <div class="group"><span class="label">数量</span><input id="rs-qty" type="number"></div>
+              <div class="group"><span class="label">过期时间</span><input id="rs-expiry" type="date"></div>
+            </div>
+            <div class="modal-actions"><button class="btn" onclick="saveRawStock()">保存</button></div>
+          </div>
+        </div>
+        
         <div id="page-ledger">
           <div class="card search">
             <div class="field">
@@ -918,7 +1153,7 @@
         
         <!-- Contact Modal -->
         <div id="contacts-modal" class="modal-overlay" style="display:none">
-          <div class="modal" style="width:1300px; max-width:95vw; max-height:90vh; overflow-y:auto">
+          <div class="modal" style="width:1400px; max-width:98vw; max-height:90vh; overflow-y:auto">
             <div class="modal-header">
               <div class="modal-title" id="ct-modal-title">新增客户</div>
               <button id="ct-modal-close" class="btn-secondary">关闭</button>
@@ -927,39 +1162,79 @@
               <div style="flex:1; padding-right:24px; border-right:1px solid var(--line)">
                 <form id="contacts-form">
                   <input type="hidden" id="ct-id">
-                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px">
-                    <div class="group"><span class="label">店名 *</span><input id="ct-name" type="text" placeholder="必填" required></div>
-                    <div class="group"><span class="label">公司名称 *</span><input id="ct-company" type="text" required></div>
-                    <div class="group"><span class="label">税号 *</span><input id="ct-code" type="text" required></div>
-                    <div class="group"><span class="label">联系人</span><input id="ct-contact" type="text"></div>
-                    <div class="group"><span class="label">电话 *</span><input id="ct-phone" type="text" required></div>
-                    <div class="group"><span class="label">国家</span><input id="ct-country" type="text"></div>
-                    <div class="group"><span class="label">地址 *</span><input id="ct-address" type="text" style="width:100%" required></div>
-                    <div class="group"><span class="label">邮编 *</span><input id="ct-zip" type="text" required></div>
-                    <div class="group"><span class="label">城市 *</span><input id="ct-city" type="text" required></div>
-                    <div class="group"><span class="label">使用价格 *</span>
-                      <select id="ct-price" style="width:100%" required>
-                        <option value="price1">价格1</option>
-                        <option value="price2">价格2</option>
-                        <option value="price3">价格3</option>
-                        <option value="price4">价格4</option>
-                      </select>
+                  <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:24px">
+                    <!-- Column 1: Company Info -->
+                    <div style="display:flex; flex-direction:column; gap:12px">
+                      <h4 style="margin:0 0 8px; color:#cbd5e1; border-bottom:1px solid var(--line); padding-bottom:8px">公司信息</h4>
+                      <div class="group"><span class="label">店名 *</span><input id="ct-name" type="text" placeholder="必填" required></div>
+                      <div class="group"><span class="label">公司名称</span><input id="ct-company" type="text"></div>
+                      <div class="group"><span class="label">税号</span><input id="ct-code" type="text"></div>
+                      <div class="group"><span class="label">邮箱</span><input id="ct-email" type="text"></div>
+                      <div class="group"><span class="label">是否 IVA</span>
+                        <select id="ct-iva" style="width:100%">
+                          <option value="true">是</option>
+                          <option value="false">否</option>
+                        </select>
+                      </div>
+                      <div class="group"><span class="label">使用价格</span>
+                        <select id="ct-price" style="width:100%">
+                          <option value="price1">价格1</option>
+                          <option value="price2">价格2</option>
+                          <option value="price3">价格3</option>
+                          <option value="price4">价格4</option>
+                        </select>
+                      </div>
+                      <div class="group"><span class="label">业务员</span>
+                        <select id="ct-sales">
+                          <option value="">请选择业务员</option>
+                        </select>
+                      </div>
                     </div>
-                    <div class="group"><span class="label">是否 IVA *</span>
-                      <select id="ct-iva" style="width:100%" required>
-                        <option value="true">是</option>
-                        <option value="false">否</option>
-                      </select>
+
+                    <!-- Column 2: Company Address -->
+                    <div style="display:flex; flex-direction:column; gap:12px">
+                      <h4 style="margin:0 0 8px; color:#cbd5e1; border-bottom:1px solid var(--line); padding-bottom:8px">公司地址</h4>
+                      <div class="group"><span class="label">街道地址</span><input id="ct-address" type="text" style="width:100%"></div>
+                      <div style="display:flex; gap:8px">
+                        <div class="group" style="flex:1"><span class="label">邮编</span><input id="ct-zip" type="text"></div>
+                        <div class="group" style="flex:1"><span class="label">城市</span><input id="ct-city" type="text"></div>
+                      </div>
+                      <div style="display:flex; gap:8px">
+                        <div class="group" style="flex:1"><span class="label">省份</span><input id="ct-province" type="text"></div>
+                        <div class="group" style="flex:1"><span class="label">国家</span><input id="ct-country" type="text"></div>
+                      </div>
+                      <div class="group"><span class="label">电话</span><input id="ct-phone" type="text"></div>
+                      <div class="group"><span class="label">联系人</span><input id="ct-contact" type="text"></div>
+                      <div class="group">
+                        <span class="label">备注 (开票时提示)</span>
+                        <textarea id="ct-remark" style="min-height:100px"></textarea>
+                      </div>
                     </div>
-                    <div class="group"><span class="label">业务员</span>
-                      <select id="ct-sales">
-                        <option value="">请选择业务员</option>
-                      </select>
+
+                    <!-- Column 3: Shipping Address -->
+                    <div style="display:flex; flex-direction:column; gap:12px">
+                      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); padding-bottom:8px; margin-bottom:8px">
+                        <h4 style="margin:0; color:#cbd5e1">收货地址</h4>
+                        <div style="display:flex; align-items:center; gap:4px">
+                          <input type="checkbox" id="ct-ship-same" style="width:auto; margin:0">
+                          <span class="label" style="margin:0; cursor:pointer" onclick="document.getElementById('ct-ship-same').click()">与公司地址相同</span>
+                        </div>
+                      </div>
+                      <div class="group"><span class="label">街道地址</span><input id="ct-ship-address" type="text"></div>
+                      <div style="display:flex; gap:8px">
+                        <div class="group" style="flex:1"><span class="label">邮编</span><input id="ct-ship-zip" type="text"></div>
+                        <div class="group" style="flex:1"><span class="label">城市</span><input id="ct-ship-city" type="text"></div>
+                      </div>
+                      <div style="display:flex; gap:8px">
+                        <div class="group" style="flex:1"><span class="label">省份</span><input id="ct-ship-province" type="text"></div>
+                        <div class="group" style="flex:1"><span class="label">国家</span><input id="ct-ship-country" type="text"></div>
+                      </div>
+                      <div class="group"><span class="label">电话</span><input id="ct-ship-phone" type="text"></div>
+                      <div class="group"><span class="label">联系人</span><input id="ct-ship-contact" type="text"></div>
                     </div>
-                    <div class="group" style="grid-column:1/-1"><span class="label">备注</span><input id="ct-remark" type="text" style="width:100%"></div>
                   </div>
                   <div class="modal-actions" style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border)">
-                    <button id="contacts-submit" class="btn" type="submit" style="width:50%; height:48px; font-size:16px">保存</button>
+                    <button id="contacts-submit" class="btn" type="submit" style="width:200px; height:48px; font-size:16px">保存</button>
                   </div>
                 </form>
               </div>
@@ -1371,7 +1646,10 @@
             <div class="form" style="padding:0">
               <div style="display:flex; gap:12px; align-items:flex-end; margin-bottom:12px">
                 <div style="flex:5">
-                  <span class="label">* 往来单位 (客户)</span>
+                  <div style="display:flex; align-items:center">
+                    <span class="label">* 往来单位 (客户)</span>
+                    <span id="so-customer-remark" style="color:var(--red); margin-left:12px; font-weight:600; font-size:13px"></span>
+                  </div>
                   <div class="select">
                     <input type="text" id="so-customer" placeholder="搜索或选择客户..." autocomplete="off">
                     <div id="so-customer-dd" class="dropdown" style="display:none">
@@ -1821,6 +2099,27 @@
             </div>
           </div>
         </div>
+
+        <!-- Shipping Label Preview Modal -->
+        <div id="shipping-preview-modal" class="modal-overlay" style="display:none">
+          <div class="modal" style="width:1200px; max-width:98vw; background:#525659; overflow-y:auto; max-height:95vh">
+            <div class="modal-header" style="background:#323639; color:white; border-bottom:1px solid #000">
+              <div class="modal-title">打印收货地址</div>
+              <div style="display:flex; gap:10px">
+                <button id="ship-prev-print" class="light-btn">打印 / 导出PDF</button>
+                <button id="ship-prev-close" class="btn-secondary" style="background:#323639; color:white; border:1px solid #5f6368">关闭</button>
+              </div>
+            </div>
+            <div style="padding:40px; display:flex; justify-content:center; background:#525659">
+              <div id="shipping-paper" class="shipping-paper">
+                 <div id="ship-content" style="width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center">
+                    <!-- Injected Content -->
+                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
 
       </aside>
     </div>

@@ -158,6 +158,7 @@ async function ensureSchema() {
   await query('alter table invoices add column if not exists sales text', []);
   await query('alter table invoices add column if not exists created_at bigint', []);
   await query('alter table invoices add column if not exists created_by text', []);
+  await query('alter table invoices add column if not exists shipping_printed boolean default false', []);
 
   // Products migrations
   await query('alter table products add column if not exists sku text unique', []);
@@ -223,6 +224,15 @@ async function ensureSchema() {
   await query('alter table contacts add column if not exists sales text', []);
   await query('alter table contacts add column if not exists use_price text', []);
   await query('alter table contacts add column if not exists is_iva boolean default true', []);
+  await query('alter table contacts add column if not exists email text', []);
+  await query('alter table contacts add column if not exists province text', []);
+  await query('alter table contacts add column if not exists ship_address text', []);
+  await query('alter table contacts add column if not exists ship_zip text', []);
+  await query('alter table contacts add column if not exists ship_city text', []);
+  await query('alter table contacts add column if not exists ship_province text', []);
+  await query('alter table contacts add column if not exists ship_country text', []);
+  await query('alter table contacts add column if not exists ship_phone text', []);
+  await query('alter table contacts add column if not exists ship_contact text', []);
   await query("update contacts set owner='客户' where owner is null or owner=''", []);
   await query("update contacts set type=owner where type is null or type=''", []);
   await query("alter table contacts alter column type set default '客户'", []);
@@ -266,6 +276,48 @@ async function ensureSchema() {
       bank_name text,
       iban text,
       swift text
+    );
+    create table if not exists tasks (
+      id serial primary key,
+      title text,
+      description text,
+      created_by text,
+      created_at bigint,
+      assigned_to text,
+      status text default 'pending',
+      completed_by text,
+      completed_at bigint
+    );
+    create table if not exists daily_orders (
+      id serial primary key,
+      customer text,
+      sales text,
+      items jsonb default '[]'::jsonb,
+      status text default 'new', -- new, allocated, shipped
+      created_by text,
+      created_at bigint,
+      invoice_id int,
+      date text
+    );
+    create table if not exists inventory_batches (
+      id serial primary key,
+      product_id int,
+      quantity numeric default 0,
+      expiration_date text,
+      created_at bigint
+    );
+    create table if not exists materials (
+      id serial primary key,
+      name text,
+      image text,
+      stock numeric default 0
+    );
+    create table if not exists material_batches (
+      id serial primary key,
+      material_id int,
+      quantity numeric default 0,
+      expiration_date text,
+      created_at bigint
     );
   `);
 }
@@ -400,12 +452,22 @@ async function ensureDefaults() {
   const ct = await query('select count(*)::int as c from contacts', []);
   if (ct.rows[0].c === 0) {
     const now = new Date().toISOString().slice(0,19).replace('T',' ');
-    await query('insert into contacts(name, contact, phone, city, remark, owner, created, company, code, country, address, zip, sales) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
-      ['示例客户A','','','', '', '客户', now, '', '', '', '', '', '']);
-    await query('insert into contacts(name, contact, phone, city, remark, owner, created, company, code, country, address, zip, sales) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
-      ['示例商家B','','','', '', '商家', now, '', '', '', '', '', '']);
-    await query('insert into contacts(name, contact, phone, city, remark, owner, created, company, code, country, address, zip, sales) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
-      ['示例往来C','','','', '', '其它', now, '', '', '', '', '', '']);
+    // Check individually before insert to avoid race or unique violation if partial data exists
+    const c1 = await query('select id from contacts where name=$1 and owner=$2', ['示例客户A', '客户']);
+    if (!c1.rows[0]) {
+        await query('insert into contacts(name, contact, phone, city, remark, owner, created, company, code, country, address, zip, sales) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+          ['示例客户A','','','', '', '客户', now, '', '', '', '', '', '']);
+    }
+    const c2 = await query('select id from contacts where name=$1 and owner=$2', ['示例商家B', '商家']);
+    if (!c2.rows[0]) {
+        await query('insert into contacts(name, contact, phone, city, remark, owner, created, company, code, country, address, zip, sales) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+          ['示例商家B','','','', '', '商家', now, '', '', '', '', '', '']);
+    }
+    const c3 = await query('select id from contacts where name=$1 and owner=$2', ['示例往来C', '其它']);
+    if (!c3.rows[0]) {
+        await query('insert into contacts(name, contact, phone, city, remark, owner, created, company, code, country, address, zip, sales) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+          ['示例往来C','','','', '', '其它', now, '', '', '', '', '', '']);
+    }
   }
 }
 
@@ -710,11 +772,19 @@ app.post('/api/contacts', authRequired, ensureAllow('contacts','create'), async 
   const x = req.body || {};
   const owner = x.owner || '客户';
   const isIva = x.is_iva === undefined ? true : Boolean(x.is_iva);
-  const r = await query(`
-    insert into contacts(name, contact, phone, city, remark, owner, created, company, code, country, address, zip, sales, use_price, is_iva)
-    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) returning id
-  `, [x.name||'', x.contact||'', x.phone||'', x.city||'', x.remark||'', owner, x.created||'', x.company||'', x.code||'', x.country||'', x.address||'', x.zip||'', x.sales||'', x.use_price||'price1', isIva]);
-  res.json({ id: r.rows[0].id });
+  try {
+    const r = await query(`
+      insert into contacts(name, contact, phone, city, remark, owner, created, company, code, country, address, zip, sales, use_price, is_iva, email, province, ship_address, ship_zip, ship_city, ship_province, ship_country, ship_phone, ship_contact)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) returning id
+    `, [x.name||'', x.contact||'', x.phone||'', x.city||'', x.remark||'', owner, x.created||'', x.company||'', x.code||'', x.country||'', x.address||'', x.zip||'', x.sales||'', x.use_price||'price1', isIva, x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'']);
+    res.json({ id: r.rows[0].id });
+  } catch (e) {
+    if (e.code === '23505') { // Unique violation
+      return res.status(409).json({ error: 'duplicate_name' });
+    }
+    console.error(e);
+    res.status(500).json({ error: 'server_error' });
+  }
 });
 
 app.put('/api/contacts/by-name', authRequired, ensureAllow('contacts','edit'), async (req, res) => {
@@ -722,9 +792,12 @@ app.put('/api/contacts/by-name', authRequired, ensureAllow('contacts','edit'), a
   const owner = x.owner || '客户';
   const isIva = x.is_iva === undefined ? true : Boolean(x.is_iva);
   await query(`
-    update contacts set contact=$1, phone=$2, city=$3, remark=$4, company=$5, code=$6, country=$7, address=$8, zip=$9, sales=$10, use_price=$11, is_iva=$12
-    where owner=$13 and name=$14
-  `, [x.contact||'', x.phone||'', x.city||'', x.remark||'', x.company||'', x.code||'', x.country||'', x.address||'', x.zip||'', x.sales||'', x.use_price||'price1', isIva, owner, x.name||'']);
+    update contacts set contact=$1, phone=$2, city=$3, remark=$4, company=$5, code=$6, country=$7, address=$8, zip=$9, sales=$10, use_price=$11, is_iva=$12,
+    email=$13, province=$14, ship_address=$15, ship_zip=$16, ship_city=$17, ship_province=$18, ship_country=$19, ship_phone=$20, ship_contact=$21
+    where owner=$22 and name=$23
+  `, [x.contact||'', x.phone||'', x.city||'', x.remark||'', x.company||'', x.code||'', x.country||'', x.address||'', x.zip||'', x.sales||'', x.use_price||'price1', isIva,
+      x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'',
+      owner, x.name||'']);
   res.json({ ok: true });
 });
 
@@ -1169,6 +1242,13 @@ app.delete('/api/invoices/:id', authRequired, ensureAllow('sales_invoice','delet
   res.json({ ok: true });
 });
 
+app.put('/api/invoices/:id/print-shipping', authRequired, ensureAllow('sales_order','view'), async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  const r = await query('update invoices set shipping_printed=true where id=$1 returning id', [id]);
+  if (!r.rows[0]) return res.status(404).json({ error: 'not_found' });
+  res.json({ ok: true });
+});
+
 app.put('/api/invoices/:id', authRequired, ensureAllow('sales_order','view'), async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
   const x = req.body || {};
@@ -1274,6 +1354,249 @@ app.post('/api/company-info', authRequired, ensureAllow('system','edit'), async 
       values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
     `, [x.name||'', x.tax_id||'', x.phone||'', x.email||'', x.street||'', x.zip||'', x.city||'', x.country||'', x.bank_name||'', x.iban||'', x.swift||'']);
   }
+  res.json({ ok: true });
+});
+
+app.get('/api/tasks', authRequired, async (req, res) => {
+  const { role, name } = req.user;
+  const { status, page = '1', size = '100' } = req.query;
+  const limit = Math.max(1, parseInt(size));
+  const offset = (Math.max(1, parseInt(page)) - 1) * limit;
+
+  // Base condition for role access
+  let baseWhere = [];
+  let baseParams = [];
+  if (role !== '超级管理员') {
+    baseParams.push(name);
+    baseWhere.push(`assigned_to=$${baseParams.length}`);
+  }
+
+  // 1. Get Stats (Counts for badges) - Apply only role filter
+  let statsSql = `select 
+    count(case when status='pending' or status is null then 1 end)::int as new_count,
+    count(case when status='waiting_audit' then 1 end)::int as review_count
+    from tasks`;
+  if (baseWhere.length) statsSql += ' where ' + baseWhere.join(' and ');
+  const statsRes = await query(statsSql, baseParams);
+
+  // 2. Get List - Apply role filter AND status filter
+  let listWhere = [...baseWhere];
+  let listParams = [...baseParams];
+  
+  if (status === 'new') {
+    listWhere.push(`(status='pending' or status is null)`);
+  } else if (status === 'review') {
+    listParams.push('waiting_audit');
+    listWhere.push(`status=$${listParams.length}`);
+  } else if (status === 'completed') {
+    listParams.push('completed');
+    listWhere.push(`status=$${listParams.length}`);
+  }
+
+  let sql = 'select * from tasks';
+  let countSql = 'select count(*)::int as c from tasks';
+  
+  if (listWhere.length) {
+    const w = ' where ' + listWhere.join(' and ');
+    sql += w;
+    countSql += w;
+  }
+  
+  sql += ' order by created_at desc';
+  sql += ` limit ${limit} offset ${offset}`;
+  
+  const r = await query(sql, listParams);
+  const c = await query(countSql, listParams);
+  
+  res.json({
+    list: r.rows,
+    total: c.rows[0].c,
+    stats: statsRes.rows[0]
+  });
+});
+app.post('/api/tasks', authRequired, async (req, res) => {
+  const x = req.body || {};
+  const r = await query(`insert into tasks(title,description,created_by,created_at,assigned_to) values($1,$2,$3,$4,$5) returning id`,
+    [x.title||'', x.desc||'', req.user.name, Date.now(), x.assign||'']);
+  res.json({ id: r.rows[0].id });
+});
+app.put('/api/tasks/:id/complete', authRequired, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  await query('update tasks set status=$1, completed_by=$2, completed_at=$3 where id=$4', ['waiting_audit', req.user.name, Date.now(), id]);
+  res.json({ ok: true });
+});
+app.put('/api/tasks/:id/audit', authRequired, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (req.user.role !== '超级管理员') return res.status(403).json({ error: 'forbidden' });
+  await query('update tasks set status=$1 where id=$2', ['completed', id]);
+  res.json({ ok: true });
+});
+
+// Daily Orders
+app.get('/api/daily-orders', authRequired, async (req, res) => {
+  const { status } = req.query;
+  let sql = 'select * from daily_orders';
+  const p = [];
+  if (status) { sql += ' where status=$1'; p.push(status); }
+  sql += ' order by created_at desc';
+  const r = await query(sql, p);
+  res.json(r.rows);
+});
+app.post('/api/daily-orders', authRequired, async (req, res) => {
+  const x = req.body || {};
+  const items = Array.isArray(x.items) ? x.items : [];
+  const r = await query(`insert into daily_orders(customer,sales,items,created_by,created_at,date) values($1,$2,$3,$4,$5,$6) returning id`,
+    [x.customer||'', x.sales||'', JSON.stringify(items), req.user.name, Date.now(), x.date||'']);
+  res.json({ id: r.rows[0].id });
+});
+app.put('/api/daily-orders/:id/allocate', authRequired, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { items } = req.body; // updated items with allocated_qty
+  
+  // 1. Update order
+  await query('update daily_orders set items=$1, status=$2 where id=$3', [JSON.stringify(items), 'allocated', id]);
+  
+  // 2. Auto Create Invoice
+  const ord = (await query('select * from daily_orders where id=$1', [id])).rows[0];
+  if (!ord.invoice_id) {
+    // Generate invoice logic (simplified from existing)
+    const year = new Date().getFullYear();
+    const prefix = String(year);
+    const rMax = await query('select invoice_no from invoices where invoice_no like $1 order by invoice_no desc limit 1', [prefix + '%']);
+    let nextSeq = 1;
+    if (rMax.rows[0]) {
+      const lastNo = rMax.rows[0].invoice_no;
+      const seqPart = lastNo.slice(4);
+      if (/^\d+$/.test(seqPart)) nextSeq = parseInt(seqPart, 10) + 1;
+    }
+    const invoiceNo = prefix + String(nextSeq).padStart(5, '0');
+    
+    // Calculate total
+    const total = items.reduce((sum, item) => {
+      const qty = Number(item.allocated_qty || item.qty || 0); // Use allocated
+      const price = Number(item.price || 0);
+      let taxRate = Number(item.tax_rate);
+      if (isNaN(taxRate)) taxRate = 0.10;
+      return sum + (qty * price * (1 + taxRate));
+    }, 0);
+
+    const now = Date.now();
+    // Insert Invoice
+    const inv = await query(`
+      insert into invoices(invoice_no, customer, date, items, total_amount, sales, created_at, created_by)
+      values($1,$2,$3,$4,$5,$6,$7,$8) returning id
+    `, [invoiceNo, ord.customer, ord.date, JSON.stringify(items), total, ord.sales, now, 'system']);
+    
+    // Create Payable
+    await query(`
+      insert into payables(type, partner, doc, amount, paid, settled, trust_days, invoice_no, invoice_date, invoice_amount, sales, date, created_at, batch_at, source)
+      values($1,$2,$3,$4,0,false,30,$5,$6,$7,$8,$9,$10,$11,'sales_order')
+    `, ['应收账款', ord.customer, invoiceNo, total, invoiceNo, ord.date, total, ord.sales, ord.date, now, now]);
+
+    // Deduct Stock (FIFO Logic)
+    for (const item of items) {
+      const qty = Number(item.allocated_qty || item.qty || 0);
+      let pid = item.productId;
+      
+      // If productId missing, lookup by name
+      if (!pid && item.name) {
+        const p = await query('select id from products where name=$1', [item.name]);
+        if (p.rows[0]) pid = p.rows[0].id;
+      }
+
+      if (qty > 0 && pid) {
+         // Deduct from batches
+         let remaining = qty;
+         // Get batches ordered by expiry
+         const batches = await query('select * from inventory_batches where product_id=$1 and quantity > 0 order by expiration_date asc', [pid]);
+         for (const b of batches.rows) {
+           if (remaining <= 0) break;
+           const take = Math.min(Number(b.quantity), remaining);
+           await query('update inventory_batches set quantity = quantity - $1 where id=$2', [take, b.id]);
+           remaining -= take;
+         }
+         // Update total stock cache
+         await query('update products set stock = stock - $1 where id=$2', [qty, pid]);
+      }
+    }
+    
+    await query('update daily_orders set invoice_id=$1 where id=$2', [inv.rows[0].id, id]);
+  }
+  res.json({ ok: true });
+});
+app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  await query('update daily_orders set status=$1 where id=$2', ['shipped', id]);
+  res.json({ ok: true });
+});
+
+// Inventory (Finished)
+app.get('/api/inventory/finished', authRequired, async (req, res) => {
+  // Aggregate by product
+  // Show image, name, expiry (nearest?), total qty
+  // User asked for "List products sorted by qty desc... show expiry". If multiple batches, maybe show nearest expiry?
+  // Let's return list of products with their batches or flattened?
+  // User: "List shows product image, name, expiry time, stock qty".
+  // Let's join products and batches.
+  const r = await query(`
+    select p.id, p.name, p.image, p.stock as total_stock,
+    (select expiration_date from inventory_batches where product_id=p.id and quantity>0 order by expiration_date asc limit 1) as nearest_expiry
+    from products p
+    order by p.stock desc
+  `);
+  res.json(r.rows);
+});
+app.post('/api/inventory/finished', authRequired, async (req, res) => {
+  const { productId, qty, expiry } = req.body;
+  await query('insert into inventory_batches(product_id, quantity, expiration_date, created_at) values($1,$2,$3,$4)',
+    [productId, qty, expiry, Date.now()]);
+  await query('update products set stock = stock + $1 where id=$2', [qty, productId]);
+  res.json({ ok: true });
+});
+
+// Inventory (Raw)
+app.get('/api/inventory/raw', authRequired, async (req, res) => {
+  const r = await query(`
+    select m.*,
+    (select expiration_date from material_batches where material_id=m.id and quantity>0 order by expiration_date asc limit 1) as nearest_expiry
+    from materials m
+    order by m.stock desc
+  `);
+  res.json(r.rows);
+});
+app.post('/api/inventory/raw', authRequired, async (req, res) => {
+  const { name, qty, expiry } = req.body;
+  // Check if material exists
+  let mid;
+  const exist = await query('select id from materials where name=$1', [name]);
+  if (exist.rows[0]) {
+    mid = exist.rows[0].id;
+    await query('update materials set stock = stock + $1 where id=$2', [qty, mid]);
+  } else {
+    const n = await query('insert into materials(name, stock) values($1,$2) returning id', [name, qty]);
+    mid = n.rows[0].id;
+  }
+  await query('insert into material_batches(material_id, quantity, expiration_date, created_at) values($1,$2,$3,$4)',
+    [mid, qty, expiry, Date.now()]);
+  res.json({ ok: true });
+});
+app.put('/api/inventory/raw/audit', authRequired, async (req, res) => {
+  const { name, qty } = req.body; // Overwrite
+  // Clear batches
+  let mid;
+  const exist = await query('select id from materials where name=$1', [name]);
+  if (exist.rows[0]) {
+    mid = exist.rows[0].id;
+    await query('delete from material_batches where material_id=$1', [mid]);
+    await query('update materials set stock=$1 where id=$2', [qty, mid]);
+  } else {
+    const n = await query('insert into materials(name, stock) values($1,$2) returning id', [name, qty]);
+    mid = n.rows[0].id;
+  }
+  // Create a single batch for current audit
+  const today = new Date().toISOString().slice(0,10);
+  await query('insert into material_batches(material_id, quantity, expiration_date, created_at) values($1,$2,$3,$4)',
+    [mid, qty, today, Date.now()]);
   res.json({ ok: true });
 });
 
