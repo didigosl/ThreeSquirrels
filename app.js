@@ -2474,17 +2474,20 @@ function renderCats() {
   categoriesData.forEach((cat, idx) => {
     const panel = document.createElement('div');
     panel.className = 'cat-panel';
-    panel.draggable = true;
-    panel.style.cursor = 'move';
     
-    // Drag events for Parent
-    panel.addEventListener('dragstart', e => {
-      if (e.target !== panel) return; // Prevent child drag from triggering parent drag if bubbling
+    // Drag Handle for Parent
+    const handle = document.createElement('span');
+    handle.textContent = '☰';
+    handle.style.cssText = 'cursor:grab; margin-right:12px; color:#64748b; font-size:14px; user-select:none';
+    handle.draggable = true;
+    
+    handle.addEventListener('dragstart', e => {
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', JSON.stringify({type:'parent', idx}));
       panel.style.opacity = '0.5';
     });
-    panel.addEventListener('dragend', () => panel.style.opacity = '1');
+    handle.addEventListener('dragend', () => panel.style.opacity = '1');
+    
     panel.addEventListener('dragover', e => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
@@ -2510,9 +2513,11 @@ function renderCats() {
 
     const header = document.createElement('div');
     header.className = 'cat-header';
+    
     const title = document.createElement('div');
     title.className = 'cat-title';
-    title.textContent = '— ' + cat.name;
+    title.textContent = cat.name;
+    
     const actions = document.createElement('div');
     actions.className = 'cat-actions';
     
@@ -2520,15 +2525,11 @@ function renderCats() {
     addBtn.className = 'btn-icon btn-green'; 
     addBtn.textContent = '+'; 
     addBtn.title = '新增二级类目';
-    addBtn.draggable = false;
-    addBtn.onmousedown = e => e.stopPropagation();
     
     const editBtn = document.createElement('button'); 
     editBtn.className = 'btn-icon btn-blue'; 
     editBtn.textContent = '✎'; 
     editBtn.title = '编辑一级类目';
-    editBtn.draggable = false;
-    editBtn.onmousedown = e => e.stopPropagation();
 
     const delBlocked = (cat.name === '收入' || cat.name === '开支');
     actions.append(addBtn, editBtn);
@@ -2538,28 +2539,31 @@ function renderCats() {
       delBtn.className = 'btn-icon btn-red'; 
       delBtn.textContent = '🗑'; 
       delBtn.title = '删除一级类目';
-      delBtn.draggable = false;
-      delBtn.onmousedown = e => e.stopPropagation();
       actions.append(delBtn);
     }
-    header.append(title, actions);
+    
+    header.append(handle, title, actions);
+    
     const items = document.createElement('div');
     items.className = 'cat-items';
     
     cat.children.forEach((name, j) => {
       const row = document.createElement('div');
       row.className = 'cat-item';
-      row.draggable = true;
-      row.style.cursor = 'move';
+      
+      const cHandle = document.createElement('span');
+      cHandle.textContent = '☰';
+      cHandle.style.cssText = 'cursor:grab; margin-right:10px; color:#94a3b8; font-size:12px; user-select:none';
+      cHandle.draggable = true;
 
-      // Drag events for Child
-      row.addEventListener('dragstart', e => {
+      cHandle.addEventListener('dragstart', e => {
         e.stopPropagation();
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', JSON.stringify({type:'child', pIdx:idx, cIdx:j}));
         row.style.opacity = '0.5';
       });
-      row.addEventListener('dragend', () => row.style.opacity = '1');
+      cHandle.addEventListener('dragend', () => row.style.opacity = '1');
+      
       row.addEventListener('dragover', e => {
         e.preventDefault();
         e.stopPropagation();
@@ -2597,27 +2601,21 @@ function renderCats() {
       e.className = 'btn-icon btn-blue'; 
       e.textContent = '✎'; 
       e.title = '编辑';
-      e.draggable = false;
-      e.onmousedown = ev => ev.stopPropagation();
       
       const d = document.createElement('button'); 
       d.className = 'btn-icon btn-red'; 
       d.textContent = '🗑'; 
       d.title = '删除';
-      d.draggable = false;
-      d.onmousedown = ev => ev.stopPropagation();
-
+ 
       ops.append(e, d);
-      row.append(nm, ops);
+      row.append(cHandle, nm, ops);
       items.appendChild(row);
       
-      e.addEventListener('click', (ev) => {
-        ev.stopPropagation();
+      e.addEventListener('click', () => {
         const val = prompt('编辑名称', name);
         if (val && val.trim()) { categoriesData[idx].children[j] = val.trim(); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
       });
-      d.addEventListener('click', (ev) => {
-        ev.stopPropagation();
+      d.addEventListener('click', () => {
         if (!confirm('确定删除该子类目？')) return;
         categoriesData[idx].children.splice(j,1);
         renderCats();
@@ -2628,19 +2626,16 @@ function renderCats() {
     panel.append(header, items);
     catList.appendChild(panel);
     
-    addBtn.addEventListener('click', (ev) => {
-      ev.stopPropagation();
+    addBtn.addEventListener('click', () => {
       const val = prompt('新增二级类目名称');
       if (val && val.trim()) { categoriesData[idx].children.push(val.trim()); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
     });
-    editBtn.addEventListener('click', (ev) => {
-      ev.stopPropagation();
+    editBtn.addEventListener('click', () => {
       const val = prompt('编辑一级类目名称', cat.name);
       if (val && val.trim()) { categoriesData[idx].name = val.trim(); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
     });
     if (delBtn) {
-      delBtn.addEventListener('click', (ev) => {
-        ev.stopPropagation();
+      delBtn.addEventListener('click', () => {
         if (confirm('确定删除该一级类目？')) { categoriesData.splice(idx,1); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
       });
     }
