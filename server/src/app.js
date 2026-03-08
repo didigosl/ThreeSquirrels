@@ -990,6 +990,14 @@ app.post('/api/users/:id/reset-password', authRequired, ensureAllow('user_accoun
   await query('update users set password=$1, password_hash=$1 where id=$2', [password, id]);
   res.json({ ok: true });
 });
+
+app.delete('/api/users/:id', authRequired, ensureAllow('user_accounts','edit'), async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (id === 1) return res.status(403).json({ error: 'cannot_delete_superadmin' });
+  await query('delete from users where id=$1', [id]);
+  res.json({ ok: true });
+});
+
 app.get('/api/analytics/ledger-summary', authRequired, ensureAllow('ledger','view'), async (req, res) => {
   const { period='month', range='12' } = req.query;
   const n = Math.max(1, Math.min(365, parseInt(range, 10) || 12));

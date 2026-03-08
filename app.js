@@ -2852,12 +2852,13 @@ function renderUserAccounts() {
       sel.value = u.role || '';
       sel.addEventListener('change', async () => {
         const newRole = sel.value || '';
-        await apiUserUpdate(u.id, { role: newRole });
+        await apiUserUpdate(u.id, { role: newRole, enabled: u.enabled });
         u.role = newRole;
         saveJSON('userAccounts', userAccounts);
         const au = getAuthUser();
         if (au && au.name === u.name) setAuthUser({ ...au, role: u.role });
         renderUserAccounts();
+        alert('角色修改已保存');
       });
       tdRole.appendChild(sel);
     }
@@ -2877,7 +2878,24 @@ function renderUserAccounts() {
       resetMsg.textContent = `已经将帐号 ${u.name} 密码重置，重置后密码为“${np}”`;
       resetModal.style.display = 'flex';
     });
-    tdOps.appendChild(reset); tr.appendChild(tdOps);
+    tdOps.appendChild(reset);
+    if (u.id !== 1) {
+      const del = document.createElement('a'); del.href='#'; del.textContent='删除'; del.className='link-red'; del.style.marginLeft='8px';
+      del.addEventListener('click', async e => {
+        e.preventDefault();
+        if (!confirm(`确定删除账号 ${u.name}？`)) return;
+        const ok = await apiUserDelete(u.id);
+        if (ok) {
+           await apiUsersList();
+           renderUserAccounts();
+           alert('删除成功');
+        } else {
+           alert('删除失败');
+        }
+      });
+      tdOps.appendChild(del);
+    }
+    tr.appendChild(tdOps);
     userRows.appendChild(tr);
   });
   if (userSummary) userSummary.textContent = `显示 ${Math.min(total,start+1)} 到 ${Math.min(total,start+pageData.length)} 项，共 ${total} 项`;
@@ -3281,6 +3299,9 @@ async function apiUserCreate(obj) {
 }
 async function apiUserUpdate(id, obj) {
   try { await apiFetchJSON('/api/users/'+String(id), { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(obj) }); } catch {}
+}
+async function apiUserDelete(id) {
+  try { await apiFetchJSON('/api/users/'+String(id), { method:'DELETE' }); return true; } catch { return false; }
 }
 async function apiUserResetPassword(id, password) {
   try { await apiFetchJSON('/api/users/'+String(id)+'/reset-password', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password }) }); } catch {}
