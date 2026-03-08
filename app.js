@@ -2539,11 +2539,48 @@ function renderCats() {
   categoriesData.forEach((cat, idx) => {
     const panel = document.createElement('div');
     panel.className = 'cat-panel';
+    
+    // Parent Handle
+    const handle = document.createElement('span');
+    handle.textContent = '☰';
+    handle.style.cssText = 'cursor:grab; margin-right:12px; color:#64748b; font-size:16px; user-select:none';
+    handle.draggable = true;
+    
+    handle.addEventListener('dragstart', e => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', JSON.stringify({type:'parent', idx}));
+      panel.style.opacity = '0.5';
+    });
+    handle.addEventListener('dragend', () => panel.style.opacity = '1');
+    
+    panel.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    });
+    panel.addEventListener('drop', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const dataStr = e.dataTransfer.getData('text/plain');
+      if (!dataStr) return;
+      try {
+        const data = JSON.parse(dataStr);
+        if (data.type !== 'parent') return;
+        const fromIdx = data.idx;
+        const toIdx = idx;
+        if (fromIdx === toIdx) return;
+        const item = categoriesData.splice(fromIdx, 1)[0];
+        categoriesData.splice(toIdx, 0, item);
+        saveJSON('categoriesData', categoriesData);
+        apiCategoriesSave();
+        renderCats();
+      } catch(ex){}
+    });
+
     const header = document.createElement('div');
     header.className = 'cat-header';
     const title = document.createElement('div');
     title.className = 'cat-title';
-    title.textContent = '— ' + cat.name;
+    title.textContent = cat.name;
     const actions = document.createElement('div');
     actions.className = 'cat-actions';
     const addBtn = document.createElement('button'); addBtn.className = 'btn-icon btn-green'; addBtn.textContent = '+'; addBtn.title = '新增二级类目';
@@ -2555,18 +2592,63 @@ function renderCats() {
       delBtn = document.createElement('button'); delBtn.className = 'btn-icon btn-red'; delBtn.textContent = '🗑'; delBtn.title = '删除一级类目';
       actions.append(delBtn);
     }
-    header.append(title, actions);
+    
+    header.append(handle, title, actions);
+    
     const items = document.createElement('div');
     items.className = 'cat-items';
     cat.children.forEach((name, j) => {
       const row = document.createElement('div');
       row.className = 'cat-item';
+      
+      // Child Handle
+      const cHandle = document.createElement('span');
+      cHandle.textContent = '☰';
+      cHandle.style.cssText = 'cursor:grab; margin-right:10px; color:#94a3b8; font-size:12px; user-select:none';
+      cHandle.draggable = true;
+      
+      cHandle.addEventListener('dragstart', e => {
+        e.stopPropagation();
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', JSON.stringify({type:'child', pIdx:idx, cIdx:j}));
+        row.style.opacity = '0.5';
+      });
+      cHandle.addEventListener('dragend', () => row.style.opacity = '1');
+      
+      row.addEventListener('dragover', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+      });
+      row.addEventListener('drop', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const dataStr = e.dataTransfer.getData('text/plain');
+        if (!dataStr) return;
+        try {
+          const data = JSON.parse(dataStr);
+          if (data.type !== 'child') return;
+          const fromPIdx = data.pIdx;
+          const fromCIdx = data.cIdx;
+          const toPIdx = idx;
+          const toCIdx = j;
+          if (fromPIdx !== toPIdx) return;
+          if (fromCIdx === toCIdx) return;
+          const item = categoriesData[fromPIdx].children.splice(fromCIdx, 1)[0];
+          categoriesData[toPIdx].children.splice(toCIdx, 0, item);
+          saveJSON('categoriesData', categoriesData);
+          apiCategoriesSave();
+          renderCats();
+        } catch(ex){}
+      });
+
       const nm = document.createElement('div'); nm.className = 'cat-name'; nm.textContent = name;
       const ops = document.createElement('div'); ops.className = 'cat-actions';
       const e = document.createElement('button'); e.className = 'btn-icon btn-blue'; e.textContent = '✎'; e.title = '编辑';
       const d = document.createElement('button'); d.className = 'btn-icon btn-red'; d.textContent = '🗑'; d.title = '删除';
       ops.append(e, d);
-      row.append(nm, ops);
+      
+      row.append(cHandle, nm, ops);
       items.appendChild(row);
       e.addEventListener('click', () => {
         openPrompt('编辑名称', name, (val) => {
