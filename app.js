@@ -2580,15 +2580,21 @@ function renderCats() {
       const nm = document.createElement('div'); nm.className = 'cat-name'; nm.textContent = name;
       const ops = document.createElement('div'); ops.className = 'cat-actions';
       const e = document.createElement('button'); e.className = 'btn-icon btn-blue'; e.textContent = '✎'; e.title = '编辑';
+      e.setAttribute('draggable', 'false');
+      e.addEventListener('mousedown', ev => ev.stopPropagation());
       const d = document.createElement('button'); d.className = 'btn-icon btn-red'; d.textContent = '🗑'; d.title = '删除';
+      d.setAttribute('draggable', 'false');
+      d.addEventListener('mousedown', ev => ev.stopPropagation());
       ops.append(e, d);
       row.append(nm, ops);
       items.appendChild(row);
-      e.addEventListener('click', () => {
+      e.addEventListener('click', (ev) => {
+        ev.stopPropagation();
         const val = prompt('编辑名称', name);
         if (val && val.trim()) { categoriesData[idx].children[j] = val.trim(); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
       });
-      d.addEventListener('click', () => {
+      d.addEventListener('click', (ev) => {
+        ev.stopPropagation();
         if (!confirm('确定删除该子类目？')) return;
         categoriesData[idx].children.splice(j,1);
         renderCats();
@@ -2598,16 +2604,25 @@ function renderCats() {
     });
     panel.append(header, items);
     catList.appendChild(panel);
-    addBtn.addEventListener('click', () => {
+    addBtn.setAttribute('draggable', 'false');
+    addBtn.addEventListener('mousedown', ev => ev.stopPropagation());
+    addBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
       const val = prompt('新增二级类目名称');
       if (val && val.trim()) { categoriesData[idx].children.push(val.trim()); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
     });
-    editBtn.addEventListener('click', () => {
+    editBtn.setAttribute('draggable', 'false');
+    editBtn.addEventListener('mousedown', ev => ev.stopPropagation());
+    editBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
       const val = prompt('编辑一级类目名称', cat.name);
       if (val && val.trim()) { categoriesData[idx].name = val.trim(); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
     });
     if (delBtn) {
-      delBtn.addEventListener('click', () => {
+      delBtn.setAttribute('draggable', 'false');
+      delBtn.addEventListener('mousedown', ev => ev.stopPropagation());
+      delBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
         if (confirm('确定删除该一级类目？')) { categoriesData.splice(idx,1); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
       });
     }
