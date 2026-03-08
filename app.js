@@ -2469,6 +2469,71 @@ const categoriesData = [
   { name:'收入', children:['服务收入(现金)','服务收入(银行)','银行储蓄','现金借贷','订单收入','其它收入'] },
   { name:'开支', children:['现金开支','员工工资','出差补贴','人工开支','其它开支'] }
 ];
+
+// Helper for Custom Modals
+const catModal = document.getElementById('cat-modal');
+const catModalTitle = document.getElementById('cat-modal-title');
+const catModalInput = document.getElementById('cat-modal-input');
+const catModalOk = document.getElementById('cat-modal-ok');
+const catModalCancel = document.getElementById('cat-modal-cancel');
+let catModalCallback = null;
+
+function openPrompt(title, value, cb) {
+  if (catModal) {
+    catModalTitle.textContent = title;
+    catModalInput.value = value || '';
+    catModalCallback = cb;
+    catModal.style.display = 'flex';
+    catModalInput.focus();
+  } else {
+    const v = prompt(title, value);
+    if (v !== null) cb(v);
+  }
+}
+
+if (catModalOk) {
+  catModalOk.onclick = () => {
+    if (catModalCallback) catModalCallback(catModalInput.value);
+    catModal.style.display = 'none';
+    catModalCallback = null;
+  };
+}
+if (catModalCancel) {
+  catModalCancel.onclick = () => {
+    catModal.style.display = 'none';
+    catModalCallback = null;
+  };
+}
+
+const genericConfirmModal = document.getElementById('generic-confirm-modal');
+const genericConfirmMsg = document.getElementById('generic-confirm-msg');
+const genericConfirmOk = document.getElementById('generic-confirm-ok');
+let genericConfirmCallback = null;
+
+function openConfirm(msg, cb) {
+  if (genericConfirmModal) {
+    genericConfirmMsg.textContent = msg;
+    genericConfirmCallback = cb;
+    genericConfirmModal.style.display = 'flex';
+  } else {
+    if (confirm(msg)) cb();
+  }
+}
+
+if (genericConfirmOk) {
+  genericConfirmOk.onclick = () => {
+    if (genericConfirmCallback) genericConfirmCallback();
+    genericConfirmModal.style.display = 'none';
+    genericConfirmCallback = null;
+  };
+}
+document.querySelectorAll('.close-generic-confirm').forEach(b => {
+  b.onclick = () => {
+    genericConfirmModal.style.display = 'none';
+    genericConfirmCallback = null;
+  };
+});
+
 function renderCats() {
   catList.innerHTML = '';
   categoriesData.forEach((cat, idx) => {
@@ -2504,29 +2569,36 @@ function renderCats() {
       row.append(nm, ops);
       items.appendChild(row);
       e.addEventListener('click', () => {
-        const val = prompt('编辑名称', name);
-        if (val && val.trim()) { categoriesData[idx].children[j] = val.trim(); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
+        openPrompt('编辑名称', name, (val) => {
+          if (val && val.trim()) { categoriesData[idx].children[j] = val.trim(); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
+        });
       });
       d.addEventListener('click', () => {
-        categoriesData[idx].children.splice(j,1);
-        renderCats();
-        saveJSON('categoriesData', categoriesData);
-        apiCategoriesSave();
+        openConfirm('确定删除该子类目？', () => {
+          categoriesData[idx].children.splice(j,1);
+          renderCats();
+          saveJSON('categoriesData', categoriesData);
+          apiCategoriesSave();
+        });
       });
     });
     panel.append(header, items);
     catList.appendChild(panel);
     addBtn.addEventListener('click', () => {
-      const val = prompt('新增二级类目名称');
-      if (val && val.trim()) { categoriesData[idx].children.push(val.trim()); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
+      openPrompt('新增二级类目名称', '', (val) => {
+        if (val && val.trim()) { categoriesData[idx].children.push(val.trim()); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
+      });
     });
     editBtn.addEventListener('click', () => {
-      const val = prompt('编辑一级类目名称', cat.name);
-      if (val && val.trim()) { categoriesData[idx].name = val.trim(); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
+      openPrompt('编辑一级类目名称', cat.name, (val) => {
+        if (val && val.trim()) { categoriesData[idx].name = val.trim(); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
+      });
     });
     if (delBtn) {
       delBtn.addEventListener('click', () => {
-        if (confirm('确定删除该一级类目？')) { categoriesData.splice(idx,1); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
+        openConfirm('确定删除该一级类目？', () => {
+          categoriesData.splice(idx,1); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave();
+        });
       });
     }
   });
@@ -2534,8 +2606,9 @@ function renderCats() {
   setCategories();
 }
 addCatBtn?.addEventListener('click', () => {
-  const val = prompt('新增一级类目名称');
-  if (val && val.trim()) { categoriesData.push({ name: val.trim(), children: [] }); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
+  openPrompt('新增一级类目名称', '', (val) => {
+    if (val && val.trim()) { categoriesData.push({ name: val.trim(), children: [] }); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
+  });
 });
 const roleRows = document.getElementById('role-rows');
 const roleSearch = document.getElementById('role-search');

@@ -233,7 +233,7 @@
   </head>
   <body>
     <div class="layout">
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-9</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-10</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -288,6 +288,21 @@
         <div id="auth-area" style="padding:12px; border-top:1px solid var(--line); margin-top:auto">
           <div id="auth-user-tag" class="tag" style="display:none; margin-bottom:8px"></div>
           <button id="logout-btn" class="btn-secondary" style="display:none; width:100%">退出登录</button>
+        </div>
+        <div id="generic-confirm-modal" class="modal-overlay" style="display:none">
+          <div class="modal" style="max-width:400px">
+            <div class="modal-header">
+              <div class="modal-title">确认</div>
+              <button class="btn-secondary close-generic-confirm">取消</button>
+            </div>
+            <div class="modal-body" style="padding:24px">
+              <div id="generic-confirm-msg"></div>
+            </div>
+            <div class="modal-actions">
+              <button class="btn-secondary close-generic-confirm">取消</button>
+              <button id="generic-confirm-ok" class="btn">确定</button>
+            </div>
+          </div>
         </div>
       </aside>
       <main class="content">
@@ -2127,6 +2142,6 @@
 
       </aside>
     </div>
-    <script src="app.js?v=20260307-9"></script>
+    <script src="app.js?v=20260307-10"></script>
   </body>
 </html>
