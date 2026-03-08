@@ -2474,6 +2474,39 @@ function renderCats() {
   categoriesData.forEach((cat, idx) => {
     const panel = document.createElement('div');
     panel.className = 'cat-panel';
+    panel.draggable = true;
+    panel.style.cursor = 'move';
+    
+    // Drag events for Parent
+    panel.addEventListener('dragstart', e => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', JSON.stringify({type:'parent', idx}));
+      panel.style.opacity = '0.5';
+    });
+    panel.addEventListener('dragend', () => panel.style.opacity = '1');
+    panel.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    });
+    panel.addEventListener('drop', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const dataStr = e.dataTransfer.getData('text/plain');
+      if (!dataStr) return;
+      try {
+        const data = JSON.parse(dataStr);
+        if (data.type !== 'parent') return;
+        const fromIdx = data.idx;
+        const toIdx = idx;
+        if (fromIdx === toIdx) return;
+        const item = categoriesData.splice(fromIdx, 1)[0];
+        categoriesData.splice(toIdx, 0, item);
+        saveJSON('categoriesData', categoriesData);
+        apiCategoriesSave();
+        renderCats();
+      } catch(ex){}
+    });
+
     const header = document.createElement('div');
     header.className = 'cat-header';
     const title = document.createElement('div');
@@ -2496,6 +2529,54 @@ function renderCats() {
     cat.children.forEach((name, j) => {
       const row = document.createElement('div');
       row.className = 'cat-item';
+      row.draggable = true;
+      row.style.cursor = 'move';
+
+      // Drag events for Child
+      row.addEventListener('dragstart', e => {
+        e.stopPropagation();
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', JSON.stringify({type:'child', pIdx:idx, cIdx:j}));
+        row.style.opacity = '0.5';
+      });
+      row.addEventListener('dragend', () => row.style.opacity = '1');
+      row.addEventListener('dragover', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+      });
+      row.addEventListener('drop', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const dataStr = e.dataTransfer.getData('text/plain');
+        if (!dataStr) return;
+        try {
+          const data = JSON.parse(dataStr);
+          if (data.type !== 'child') return;
+          const fromPIdx = data.pIdx;
+          const fromCIdx = data.cIdx;
+          const toPIdx = idx;
+          const toCIdx = j;
+          
+          // Only allow reorder within same parent
+          if (fromPIdx !== toPIdx) return;
+          if (fromCIdx === toCIdx) return;
+
+          const item = categoriesData[fromPIdx].children.splice(fromCIdx, 1)[0];
+          // If we removed from before current index, current index shifted down
+          // But 'toCIdx' is captured in closure. 
+          // If from < to, we insert after? No, standard is insert at index.
+          // Example: [A, B, C]. Drag A(0) to B(1). 
+          // Remove A -> [B, C]. Insert at 1 -> [B, A, C]. Correct.
+          // Drag B(1) to A(0). Remove B. [A, C]. Insert at 0 -> [B, A, C]. Correct.
+          categoriesData[toPIdx].children.splice(toCIdx, 0, item);
+          
+          saveJSON('categoriesData', categoriesData);
+          apiCategoriesSave();
+          renderCats();
+        } catch(ex){}
+      });
+
       const nm = document.createElement('div'); nm.className = 'cat-name'; nm.textContent = name;
       const ops = document.createElement('div'); ops.className = 'cat-actions';
       const e = document.createElement('button'); e.className = 'btn-icon btn-blue'; e.textContent = '✎'; e.title = '编辑';
@@ -2508,6 +2589,7 @@ function renderCats() {
         if (val && val.trim()) { categoriesData[idx].children[j] = val.trim(); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
       });
       d.addEventListener('click', () => {
+        if (!confirm('确定删除该子类目？')) return;
         categoriesData[idx].children.splice(j,1);
         renderCats();
         saveJSON('categoriesData', categoriesData);
@@ -2768,8 +2850,10 @@ function renderUserAccounts() {
         sel.appendChild(opt);
       });
       sel.value = u.role || '';
-      sel.addEventListener('change', () => {
-        u.role = sel.value || '';
+      sel.addEventListener('change', async () => {
+        const newRole = sel.value || '';
+        await apiUserUpdate(u.id, { role: newRole });
+        u.role = newRole;
         saveJSON('userAccounts', userAccounts);
         const au = getAuthUser();
         if (au && au.name === u.name) setAuthUser({ ...au, role: u.role });
@@ -2807,7 +2891,16 @@ userNext?.addEventListener('click', () => {
   const totalPages = Math.max(1, Math.ceil(userAccounts.filter(u => (userSearch?.value||'') ? [u.name,u.role,String(u.id)].some(v => v.includes(userSearch.value)) : true).length/size));
   if (userPage < totalPages) { userPage++; renderUserAccounts(); }
 });
-userCreate?.addEventListener('click', () => { userModal.style.display = 'flex'; document.getElementById('u-name').value=''; document.getElementById('u-role').value=''; });
+userCreate?.addEventListener('click', () => {
+  userModal.style.display = 'flex';
+  document.getElementById('u-name').value='';
+  const roleSel = document.getElementById('u-role');
+  roleSel.innerHTML = '<option value="">选择角色</option>';
+  rolesData.forEach(r => {
+    const opt = document.createElement('option'); opt.value = r.name; opt.textContent = r.name;
+    roleSel.appendChild(opt);
+  });
+});
 userCancel?.addEventListener('click', () => { userModal.style.display = 'none'; });
 userForm?.addEventListener('submit', async e => {
   e.preventDefault();
@@ -3608,6 +3701,7 @@ function renderProductSelector(list) {
         <th style="padding:8px">图片</th>
         <th style="padding:8px">编号</th>
         <th style="padding:8px">名称</th>
+        <th style="padding:8px">中文名称</th>
         <th style="padding:8px">规格</th>
         <th style="padding:8px; text-align:right">价格</th>
         <th style="padding:8px; text-align:right">库存</th>
@@ -3637,6 +3731,7 @@ function renderProductSelector(list) {
       </td>
       <td style="padding:8px; color:#94a3b8">${p.sku||''}</td>
       <td style="padding:8px; color:#e2e8f0; font-weight:500">${p.name}</td>
+      <td style="padding:8px; color:#94a3b8">${p.name_cn||''}</td>
       <td style="padding:8px; color:#94a3b8">${p.spec||''}</td>
       <td style="padding:8px; text-align:right; color:var(--blue); font-weight:600">€${displayPrice.toFixed(2)}</td>
       <td style="padding:8px; text-align:right; color:#64748b">${Number(p.stock||0)}</td>
@@ -3728,6 +3823,7 @@ function addSoItem(p) {
   
   tr.innerHTML = `
     <td style="padding:10px 16px"><input type="text" class="name light-input" style="width:100%; background:transparent; border:none; color:#e2e8f0" value="${p.name}"></td>
+    <td style="padding:10px 16px"><input type="text" class="name-cn light-input" style="width:100%; background:transparent; border:none; color:#94a3b8" value="${p.name_cn||''}" placeholder="中文名"></td>
     <td style="padding:10px 16px"><input type="text" class="desc light-input" style="width:100%; background:transparent; border:none; color:#94a3b8" value="${p.description||''}" placeholder="描述"></td>
     <td style="padding:10px 16px"><input type="number" class="qty light-input" style="width:100%; text-align:center; background:#0f172a; border:1px solid #334155" value="1" min="1"></td>
     <td style="padding:10px 16px"><input type="number" class="price light-input" style="width:100%; text-align:center; background:#0f172a; border:1px solid #334155" value="${price.toFixed(2)}" min="0" step="0.01"></td>
@@ -3888,6 +3984,12 @@ if (soSave) {
         const shipBtn = `<button class="${shipBtnClass}" style="font-size:12px; padding:4px 8px" onclick="printShippingLabel('${x.id}')">打印收货地址</button>`;
         
         const seq = invTotal - ((invPage - 1) * invPageSize + i);
+        
+        let remarkHtml = x.notes || '';
+        if (cust && cust.remark) {
+          if (remarkHtml) remarkHtml += '<br>';
+          remarkHtml += `<span style="color:#eab308; font-size:11px">(${cust.remark})</span>`;
+        }
 
         tr.innerHTML = `
           <td>${seq}</td>
@@ -3897,7 +3999,7 @@ if (soSave) {
           <td>${displayDate}</td>
           <td style="color:#e2e8f0; font-weight:600">€${total.toFixed(2)}</td>
           <td><span style="color:${statusColor}; background:${statusColor}20; padding:2px 8px; border-radius:4px; font-size:12px">${status}</span></td>
-          <td style="color:#94a3b8; font-size:12px">${x.notes||''}</td>
+          <td style="color:#94a3b8; font-size:12px">${remarkHtml}</td>
           <td style="display:flex; gap:8px; justify-content:center">
             <button class="light-btn" style="font-size:12px; padding:4px 8px" onclick="previewInvoice('${x.id}')">预览</button>
             ${shipBtn}
@@ -3996,7 +4098,8 @@ window.previewInvoice = async function(id) {
       const payHtml = `
         <div class="payment-label">Forma de pago</div>
         ${ci.bank_name || ''}<br>
-        ${ci.iban || ''}
+        ${ci.iban || ''}<br>
+        SWIFT: ${ci.swift || ''}
       `;
       const payEl = document.getElementById('prev-payment-info');
       if (payEl) payEl.innerHTML = payHtml;
@@ -5735,6 +5838,7 @@ function addDoItemRow(prod) {
       <div style="font-size:12px; color:#94a3b8">${prod.sku || ''}</div>
       <input type="hidden" class="do-item-name" value="${prod.name}">
     </td>
+    <td><div style="color:#94a3b8; font-size:13px">${prod.name_cn||''}</div></td>
     <td><input type="number" class="do-item-qty" value="1" min="1" style="width:80px"></td>
     <td><input type="number" class="do-item-price" value="${prod.price1||0}" step="0.01" style="width:80px"></td>
     <td><button class="btn-red btn-icon" onclick="this.closest('tr').remove()" style="width:32px; height:32px">×</button></td>
@@ -5794,23 +5898,19 @@ async function confirmAllocate() {
     if (items[idx]) items[idx].allocated_qty = Number(inp.value);
   });
   
-  // Try to match productId for stock deduction
-  // Need to fetch products list first or do it on backend? Backend handles logic if productId is missing (by name).
-  // Ideally frontend sends productId. But simplistic entry didn't enforce it.
-  // Let's rely on backend name matching.
-  
   await fetchWithAuth(`/api/daily-orders/${id}/allocate`, {
     method: 'PUT',
     body: JSON.stringify({ items })
   });
   document.getElementById('do-allocate-modal').style.display = 'none';
   loadDailyOrders('new');
-  alert('配货完成，系统已自动生成发票并扣减库存');
+  alert('配货完成，请到已配货列表确认发货');
 }
 async function confirmShip(id) {
   if (!confirm('确认已发货？')) return;
   await fetchWithAuth(`/api/daily-orders/${id}/ship`, { method:'PUT' });
   loadDailyOrders('allocated');
+  alert('发货完成，发票已生成');
 }
 
 // Finished Stock

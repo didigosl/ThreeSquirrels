@@ -1456,10 +1456,18 @@ app.put('/api/daily-orders/:id/allocate', authRequired, async (req, res) => {
   // 1. Update order
   await query('update daily_orders set items=$1, status=$2 where id=$3', [JSON.stringify(items), 'allocated', id]);
   
-  // 2. Auto Create Invoice
+  res.json({ ok: true });
+});
+app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  await query('update daily_orders set status=$1 where id=$2', ['shipped', id]);
+  
+  // Auto Create Invoice & Deduct Stock
   const ord = (await query('select * from daily_orders where id=$1', [id])).rows[0];
   if (!ord.invoice_id) {
-    // Generate invoice logic (simplified from existing)
+    const items = typeof ord.items === 'string' ? JSON.parse(ord.items) : (ord.items || []);
+    
+    // Generate invoice logic
     const year = new Date().getFullYear();
     const prefix = String(year);
     const rMax = await query('select invoice_no from invoices where invoice_no like $1 order by invoice_no desc limit 1', [prefix + '%']);
@@ -1473,7 +1481,7 @@ app.put('/api/daily-orders/:id/allocate', authRequired, async (req, res) => {
     
     // Calculate total
     const total = items.reduce((sum, item) => {
-      const qty = Number(item.allocated_qty || item.qty || 0); // Use allocated
+      const qty = Number(item.allocated_qty || item.qty || 0);
       const price = Number(item.price || 0);
       let taxRate = Number(item.tax_rate);
       if (isNaN(taxRate)) taxRate = 0.10;
@@ -1507,7 +1515,6 @@ app.put('/api/daily-orders/:id/allocate', authRequired, async (req, res) => {
       if (qty > 0 && pid) {
          // Deduct from batches
          let remaining = qty;
-         // Get batches ordered by expiry
          const batches = await query('select * from inventory_batches where product_id=$1 and quantity > 0 order by expiration_date asc', [pid]);
          for (const b of batches.rows) {
            if (remaining <= 0) break;
@@ -1522,11 +1529,7 @@ app.put('/api/daily-orders/:id/allocate', authRequired, async (req, res) => {
     
     await query('update daily_orders set invoice_id=$1 where id=$2', [inv.rows[0].id, id]);
   }
-  res.json({ ok: true });
-});
-app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  await query('update daily_orders set status=$1 where id=$2', ['shipped', id]);
+
   res.json({ ok: true });
 });
 

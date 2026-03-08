@@ -233,7 +233,7 @@
   </head>
   <body>
     <div class="layout">
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-3</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-4</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -491,7 +491,7 @@
                   <button class="btn-secondary" style="font-size:12px; padding:6px 12px" onclick="openDoProdSelector()">+ 添加商品</button>
                 </div>
                 <table class="table">
-                  <thead><tr><th>商品</th><th style="width:100px">数量</th><th style="width:100px">单价</th><th style="width:60px">操作</th></tr></thead>
+                  <thead><tr><th>商品</th><th style="width:120px">中文名</th><th style="width:100px">数量</th><th style="width:100px">单价</th><th style="width:60px">操作</th></tr></thead>
                   <tbody id="do-items-container"></tbody>
                 </table>
               </div>
@@ -1119,7 +1119,7 @@
                 <button class="tab" data-tab="others">其它往来单位</button>
               </div>
               <div style="display:flex; align-items:center; gap:12px">
-                <input id="contacts-search" type="text" placeholder="搜索..." style="width:280px">
+                <input id="contacts-search" type="text" placeholder="搜索..." style="width:280px" autocomplete="new-password" name="search_contacts_random" readonly onfocus="this.removeAttribute('readonly');">
                 <button class="btn" id="contacts-submit-top" type="button">新增</button>
               </div>
             </div>
@@ -1340,7 +1340,7 @@
                 </div>
                 <div class="field" style="min-width:260px">
                   <span class="label">检索</span>
-                  <input id="user-search" type="text" placeholder="搜索账号/角色/编号">
+                  <input id="user-search" type="text" placeholder="搜索账号/角色/编号" autocomplete="new-password" name="search_user_random" readonly onfocus="this.removeAttribute('readonly');">
                 </div>
               </div>
             </div>
@@ -1386,7 +1386,7 @@
                 </div>
                 <div class="field" style="min-width:260px">
                   <span class="label">检索</span>
-                  <input id="role-search" type="text" placeholder="搜索角色/描述/编号">
+                  <input id="role-search" type="text" placeholder="搜索角色/描述/编号" autocomplete="new-password" name="search_role_random" readonly onfocus="this.removeAttribute('readonly');">
                 </div>
               </div>
             </div>
@@ -1422,7 +1422,7 @@
                 <button id="sales-create" class="btn">创建业务员</button>
                 <div class="field" style="min-width:260px">
                   <span class="label">检索</span>
-                  <input id="sales-search" type="text" placeholder="搜索姓名/地区/电话">
+                  <input id="sales-search" type="text" placeholder="搜索姓名/地区/电话" autocomplete="new-password" name="search_sales_random" readonly onfocus="this.removeAttribute('readonly');">
                 </div>
               </div>
             </div>
@@ -1523,7 +1523,9 @@
               <div class="modal-body">
                 <div class="grid6">
                   <input id="u-name" type="text" placeholder="账号">
-                  <input id="u-role" type="text" placeholder="角色">
+                  <select id="u-role">
+                    <option value="">选择角色</option>
+                  </select>
                 </div>
               </div>
               <div class="modal-actions">
@@ -1695,10 +1697,11 @@
                   <table style="width:100%; border-collapse:collapse; color:#cbd5e1; font-size:13px">
                     <thead style="background:#1e293b; color:#94a3b8; font-weight:500">
                       <tr>
-                        <th style="padding:10px 16px; text-align:left; width:20%">商品名称</th>
-                        <th style="padding:10px 16px; text-align:left; width:20%">描述</th>
+                        <th style="padding:10px 16px; text-align:left; width:15%">商品名称</th>
+                        <th style="padding:10px 16px; text-align:left; width:15%">中文名称</th>
+                        <th style="padding:10px 16px; text-align:left; width:15%">描述</th>
                         <th style="padding:10px 16px; text-align:right; width:10%">数量</th>
-                        <th style="padding:10px 16px; text-align:right; width:15%">单价</th>
+                        <th style="padding:10px 16px; text-align:right; width:10%">单价</th>
                         <th style="padding:10px 16px; text-align:right; width:10%">IVA</th>
                         <th style="padding:10px 16px; text-align:right; width:15%">金额</th>
                         <th style="padding:10px 16px; text-align:center; width:60px">操作</th>
