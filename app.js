@@ -2479,6 +2479,7 @@ function renderCats() {
     
     // Drag events for Parent
     panel.addEventListener('dragstart', e => {
+      if (e.target !== panel) return; // Prevent child drag from triggering parent drag if bubbling
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', JSON.stringify({type:'parent', idx}));
       panel.style.opacity = '0.5';
@@ -2514,18 +2515,37 @@ function renderCats() {
     title.textContent = '— ' + cat.name;
     const actions = document.createElement('div');
     actions.className = 'cat-actions';
-    const addBtn = document.createElement('button'); addBtn.className = 'btn-icon btn-green'; addBtn.textContent = '+'; addBtn.title = '新增二级类目';
-    const editBtn = document.createElement('button'); editBtn.className = 'btn-icon btn-blue'; editBtn.textContent = '✎'; editBtn.title = '编辑一级类目';
+    
+    const addBtn = document.createElement('button'); 
+    addBtn.className = 'btn-icon btn-green'; 
+    addBtn.textContent = '+'; 
+    addBtn.title = '新增二级类目';
+    addBtn.draggable = false;
+    addBtn.onmousedown = e => e.stopPropagation();
+    
+    const editBtn = document.createElement('button'); 
+    editBtn.className = 'btn-icon btn-blue'; 
+    editBtn.textContent = '✎'; 
+    editBtn.title = '编辑一级类目';
+    editBtn.draggable = false;
+    editBtn.onmousedown = e => e.stopPropagation();
+
     const delBlocked = (cat.name === '收入' || cat.name === '开支');
     actions.append(addBtn, editBtn);
     let delBtn = null;
     if (!delBlocked) {
-      delBtn = document.createElement('button'); delBtn.className = 'btn-icon btn-red'; delBtn.textContent = '🗑'; delBtn.title = '删除一级类目';
+      delBtn = document.createElement('button'); 
+      delBtn.className = 'btn-icon btn-red'; 
+      delBtn.textContent = '🗑'; 
+      delBtn.title = '删除一级类目';
+      delBtn.draggable = false;
+      delBtn.onmousedown = e => e.stopPropagation();
       actions.append(delBtn);
     }
     header.append(title, actions);
     const items = document.createElement('div');
     items.className = 'cat-items';
+    
     cat.children.forEach((name, j) => {
       const row = document.createElement('div');
       row.className = 'cat-item';
@@ -2558,17 +2578,10 @@ function renderCats() {
           const toPIdx = idx;
           const toCIdx = j;
           
-          // Only allow reorder within same parent
           if (fromPIdx !== toPIdx) return;
           if (fromCIdx === toCIdx) return;
 
           const item = categoriesData[fromPIdx].children.splice(fromCIdx, 1)[0];
-          // If we removed from before current index, current index shifted down
-          // But 'toCIdx' is captured in closure. 
-          // If from < to, we insert after? No, standard is insert at index.
-          // Example: [A, B, C]. Drag A(0) to B(1). 
-          // Remove A -> [B, C]. Insert at 1 -> [B, A, C]. Correct.
-          // Drag B(1) to A(0). Remove B. [A, C]. Insert at 0 -> [B, A, C]. Correct.
           categoriesData[toPIdx].children.splice(toCIdx, 0, item);
           
           saveJSON('categoriesData', categoriesData);
@@ -2579,15 +2592,25 @@ function renderCats() {
 
       const nm = document.createElement('div'); nm.className = 'cat-name'; nm.textContent = name;
       const ops = document.createElement('div'); ops.className = 'cat-actions';
-      const e = document.createElement('button'); e.className = 'btn-icon btn-blue'; e.textContent = '✎'; e.title = '编辑';
-      e.setAttribute('draggable', 'false');
-      e.addEventListener('mousedown', ev => ev.stopPropagation());
-      const d = document.createElement('button'); d.className = 'btn-icon btn-red'; d.textContent = '🗑'; d.title = '删除';
-      d.setAttribute('draggable', 'false');
-      d.addEventListener('mousedown', ev => ev.stopPropagation());
+      
+      const e = document.createElement('button'); 
+      e.className = 'btn-icon btn-blue'; 
+      e.textContent = '✎'; 
+      e.title = '编辑';
+      e.draggable = false;
+      e.onmousedown = ev => ev.stopPropagation();
+      
+      const d = document.createElement('button'); 
+      d.className = 'btn-icon btn-red'; 
+      d.textContent = '🗑'; 
+      d.title = '删除';
+      d.draggable = false;
+      d.onmousedown = ev => ev.stopPropagation();
+
       ops.append(e, d);
       row.append(nm, ops);
       items.appendChild(row);
+      
       e.addEventListener('click', (ev) => {
         ev.stopPropagation();
         const val = prompt('编辑名称', name);
@@ -2604,23 +2627,18 @@ function renderCats() {
     });
     panel.append(header, items);
     catList.appendChild(panel);
-    addBtn.setAttribute('draggable', 'false');
-    addBtn.addEventListener('mousedown', ev => ev.stopPropagation());
+    
     addBtn.addEventListener('click', (ev) => {
       ev.stopPropagation();
       const val = prompt('新增二级类目名称');
       if (val && val.trim()) { categoriesData[idx].children.push(val.trim()); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
     });
-    editBtn.setAttribute('draggable', 'false');
-    editBtn.addEventListener('mousedown', ev => ev.stopPropagation());
     editBtn.addEventListener('click', (ev) => {
       ev.stopPropagation();
       const val = prompt('编辑一级类目名称', cat.name);
       if (val && val.trim()) { categoriesData[idx].name = val.trim(); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
     });
     if (delBtn) {
-      delBtn.setAttribute('draggable', 'false');
-      delBtn.addEventListener('mousedown', ev => ev.stopPropagation());
       delBtn.addEventListener('click', (ev) => {
         ev.stopPropagation();
         if (confirm('确定删除该一级类目？')) { categoriesData.splice(idx,1); renderCats(); saveJSON('categoriesData', categoriesData); apiCategoriesSave(); }
