@@ -1448,7 +1448,7 @@ app.put('/api/tasks/:id/audit', authRequired, async (req, res) => {
 app.get('/api/daily-orders', authRequired, async (req, res) => {
   const { status } = req.query;
   let sql = `
-    select d.*, i.created_at as shipped_at 
+    select d.*, i.created_at as shipped_at, i.invoice_no 
     from daily_orders d 
     left join invoices i on d.invoice_id = i.id
   `;
@@ -1495,9 +1495,15 @@ app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
     }
     const invoiceNo = prefix + String(nextSeq).padStart(5, '0');
     
+    // Use allocated_qty for invoice items
+    const invoiceItems = items.map(item => {
+      const shipQty = Number(item.allocated_qty !== undefined ? item.allocated_qty : (item.qty || 0));
+      return { ...item, qty: shipQty, original_qty: item.qty };
+    });
+    
     // Calculate total
-    const total = items.reduce((sum, item) => {
-      const qty = Number(item.allocated_qty || item.qty || 0);
+    const total = invoiceItems.reduce((sum, item) => {
+      const qty = Number(item.qty || 0);
       const price = Number(item.price || 0);
       let taxRate = Number(item.tax_rate);
       if (isNaN(taxRate)) taxRate = 0.10;
@@ -1509,7 +1515,7 @@ app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
     const inv = await query(`
       insert into invoices(invoice_no, customer, date, items, total_amount, sales, created_at, created_by)
       values($1,$2,$3,$4,$5,$6,$7,$8) returning id
-    `, [invoiceNo, ord.customer, ord.date, JSON.stringify(items), total, ord.sales, now, 'system']);
+    `, [invoiceNo, ord.customer, ord.date, JSON.stringify(invoiceItems), total, ord.sales, now, 'system']);
     
     // Create Payable
     await query(`

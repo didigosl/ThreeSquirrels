@@ -5993,6 +5993,7 @@ async function loadDailyOrders(status = 'new', btn = null) {
       <td><span class="tag ${o.status==='new'?'red':(o.status==='allocated'?'blue':'green')}" style="cursor:pointer; text-decoration:underline" onclick="openOrderDetailsModal(${o.id})" title="点击查看详情">
         ${o.status==='new'?'新订单':(o.status==='allocated'?'已配货':'已发货')}
       </span></td>
+      <td>${o.status === 'shipped' && o.invoice_no ? o.invoice_no : '-'}</td>
       <td>
         ${o.status==='new' ? `<button class="btn-sm" onclick="openAllocateModal(${o.id})">配货</button> <button class="btn-sm btn-secondary" style="margin-left:4px" onclick="openOrderPreview(${o.id})">预览</button>` : ''}
         ${o.status==='allocated' ? `<button class="btn-sm" onclick="confirmShip(${o.id})">发货</button>` : ''}
