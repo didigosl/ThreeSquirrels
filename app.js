@@ -5812,6 +5812,104 @@ async function auditTask(id) {
     loadTasks('review');
 }
 
+function openOrderDetailsModal(id) {
+  const o = currentDailyOrders.find(x => x.id === id);
+  if (!o) return;
+  const m = document.getElementById('do-details-modal');
+  if (m) {
+    document.getElementById('do-details-customer').textContent = o.customer;
+    document.getElementById('do-details-date').textContent = o.date;
+    document.getElementById('do-details-status').textContent = o.status === 'new' ? '新订单' : (o.status === 'allocated' ? '已配货' : '已发货');
+    
+    const tbody = document.getElementById('do-details-rows');
+    const items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+    tbody.innerHTML = items.map(i => `
+      <tr>
+        <td>${i.name}</td>
+        <td>${i.cn_name || ''}</td>
+        <td>${i.qty}</td>
+      </tr>
+    `).join('');
+    m.style.display = 'flex';
+  }
+}
+
+function openOrderPreview(id) {
+  const o = currentDailyOrders.find(x => x.id === id);
+  if (!o) return;
+  const m = document.getElementById('do-preview-modal');
+  const content = document.getElementById('do-preview-content');
+  if (m && content) {
+    const items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+    content.innerHTML = `
+      <div style="font-family: Arial, sans-serif; color:#000; padding:20px">
+        <h2 style="text-align:center; margin-bottom:20px">订单详情</h2>
+        <div style="display:flex; justify-content:space-between; margin-bottom:20px">
+          <div>
+            <div><strong>客户:</strong> ${o.customer}</div>
+            <div><strong>日期:</strong> ${o.date}</div>
+          </div>
+          <div>
+            <div><strong>订单号:</strong> #${o.id}</div>
+            <div><strong>状态:</strong> ${o.status === 'new' ? '新订单' : (o.status === 'allocated' ? '已配货' : '已发货')}</div>
+          </div>
+        </div>
+        <table style="width:100%; border-collapse:collapse; margin-bottom:20px">
+          <thead>
+            <tr style="background:#f3f4f6">
+              <th style="border:1px solid #ddd; padding:8px; text-align:left">商品</th>
+              <th style="border:1px solid #ddd; padding:8px; text-align:left">中文名</th>
+              <th style="border:1px solid #ddd; padding:8px; text-align:right">数量</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map(i => `
+              <tr>
+                <td style="border:1px solid #ddd; padding:8px">${i.name}</td>
+                <td style="border:1px solid #ddd; padding:8px">${i.cn_name || ''}</td>
+                <td style="border:1px solid #ddd; padding:8px; text-align:right">${i.qty}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div style="margin-top:40px; display:flex; justify-content:space-between">
+          <div>制单人: ________________</div>
+          <div>签收人: ________________</div>
+        </div>
+      </div>
+    `;
+    m.style.display = 'flex';
+  }
+}
+
+function printOrderPreview() {
+  const content = document.getElementById('do-preview-content').innerHTML;
+  const win = window.open('', '', 'width=800,height=600');
+  win.document.write(`
+    <html>
+      <head>
+        <title>打印订单</title>
+        <style>
+          body { font-family: Arial, sans-serif; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border: 1px solid #ddd; padding: 8px; }
+          th { background-color: #f3f4f6; }
+          @media print {
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        ${content}
+        <script>
+          window.onload = function() { window.print(); window.close(); }
+        </script>
+      </body>
+    </html>
+  `);
+  win.document.close();
+}
+
 // Daily Orders
 let currentDailyOrders = [];
 async function loadDailyOrders(status = 'new', btn = null) {
@@ -5871,11 +5969,11 @@ async function loadDailyOrders(status = 'new', btn = null) {
     <tr>
       <td>${o.customer}</td>
       <td>${o.date}</td>
-      <td><span class="tag ${o.status==='new'?'red':(o.status==='allocated'?'blue':'green')}">
+      <td><span class="tag ${o.status==='new'?'red':(o.status==='allocated'?'blue':'green')}" style="cursor:pointer; text-decoration:underline" onclick="openOrderDetailsModal(${o.id})" title="点击查看详情">
         ${o.status==='new'?'新订单':(o.status==='allocated'?'已配货':'已发货')}
       </span></td>
       <td>
-        ${o.status==='new' ? `<button class="btn-sm" onclick="openAllocateModal(${o.id})">配货</button>` : ''}
+        ${o.status==='new' ? `<button class="btn-sm" onclick="openAllocateModal(${o.id})">配货</button> <button class="btn-sm btn-secondary" style="margin-left:4px" onclick="openOrderPreview(${o.id})">预览</button>` : ''}
         ${o.status==='allocated' ? `<button class="btn-sm" onclick="confirmShip(${o.id})">发货</button>` : ''}
       </td>
     </tr>

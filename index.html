@@ -233,7 +233,7 @@
   </head>
   <body>
     <div class="layout">
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-13</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-14</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -562,6 +562,44 @@
               </table>
             </div>
             <div class="modal-actions"><button class="btn" onclick="confirmAllocate()">确认配货完成</button></div>
+          </div>
+        </div>
+
+        <!-- Order Details Modal -->
+        <div id="do-details-modal" class="modal-overlay" style="display:none">
+          <div class="modal" style="width:600px; max-width:95vw">
+            <div class="modal-header">
+              <div class="modal-title">订单详情</div>
+              <button class="btn-secondary" onclick="document.getElementById('do-details-modal').style.display='none'">关闭</button>
+            </div>
+            <div class="modal-body">
+              <div style="margin-bottom:16px; color:#94a3b8; line-height:1.6">
+                <div><strong>客户:</strong> <span id="do-details-customer" style="color:#fff"></span></div>
+                <div><strong>日期:</strong> <span id="do-details-date" style="color:#fff"></span></div>
+                <div><strong>状态:</strong> <span id="do-details-status" style="color:#fff"></span></div>
+              </div>
+              <table class="table">
+                <thead><tr><th>商品</th><th>中文名</th><th>数量</th></tr></thead>
+                <tbody id="do-details-rows"></tbody>
+              </table>
+            </div>
+            <div class="modal-actions" style="justify-content:center"><button class="btn" onclick="document.getElementById('do-details-modal').style.display='none'">关闭</button></div>
+          </div>
+        </div>
+
+        <!-- Order Preview Modal (Printable) -->
+        <div id="do-preview-modal" class="modal-overlay" style="display:none; z-index:10000">
+          <div class="modal" style="width:800px; max-width:95vw; height:90vh; display:flex; flex-direction:column">
+            <div class="modal-header">
+              <div class="modal-title">订单预览</div>
+              <div style="display:flex; gap:8px">
+                <button class="btn" onclick="printOrderPreview()">打印</button>
+                <button class="btn-secondary" onclick="document.getElementById('do-preview-modal').style.display='none'">关闭</button>
+              </div>
+            </div>
+            <div class="modal-body" style="flex:1; overflow:auto; background:#fff; color:#000; padding:40px" id="do-preview-content">
+              <!-- Content injected via JS -->
+            </div>
           </div>
         </div>
 
@@ -2177,6 +2215,6 @@
 
       </aside>
     </div>
-    <script src="app.js?v=20260307-13"></script>
+    <script src="app.js?v=20260307-14"></script>
   </body>
 </html>
