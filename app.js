@@ -5823,11 +5823,25 @@ function openOrderDetailsModal(id) {
     
     const tbody = document.getElementById('do-details-rows');
     const items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+    
+    const thead = m.querySelector('thead tr');
+    if (o.status === 'new') {
+        thead.innerHTML = '<th>商品</th><th>中文名</th><th>数量</th>';
+    } else {
+        thead.innerHTML = '<th>商品</th><th>中文名</th><th>订货数量</th><th>实际配货数量</th>';
+    }
+
     tbody.innerHTML = items.map(i => `
       <tr>
-        <td>${i.name}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            ${i.image ? `<img src="${i.image}" style="width:32px;height:32px;object-fit:cover;border-radius:4px">` : ''}
+            <span>${i.name}</span>
+          </div>
+        </td>
         <td>${i.cn_name || ''}</td>
         <td>${i.qty}</td>
+        ${o.status !== 'new' ? `<td>${i.allocated_qty || 0}</td>` : ''}
       </tr>
     `).join('');
     m.style.display = 'flex';
@@ -5865,7 +5879,10 @@ function openOrderPreview(id) {
           <tbody>
             ${items.map(i => `
               <tr>
-                <td style="border:1px solid #ddd; padding:8px">${i.name}</td>
+                <td style="border:1px solid #ddd; padding:8px">
+                  ${i.image ? `<img src="${i.image}" style="width:32px;height:32px;object-fit:cover;margin-right:8px;vertical-align:middle">` : ''}
+                  ${i.name}
+                </td>
                 <td style="border:1px solid #ddd; padding:8px">${i.cn_name || ''}</td>
                 <td style="border:1px solid #ddd; padding:8px; text-align:right">${i.qty}</td>
               </tr>
@@ -5965,10 +5982,11 @@ async function loadDailyOrders(status = 'new', btn = null) {
     return;
   }
   
-  tbody.innerHTML = list.map(o => `
+  tbody.innerHTML = list.map((o, idx) => `
     <tr>
+      <td>${list.length - idx}</td>
       <td>${o.customer}</td>
-      <td>${o.date}</td>
+      <td>${o.status === 'shipped' && o.shipped_at ? new Date(Number(o.shipped_at)).toLocaleString() : o.date}</td>
       <td><span class="tag ${o.status==='new'?'red':(o.status==='allocated'?'blue':'green')}" style="cursor:pointer; text-decoration:underline" onclick="openOrderDetailsModal(${o.id})" title="点击查看详情">
         ${o.status==='new'?'新订单':(o.status==='allocated'?'已配货':'已发货')}
       </span></td>
@@ -6099,9 +6117,16 @@ function addDoItemRow(prod) {
   tr.className = 'do-item-row';
   tr.innerHTML = `
     <td>
-      <div style="font-weight:600">${prod.name}</div>
-      <div style="font-size:12px; color:#94a3b8">${prod.sku || ''}</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        ${prod.image ? `<img src="${prod.image}" style="width:32px;height:32px;object-fit:cover;border-radius:4px">` : ''}
+        <div>
+          <div style="font-weight:600">${prod.name}</div>
+          <div style="font-size:12px; color:#94a3b8">${prod.sku || ''}</div>
+        </div>
+      </div>
       <input type="hidden" class="do-item-name" value="${prod.name}">
+      <input type="hidden" class="do-item-image" value="${prod.image || ''}">
+      <input type="hidden" class="do-item-cn" value="${prod.name_cn || ''}">
     </td>
     <td><div style="color:#94a3b8; font-size:13px">${prod.name_cn||''}</div></td>
     <td><input type="number" class="do-item-qty" value="1" min="1" style="width:80px"></td>
@@ -6119,14 +6144,15 @@ async function saveDailyOrder() {
   const items = [];
   document.querySelectorAll('.do-item-row').forEach(row => {
     const name = row.querySelector('.do-item-name').value;
+    const image = row.querySelector('.do-item-image').value;
+    const cn_name = row.querySelector('.do-item-cn').value;
     const qty = row.querySelector('.do-item-qty').value;
     const price = row.querySelector('.do-item-price').value;
-    if (name && qty) items.push({ name, qty: Number(qty), price: Number(price) });
+    if (name && qty) items.push({ name, image, cn_name, qty: Number(qty), price: Number(price) });
   });
   
   if (items.length === 0) return alert('请添加商品');
   
-  // Note: sales field is removed
   await fetchWithAuth('/api/daily-orders', {
     method: 'POST',
     body: JSON.stringify({ customer, date, items })
@@ -6145,9 +6171,14 @@ function openAllocateModal(id) {
   
   tbody.innerHTML = items.map((item, idx) => `
     <tr>
-      <td>${item.name}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${item.image ? `<img src="${item.image}" style="width:32px;height:32px;object-fit:cover;border-radius:4px">` : ''}
+          <span>${item.name}</span>
+        </div>
+      </td>
       <td>${item.qty}</td>
-      <td><input type="number" class="alloc-qty" data-idx="${idx}" value="${item.qty}" style="width:80px"></td>
+      <td><input type="number" class="alloc-qty" data-idx="${idx}" value="${item.allocated_qty || item.qty}" style="width:80px"></td>
     </tr>
   `).join('');
   m.style.display = 'flex';

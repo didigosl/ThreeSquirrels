@@ -1447,10 +1447,14 @@ app.put('/api/tasks/:id/audit', authRequired, async (req, res) => {
 // Daily Orders
 app.get('/api/daily-orders', authRequired, async (req, res) => {
   const { status } = req.query;
-  let sql = 'select * from daily_orders';
+  let sql = `
+    select d.*, i.created_at as shipped_at 
+    from daily_orders d 
+    left join invoices i on d.invoice_id = i.id
+  `;
   const p = [];
-  if (status) { sql += ' where status=$1'; p.push(status); }
-  sql += ' order by created_at desc';
+  if (status) { sql += ' where d.status=$1'; p.push(status); }
+  sql += ' order by d.created_at desc';
   const r = await query(sql, p);
   res.json(r.rows);
 });
