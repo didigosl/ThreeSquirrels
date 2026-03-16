@@ -5986,7 +5986,10 @@ async function loadDailyOrders(status = 'new', btn = null) {
     <tr>
       <td>${list.length - idx}</td>
       <td>${o.customer}</td>
-      <td>${o.status === 'shipped' && o.shipped_at ? new Date(Number(o.shipped_at)).toLocaleString() : o.date}</td>
+      <td>
+        <div style="font-size:13px">下单: ${o.date}</div>
+        ${o.status === 'shipped' && o.shipped_at ? `<div style="color:#64748b;font-size:12px">发货: ${new Date(Number(o.shipped_at)).toLocaleString()}</div>` : ''}
+      </td>
       <td><span class="tag ${o.status==='new'?'red':(o.status==='allocated'?'blue':'green')}" style="cursor:pointer; text-decoration:underline" onclick="openOrderDetailsModal(${o.id})" title="点击查看详情">
         ${o.status==='new'?'新订单':(o.status==='allocated'?'已配货':'已发货')}
       </span></td>
