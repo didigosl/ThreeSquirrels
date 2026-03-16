@@ -320,6 +320,9 @@ async function ensureSchema() {
       created_at bigint
     );
   `);
+  // Migrations
+  try { await query('alter table tasks add column completion_image text'); } catch {}
+  try { await query('alter table tasks add column completion_desc text'); } catch {}
 }
 // Ensure schema then defaults sequentially to avoid race
 (async () => {
@@ -1430,7 +1433,8 @@ app.post('/api/tasks', authRequired, async (req, res) => {
 });
 app.put('/api/tasks/:id/complete', authRequired, async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  await query('update tasks set status=$1, completed_by=$2, completed_at=$3 where id=$4', ['waiting_audit', req.user.name, Date.now(), id]);
+  const { image, desc } = req.body;
+  await query('update tasks set status=$1, completed_by=$2, completed_at=$3, completion_image=$4, completion_desc=$5 where id=$6', ['waiting_audit', req.user.name, Date.now(), image||'', desc||'', id]);
   res.json({ ok: true });
 });
 app.put('/api/tasks/:id/audit', authRequired, async (req, res) => {

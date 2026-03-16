@@ -5601,11 +5601,28 @@ async function loadTasks(tab = 'new', btn = null, page = 1) {
         }
     }
 
+    let descInfo = t.description || '';
+    if (t.completion_desc) {
+      descInfo += `<div style="margin-top:4px; font-size:12px; color:#94a3b8; border-top:1px dashed #334155; padding-top:4px">
+        <span style="color:#22c55e">完成备注:</span> ${t.completion_desc}
+      </div>`;
+    }
+    if (t.completion_image) {
+      descInfo += `<div style="margin-top:4px">
+        <img src="${t.completion_image}" style="width:48px; height:48px; object-fit:cover; border-radius:4px; cursor:zoom-in; border:1px solid #334155" onclick="showTaskImage(this.src)" title="点击放大">
+      </div>`;
+    }
+
+    let assignInfo = t.assigned_to || '';
+    if (t.completed_at) {
+        assignInfo += `<div style="margin-top:4px; font-size:11px; color:#94a3b8">完成于:<br>${new Date(Number(t.completed_at)).toLocaleString()}</div>`;
+    }
+
     return `
     <tr>
       <td>${t.title||''}</td>
-      <td>${t.description||''}</td>
-      <td>${t.assigned_to||''}</td>
+      <td>${descInfo}</td>
+      <td>${assignInfo}</td>
       <td>${t.created_by||''}<br><span style="font-size:12px;color:#666">${new Date(Number(t.created_at)).toLocaleString()}</span></td>
       <td><span class="tag ${t.status==='completed'?'green':(t.status==='waiting_audit'?'orange':'blue')}">
         ${t.status==='completed'?'已完成':(t.status==='waiting_audit'?'审核中':'新任务')}
@@ -5728,10 +5745,60 @@ async function saveTask() {
     badge.style.display = 'inline-block';
   }
 }
-async function completeTask(id) {
-  if (!confirm('确认完成任务？')) return;
-  await fetchWithAuth(`/api/tasks/${id}/complete`, { method:'PUT' });
+function openCompleteTaskModal(id) {
+  const m = document.getElementById('complete-task-modal');
+  if (m) {
+    m.style.display = 'flex';
+    document.getElementById('complete-task-id').value = id;
+    document.getElementById('complete-task-image').value = '';
+    document.getElementById('complete-task-image-preview').style.display = 'none';
+    document.getElementById('complete-task-image-base64').value = '';
+    document.getElementById('complete-task-desc').value = '';
+  }
+}
+
+function closeCompleteTaskModal() {
+  const m = document.getElementById('complete-task-modal');
+  if (m) m.style.display = 'none';
+}
+
+window.previewCompleteTaskImage = function(input) {
+  if (input.files && input.files[0]) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const prev = document.getElementById('complete-task-image-preview');
+      prev.querySelector('img').src = e.target.result;
+      prev.style.display = 'block';
+      document.getElementById('complete-task-image-base64').value = e.target.result;
+    }
+    reader.readAsDataURL(input.files[0]);
+  }
+}
+
+window.submitCompleteTask = async function() {
+  const id = document.getElementById('complete-task-id').value;
+  const image = document.getElementById('complete-task-image-base64').value;
+  const desc = document.getElementById('complete-task-desc').value;
+  
+  await fetchWithAuth(`/api/tasks/${id}/complete`, { 
+    method:'PUT',
+    body: JSON.stringify({ image, desc })
+  });
+  closeCompleteTaskModal();
   loadTasks('new');
+}
+
+window.showTaskImage = function(src) {
+  const lb = document.getElementById('image-lightbox');
+  const img = document.getElementById('lightbox-img');
+  if (lb && img) {
+    img.src = src;
+    lb.style.display = 'flex';
+  }
+}
+
+async function completeTask(id) {
+  openCompleteTaskModal(id);
 }
 async function auditTask(id) {
     if (!confirm('确认审核通过？')) return;
