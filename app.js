@@ -6172,10 +6172,11 @@ async function confirmAllocate() {
   alert('配货完成，请到已配货列表确认发货');
 }
 async function confirmShip(id) {
-  if (!confirm('确认已发货？')) return;
-  await fetchWithAuth(`/api/daily-orders/${id}/ship`, { method:'PUT' });
-  loadDailyOrders('allocated');
-  alert('发货完成，发票已生成');
+  openConfirm('确认已发货？(发票将自动生成)', async () => {
+    await fetchWithAuth(`/api/daily-orders/${id}/ship`, { method:'PUT' });
+    loadDailyOrders('allocated');
+    alert('发货完成，发票已生成');
+  });
 }
 
 // Finished Stock
