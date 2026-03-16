@@ -5780,12 +5780,18 @@ window.submitCompleteTask = async function() {
   const image = document.getElementById('complete-task-image-base64').value;
   const desc = document.getElementById('complete-task-desc').value;
   
-  await fetchWithAuth(`/api/tasks/${id}/complete`, { 
+  const res = await fetchWithAuth(`/api/tasks/${id}/complete`, { 
     method:'PUT',
     body: JSON.stringify({ image, desc })
   });
+  
+  if (!res.ok) {
+    alert('提交失败，请检查网络或重启服务器');
+    return;
+  }
+
   closeCompleteTaskModal();
-  loadTasks('new');
+  loadTasks(currentTaskTab);
 }
 
 window.showTaskImage = function(src) {
