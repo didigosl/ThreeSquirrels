@@ -1566,8 +1566,12 @@ app.get('/api/inventory/finished', authRequired, async (req, res) => {
   // User: "List shows product image, name, expiry time, stock qty".
   // Let's join products and batches.
   const r = await query(`
-    select p.id, p.name, p.name_cn as cn_name, p.image, p.stock as total_stock,
-    (select expiration_date from inventory_batches where product_id=p.id and quantity>0 order by expiration_date asc limit 1) as nearest_expiry
+    select p.id, p.name, p.name_cn, p.image, p.stock as total_stock,
+    (
+      select json_agg(json_build_object('qty', quantity, 'expiry', expiration_date) order by expiration_date asc)
+      from inventory_batches
+      where product_id=p.id and quantity>0
+    ) as batches
     from products p
     order by p.stock desc
   `);
@@ -1585,7 +1589,11 @@ app.post('/api/inventory/finished', authRequired, async (req, res) => {
 app.get('/api/inventory/raw', authRequired, async (req, res) => {
   const r = await query(`
     select m.*,
-    (select expiration_date from material_batches where material_id=m.id and quantity>0 order by expiration_date asc limit 1) as nearest_expiry
+    (
+      select json_agg(json_build_object('qty', quantity, 'expiry', expiration_date) order by expiration_date asc)
+      from material_batches
+      where material_id=m.id and quantity>0
+    ) as batches
     from materials m
     order by m.stock desc
   `);

@@ -6239,15 +6239,23 @@ async function loadFinishedStock() {
   const list = await res.json();
   const tbody = document.getElementById('finished-stock-rows');
   if (!tbody) return;
-  tbody.innerHTML = list.map(p => `
+  tbody.innerHTML = list.map(p => {
+    let stockHtml = p.total_stock;
+    let expiryHtml = '-';
+    if (p.batches && p.batches.length > 0) {
+      stockHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + p.batches.map(b => `<div>${b.qty}</div>`).join('') + `</div>`;
+      expiryHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + p.batches.map(b => `<div>${b.expiry}</div>`).join('') + `</div>`;
+    }
+    return `
     <tr>
       <td>${p.image ? `<img src="${p.image}" class="thumb-img" style="width:40px;height:40px;object-fit:cover">` : ''}</td>
       <td>${p.name}</td>
-      <td>${p.cn_name || ''}</td>
-      <td>${p.total_stock}</td>
-      <td>${p.nearest_expiry || '-'}</td>
+      <td>${p.name_cn || ''}</td>
+      <td>${stockHtml}</td>
+      <td>${expiryHtml}</td>
     </tr>
-  `).join('');
+    `;
+  }).join('');
 }
 function openFinishedStockModal() {
   const m = document.getElementById('fs-add-modal');
@@ -6297,13 +6305,21 @@ async function loadRawStock() {
   const list = await res.json();
   const tbody = document.getElementById('raw-stock-rows');
   if (!tbody) return;
-  tbody.innerHTML = list.map(m => `
+  tbody.innerHTML = list.map(m => {
+    let stockHtml = m.stock;
+    let expiryHtml = '-';
+    if (m.batches && m.batches.length > 0) {
+      stockHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + m.batches.map(b => `<div>${b.qty}</div>`).join('') + `</div>`;
+      expiryHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + m.batches.map(b => `<div>${b.expiry}</div>`).join('') + `</div>`;
+    }
+    return `
     <tr>
       <td>${m.name}</td>
-      <td>${m.stock}</td>
-      <td>${m.nearest_expiry || '-'}</td>
+      <td>${stockHtml}</td>
+      <td>${expiryHtml}</td>
     </tr>
-  `).join('');
+    `;
+  }).join('');
 }
 function openRawStockModal() {
   document.getElementById('rs-add-modal').style.display = 'flex';
