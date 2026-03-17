@@ -1566,7 +1566,7 @@ app.get('/api/inventory/finished', authRequired, async (req, res) => {
   // User: "List shows product image, name, expiry time, stock qty".
   // Let's join products and batches.
   const r = await query(`
-    select p.id, p.name, p.image, p.stock as total_stock,
+    select p.id, p.name, p.name_cn as cn_name, p.image, p.stock as total_stock,
     (select expiration_date from inventory_batches where product_id=p.id and quantity>0 order by expiration_date asc limit 1) as nearest_expiry
     from products p
     order by p.stock desc

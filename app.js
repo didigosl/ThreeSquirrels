@@ -6243,6 +6243,7 @@ async function loadFinishedStock() {
     <tr>
       <td>${p.image ? `<img src="${p.image}" class="thumb-img" style="width:40px;height:40px;object-fit:cover">` : ''}</td>
       <td>${p.name}</td>
+      <td>${p.cn_name || ''}</td>
       <td>${p.total_stock}</td>
       <td>${p.nearest_expiry || '-'}</td>
     </tr>
@@ -6250,25 +6251,30 @@ async function loadFinishedStock() {
 }
 function openFinishedStockModal() {
   const m = document.getElementById('fs-add-modal');
-  if (m) m.style.display = 'flex';
-  // Product Search Logic
-  const inp = document.getElementById('fs-prod-search');
-  const list = document.getElementById('fs-prod-list');
-  inp.oninput = async () => {
-    const q = inp.value;
-    if (!q) { list.style.display='none'; return; }
-    const res = await fetchWithAuth(`/api/products?q=${encodeURIComponent(q)}`);
-    const data = await res.json();
-    list.innerHTML = data.list.map(p => `<div class="dd-item" data-id="${p.id}" data-name="${p.name}">${p.name}</div>`).join('');
-    list.style.display = 'block';
-    list.querySelectorAll('.dd-item').forEach(div => {
-      div.onclick = () => {
-        inp.value = div.dataset.name;
-        document.getElementById('fs-prod-id').value = div.dataset.id;
-        list.style.display = 'none';
-      };
-    });
-  };
+  if (m) {
+    m.style.display = 'flex';
+    document.getElementById('fs-prod-search').value = '';
+    document.getElementById('fs-prod-id').value = '';
+    document.getElementById('fs-qty').value = '';
+    
+    // Default to today
+    const tzOffset = (new Date()).getTimezoneOffset() * 60000;
+    const localISOTime = (new Date(Date.now() - tzOffset)).toISOString().slice(0, 10);
+    document.getElementById('fs-expiry').value = localISOTime;
+  }
+}
+
+function openFsProdSelector() {
+  const m = document.getElementById('prod-selector-modal');
+  if (m) {
+    m.style.display = 'flex';
+    loadProductSelector(1);
+    window.onProdSelect = function(prod) {
+      document.getElementById('fs-prod-search').value = prod.name;
+      document.getElementById('fs-prod-id').value = prod.id;
+      m.style.display = 'none';
+    };
+  }
 }
 async function saveFinishedStock() {
   const productId = document.getElementById('fs-prod-id').value;

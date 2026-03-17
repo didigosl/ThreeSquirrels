@@ -258,8 +258,14 @@
         #task-rows td:nth-of-type(4)::before { content:"分配给"; }
         #task-rows td:nth-of-type(5)::before { content:"创建人"; }
         #task-rows td:nth-of-type(6)::before { content:"时限"; }
-        #task-rows td:nth-of-type(7)::before { content:"状态"; }
+        #task-rows td:nth-of-type(7)::before { content:"操作"; }
         #task-rows td:nth-of-type(8)::before { display:none; }
+
+        #finished-stock-rows td:nth-of-type(1)::before { content:"图片"; }
+        #finished-stock-rows td:nth-of-type(2)::before { content:"名称"; }
+        #finished-stock-rows td:nth-of-type(3)::before { content:"中文名称"; }
+        #finished-stock-rows td:nth-of-type(4)::before { content:"总库存"; }
+        #finished-stock-rows td:nth-of-type(5)::before { content:"最近过期时间"; }
 
         .modal { width:100% !important; height:100% !important; border-radius:0; display:flex; flex-direction:column; }
         .modal-body { flex:1; overflow-y:auto; padding:16px; }
@@ -282,7 +288,7 @@
         <div class="brand" style="padding:0; display:flex !important"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <div class="mobile-menu-btn" onclick="toggleSidebar()">☰</div>
       </div>
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-21</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-22</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -296,7 +302,7 @@
             <div class="nav-children collapsed">
               <a href="#tasks">任务信息 <span id="nav-task-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></a>
               <a href="#daily-orders">订单管理 <span id="nav-order-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></a>
-              <a href="#finished-stock">成品库存</a>
+              <a href="#finished-stock">商品库存</a>
               <a href="#raw-stock">原材料库存</a>
             </div>
           </div>
@@ -476,9 +482,9 @@
         <!-- Finished Stock Page -->
         <div id="page-finished-stock" style="display:none">
           <div class="card search">
-            <h3 style="margin:0">成品库存</h3>
+            <h3 style="margin:0">商品库存</h3>
             <div style="flex:1"></div>
-            <button class="btn" onclick="openFinishedStockModal()">+ 添加库存</button>
+            <button class="btn" onclick="openFinishedStockModal()">+ 添加商品库存</button>
           </div>
           <div class="card" style="margin-top:16px">
             <table class="table">
@@ -486,6 +492,7 @@
                 <tr>
                   <th>图片</th>
                   <th>名称</th>
+                  <th>中文名称</th>
                   <th>总库存</th>
                   <th>最近过期时间</th>
                 </tr>
@@ -668,11 +675,11 @@
         <!-- Finished Stock Add Modal -->
         <div id="fs-add-modal" class="modal-overlay" style="display:none">
           <div class="modal">
-            <div class="modal-header"><div class="modal-title">添加成品库存</div><button class="btn-secondary" onclick="document.getElementById('fs-add-modal').style.display='none'">关闭</button></div>
+            <div class="modal-header"><div class="modal-title">添加商品库存</div><button class="btn-secondary" onclick="document.getElementById('fs-add-modal').style.display='none'">关闭</button></div>
             <div class="modal-body">
-              <div class="group"><span class="label">商品</span><input id="fs-prod-search" type="text" placeholder="搜索商品..."><div id="fs-prod-list" class="dropdown-list"></div><input type="hidden" id="fs-prod-id"></div>
+              <div class="group"><span class="label">商品</span><input id="fs-prod-search" type="text" placeholder="点击选择商品" readonly onclick="openFsProdSelector()"><input type="hidden" id="fs-prod-id"></div>
               <div class="group"><span class="label">数量</span><input id="fs-qty" type="number"></div>
-              <div class="group"><span class="label">过期时间</span><input id="fs-expiry" type="date"></div>
+              <div class="group" onclick="document.getElementById('fs-expiry').showPicker && document.getElementById('fs-expiry').showPicker()"><span class="label">过期时间</span><input id="fs-expiry" type="date"></div>
             </div>
             <div class="modal-actions"><button class="btn" onclick="saveFinishedStock()">保存</button></div>
           </div>
@@ -2277,6 +2284,6 @@
 
       </aside>
     </div>
-    <script src="app.js?v=20260307-21"></script>
+    <script src="app.js?v=20260307-22"></script>
   </body>
 </html>
