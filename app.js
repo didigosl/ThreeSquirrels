@@ -6248,6 +6248,7 @@ async function loadFinishedStock() {
     }
     return `
     <tr>
+      <td>${p.id}</td>
       <td>${p.image ? `<img src="${p.image}" class="thumb-img" style="width:40px;height:40px;object-fit:cover">` : ''}</td>
       <td>${p.name}</td>
       <td>${p.name_cn || ''}</td>
