@@ -289,7 +289,7 @@
         <div class="brand" style="padding:0; display:flex !important"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <div class="mobile-menu-btn" onclick="toggleSidebar()">☰</div>
       </div>
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-24</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-25</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -927,7 +927,7 @@
           </div>
         </div>
         <div id="page-home" style="display:none">
-          <div class="card" style="padding:16px">
+          <div class="card" style="padding:16px; margin-bottom:16px">
             <div class="bar" style="display:flex; align-items:center; justify-content:space-between">
               <h3 style="margin:0">收入/开支对比</h3>
               <div style="display:flex; gap:8px; align-items:center">
@@ -940,6 +940,21 @@
             </div>
             <div id="home-chart" style="padding:12px; overflow-x:auto">
               <div id="home-chart-rows" style="display:flex; gap:16px; align-items:flex-end; height:260px"></div>
+            </div>
+          </div>
+          <div class="card" style="padding:16px">
+            <div class="bar" style="display:flex; align-items:center; justify-content:space-between">
+              <h3 style="margin:0">销售业绩</h3>
+              <div style="display:flex; gap:8px; align-items:center">
+                <select id="sales-period" style="background:#0b1524; border:1px solid #233048; color:#fff; border-radius:8px; padding:8px 10px; outline:none">
+                  <option value="month">按月</option>
+                  <option value="day">按天</option>
+                  <option value="year">按年</option>
+                </select>
+              </div>
+            </div>
+            <div id="sales-chart" style="padding:12px; overflow-x:auto; position:relative; height:300px">
+              <svg id="sales-chart-svg" style="width:100%; height:100%; min-width:600px; display:block"></svg>
             </div>
           </div>
         </div>
@@ -2286,6 +2301,6 @@
 
       </aside>
     </div>
-    <script src="app.js?v=20260307-24"></script>
+    <script src="app.js?v=20260307-25"></script>
   </body>
 </html>

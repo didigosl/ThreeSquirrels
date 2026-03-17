@@ -1042,6 +1042,44 @@ app.get('/api/analytics/ledger-summary', authRequired, ensureAllow('ledger','vie
   res.json(out);
 });
 
+app.get('/api/analytics/sales-summary', authRequired, async (req, res) => {
+  const { period='month', range='12' } = req.query;
+  const n = Math.max(1, Math.min(365, parseInt(range, 10) || 12));
+  const now = new Date();
+  const out = [];
+  function fmtYMD(d) {
+    const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${dd}`;
+  }
+  for (let i=n-1;i>=0;i--) {
+    let label = '';
+    let start = '', end = '';
+    if (period === 'year') {
+      const y = now.getFullYear() - i;
+      label = String(y);
+      start = `${y}-01-01`; end = `${y}-12-31`;
+    } else if (period === 'day') {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate()-i);
+      label = `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      start = fmtYMD(d); end = fmtYMD(d);
+    } else {
+      const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+      const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0');
+      label = `${y}-${m}`;
+      start = `${y}-${m}-01`;
+      const d2 = new Date(d.getFullYear(), d.getMonth()+1, 0);
+      end = fmtYMD(d2);
+    }
+    const r = await query(`
+      select sum(total_amount)::numeric(12,2) as total
+      from invoices
+      where date >= $1 and date <= $2
+    `, [start, end]);
+    const amount = Number(r.rows[0]?.total || 0);
+    out.push({ label, amount });
+  }
+  res.json(out);
+});
+
 // Products endpoints
 app.get('/api/products', authRequired, ensureAllow('sales_products','view'), async (req, res) => {
   const { q='', page='1', size='50' } = req.query;

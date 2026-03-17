@@ -43,6 +43,8 @@ const entryForm = document.getElementById('entry-form');
 const entrySubmitBtn = entryForm?.querySelector('button[type="submit"]');
 const rows = document.getElementById('rows');
 const homeChartRows = document.getElementById('home-chart-rows');
+const salesChartSvg = document.getElementById('sales-chart-svg');
+const salesPeriodSel = document.getElementById('sales-period');
 const homePeriodSel = document.getElementById('home-period');
 const filterType = document.getElementById('filter-type');
 const filterKey = document.getElementById('filter-key');
@@ -835,7 +837,10 @@ document.getElementById('entry-form').addEventListener('submit', async e => {
     return rest;
   }));
   saveJSON('accountsData', accountsData);
-  if (document.getElementById('page-home')?.style.display === 'block') renderHomeChart('month');
+  if (document.getElementById('page-home')?.style.display === 'block') {
+    renderHomeChart(homePeriodSel?.value || 'month');
+    renderSalesChart(salesPeriodSel?.value || 'month');
+  }
 });
 const payRows = document.getElementById('pay-rows');
 const payType = document.getElementById('pay-type');
@@ -3240,7 +3245,10 @@ async function loadLedgerFromServer() {
       saveJSON('records', records);
       applyFilters();
       const hm = document.getElementById('page-home');
-      if (hm && hm.style.display === 'block') renderHomeChart(homePeriodSel?.value || 'month');
+      if (hm && hm.style.display === 'block') {
+      renderHomeChart(homePeriodSel?.value || 'month');
+      renderSalesChart(salesPeriodSel?.value || 'month');
+    }
     }
   } catch {}
 }
@@ -3539,6 +3547,81 @@ async function renderHomeChart(mode='month') {
   });
 }
 homePeriodSel?.addEventListener('change', () => { const v=homePeriodSel.value||'month'; renderHomeChart(v); });
+
+async function renderSalesChart(mode='month') {
+  if (!salesChartSvg) return;
+  let data = [];
+  try {
+    const range = mode==='day' ? 30 : 12;
+    data = await apiFetchJSON(`/api/analytics/sales-summary?period=${mode}&range=${range}`);
+  } catch {
+    return;
+  }
+  
+  const svg = salesChartSvg;
+  svg.innerHTML = '';
+  if (!data || data.length === 0) return;
+  
+  // ensure container has width
+  const w = Math.max(600, svg.clientWidth || 800);
+  const h = svg.clientHeight || 300;
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  
+  const padding = { top: 40, right: 40, bottom: 40, left: 40 };
+  const innerW = w - padding.left - padding.right;
+  const innerH = h - padding.top - padding.bottom;
+  
+  const maxVal = Math.max(1, ...data.map(d => d.amount));
+  
+  const stepX = innerW / Math.max(1, data.length - 1);
+  
+  let points = [];
+  data.forEach((d, i) => {
+    const x = padding.left + i * stepX;
+    const y = padding.top + innerH - (d.amount / maxVal) * innerH;
+    points.push(`${x},${y}`);
+  });
+  
+  const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+  polyline.setAttribute('points', points.join(' '));
+  polyline.setAttribute('fill', 'none');
+  polyline.setAttribute('stroke', '#3b82f6');
+  polyline.setAttribute('stroke-width', '3');
+  svg.appendChild(polyline);
+  
+  data.forEach((d, i) => {
+    const x = padding.left + i * stepX;
+    const y = padding.top + innerH - (d.amount / maxVal) * innerH;
+    
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', x);
+    circle.setAttribute('cy', y);
+    circle.setAttribute('r', '5');
+    circle.setAttribute('fill', '#111827');
+    circle.setAttribute('stroke', '#3b82f6');
+    circle.setAttribute('stroke-width', '2');
+    svg.appendChild(circle);
+    
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', x);
+    text.setAttribute('y', y - 12);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('fill', '#e2e8f0');
+    text.setAttribute('font-size', '12px');
+    text.textContent = d.amount.toFixed(2);
+    svg.appendChild(text);
+    
+    const xText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    xText.setAttribute('x', x);
+    xText.setAttribute('y', h - 10);
+    xText.setAttribute('text-anchor', 'middle');
+    xText.setAttribute('fill', '#94a3b8');
+    xText.setAttribute('font-size', '12px');
+    xText.textContent = d.label;
+    svg.appendChild(xText);
+  });
+}
+salesPeriodSel?.addEventListener('change', () => { const v=salesPeriodSel.value||'month'; renderSalesChart(v); });
 
 // Sales Order UI Logic
 const soCustomer = document.getElementById('so-customer');
@@ -5337,6 +5420,8 @@ async function handleRoute() {
     document.getElementById('page-home').style.display = 'block';
     if (typeof homePeriodSel !== 'undefined' && homePeriodSel) homePeriodSel.value = 'month';
     if (typeof renderHomeChart === 'function') renderHomeChart('month');
+    if (typeof salesPeriodSel !== 'undefined' && salesPeriodSel) salesPeriodSel.value = 'month';
+    if (typeof renderSalesChart === 'function') renderSalesChart('month');
   } 
   else if (hash === 'tasks') {
     document.getElementById('page-tasks').style.display = 'block';
