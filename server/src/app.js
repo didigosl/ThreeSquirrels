@@ -323,6 +323,7 @@ async function ensureSchema() {
   // Migrations
   try { await query('alter table tasks add column completion_image text'); } catch {}
   try { await query('alter table tasks add column completion_desc text'); } catch {}
+  try { await query('alter table tasks add column time_limit int default 0'); } catch {}
 }
 // Ensure schema then defaults sequentially to avoid race
 (async () => {
@@ -1427,8 +1428,9 @@ app.get('/api/tasks', authRequired, async (req, res) => {
 });
 app.post('/api/tasks', authRequired, async (req, res) => {
   const x = req.body || {};
-  const r = await query(`insert into tasks(title,description,created_by,created_at,assigned_to) values($1,$2,$3,$4,$5) returning id`,
-    [x.title||'', x.desc||'', req.user.name, Date.now(), x.assign||'']);
+  const timeLimit = parseInt(x.timeLimit, 10) || 0;
+  const r = await query(`insert into tasks(title,description,created_by,created_at,assigned_to,time_limit) values($1,$2,$3,$4,$5,$6) returning id`,
+    [x.title||'', x.desc||'', req.user.name, Date.now(), x.assign||'', timeLimit]);
   res.json({ id: r.rows[0].id });
 });
 app.put('/api/tasks/:id/complete', authRequired, async (req, res) => {

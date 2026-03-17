@@ -5577,7 +5577,7 @@ async function loadTasks(tab = 'new', btn = null, page = 1) {
   if (!tbody) return;
   
   if (list.length === 0) {
-    tbody.innerHTML = '<tr class="empty"><td colspan="6">暂无任务</td></tr>';
+    tbody.innerHTML = '<tr class="empty"><td colspan="7">暂无任务</td></tr>';
     renderTaskPager(0, 1, 100);
     return;
   }
@@ -5618,12 +5618,26 @@ async function loadTasks(tab = 'new', btn = null, page = 1) {
         assignInfo += `<div style="margin-top:4px; font-size:11px; color:#94a3b8">完成于:<br>${new Date(Number(t.completed_at)).toLocaleString()}</div>`;
     }
 
+    let timeLimitText = '-';
+    if (t.time_limit) {
+      const limitDays = Number(t.time_limit);
+      let label = limitDays + '天内';
+      if (limitDays === 7) label = '一周内';
+      if (limitDays === 30) label = '一个月';
+      
+      const deadline = Number(t.created_at) + limitDays * 24 * 60 * 60 * 1000;
+      const isOverdue = (t.status === 'pending' || !t.status) && Date.now() > deadline;
+      
+      timeLimitText = isOverdue ? `<span style="color:#ef4444; font-weight:bold">已逾期</span>` : label;
+    }
+
     return `
     <tr>
       <td>${t.title||''}</td>
       <td>${descInfo}</td>
       <td>${assignInfo}</td>
       <td>${t.created_by||''}<br><span style="font-size:12px;color:#666">${new Date(Number(t.created_at)).toLocaleString()}</span></td>
+      <td>${timeLimitText}</td>
       <td><span class="tag ${t.status==='completed'?'green':(t.status==='waiting_audit'?'orange':'blue')}">
         ${t.status==='completed'?'已完成':(t.status==='waiting_audit'?'审核中':'新任务')}
       </span></td>
@@ -5666,6 +5680,8 @@ function openTaskModal() {
     document.getElementById('task-title').value = '';
     document.getElementById('task-desc').value = '';
     document.getElementById('task-assign').value = '';
+    const tl = document.getElementById('task-time-limit');
+    if (tl) tl.value = '1';
     const listDiv = document.getElementById('task-assign-list');
     if (listDiv) {
       listDiv.innerHTML = '加载中...';
@@ -5728,12 +5744,13 @@ async function saveTask() {
   const title = document.getElementById('task-title').value;
   const desc = document.getElementById('task-desc').value;
   const assign = document.getElementById('task-assign').value;
+  const timeLimit = document.getElementById('task-time-limit') ? document.getElementById('task-time-limit').value : '0';
   if (!title) return alert('请输入标题');
   if (!assign) return alert('请选择指派人员');
   
   await fetchWithAuth('/api/tasks', {
     method: 'POST',
-    body: JSON.stringify({ title, desc, assign })
+    body: JSON.stringify({ title, desc, assign, timeLimit })
   });
   closeTaskModal();
   loadTasks('new');

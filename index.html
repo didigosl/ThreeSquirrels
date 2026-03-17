@@ -233,7 +233,7 @@
   </head>
   <body>
     <div class="layout">
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-18</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-19</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -377,6 +377,7 @@
                     <th>描述</th>
                     <th>分配给</th>
                     <th>创建人/时间</th>
+                    <th>时限</th>
                     <th>状态</th>
                     <th>操作</th>
                   </tr>
@@ -473,6 +474,15 @@
             <div class="modal-header"><div class="modal-title">创建任务</div><button class="btn-secondary" onclick="closeTaskModal()">关闭</button></div>
             <div class="modal-body">
               <div class="group"><span class="label">标题</span><input id="task-title" type="text"></div>
+              <div class="group">
+                <span class="label">时限</span>
+                <select id="task-time-limit" style="width:100%; padding:8px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--text)">
+                  <option value="1">1天内</option>
+                  <option value="2">2天内</option>
+                  <option value="7">一周内</option>
+                  <option value="30">一个月内</option>
+                </select>
+              </div>
               <div class="group"><span class="label">描述</span><textarea id="task-desc"></textarea></div>
               <div class="group">
                 <span class="label">指派给</span>
@@ -2217,6 +2227,6 @@
 
       </aside>
     </div>
-    <script src="app.js?v=20260307-18"></script>
+    <script src="app.js?v=20260307-19"></script>
   </body>
 </html>
