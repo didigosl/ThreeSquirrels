@@ -6338,3 +6338,21 @@ async function saveRawAudit() {
   m.querySelector('.modal-title').textContent = '添加原材料库存';
   m.querySelector('.btn').onclick = saveRawStock;
 }
+
+// Mobile Sidebar Toggle
+window.toggleSidebar = function() {
+  document.querySelector('.sidebar').classList.toggle('open');
+  document.querySelector('.sidebar-overlay').classList.toggle('open');
+};
+
+// Close sidebar when clicking nav links on mobile
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.nav a').forEach(link => {
+    link.addEventListener('click', () => {
+      if (window.innerWidth <= 768) {
+        document.querySelector('.sidebar').classList.remove('open');
+        document.querySelector('.sidebar-overlay').classList.remove('open');
+      }
+    });
+  });
+});
