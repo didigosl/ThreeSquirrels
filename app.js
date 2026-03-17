@@ -5577,7 +5577,7 @@ async function loadTasks(tab = 'new', btn = null, page = 1) {
   if (!tbody) return;
   
   if (list.length === 0) {
-    tbody.innerHTML = '<tr class="empty"><td colspan="7">暂无任务</td></tr>';
+    tbody.innerHTML = '<tr class="empty"><td colspan="8">暂无任务</td></tr>';
     renderTaskPager(0, 1, 100);
     return;
   }
@@ -5587,7 +5587,7 @@ async function loadTasks(tab = 'new', btn = null, page = 1) {
   const isAdmin = me.user?.role === '超级管理员';
   const myName = me.user?.name;
   
-  tbody.innerHTML = list.map(t => {
+  tbody.innerHTML = list.map((t, idx) => {
     let action = '';
     if (t.status === 'pending' || !t.status) {
         if (t.assigned_to === myName || isAdmin) {
@@ -5633,6 +5633,7 @@ async function loadTasks(tab = 'new', btn = null, page = 1) {
 
     return `
     <tr>
+      <td>${total - (page - 1) * 100 - idx}</td>
       <td>${t.title||''}</td>
       <td>${descInfo}</td>
       <td>${assignInfo}</td>
