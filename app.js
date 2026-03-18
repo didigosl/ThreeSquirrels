@@ -5075,7 +5075,7 @@ function renderProducts(list) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${x.id}</td>
-      <td>${x.image ? `<img src="${x.image}" class="thumb-img" onclick="showFileViewer('${x.image}')">` : ''}</td>
+      <td style="padding:0; width:50px; height:50px">${x.image ? `<img src="${x.image}" class="thumb-img" onclick="showFileViewer('${x.image}')" style="width:100%; height:100%; object-fit:contain; display:block">` : ''}</td>
       <td>${x.sku||''}</td>
       <td>${x.barcode||''}</td>
       <td>${x.name||''}</td>
@@ -6468,7 +6468,7 @@ async function loadFinishedStock() {
     return `
     <tr>
       <td>${p.id}</td>
-      <td>${p.image ? `<img src="${p.image}" class="thumb-img" style="width:40px;height:40px;object-fit:cover">` : ''}</td>
+      <td style="padding:0; width:50px; height:50px">${p.image ? `<img src="${p.image}" class="thumb-img" style="width:100%; height:100%; object-fit:contain; display:block">` : ''}</td>
       <td>${p.name}</td>
       <td>${p.name_cn || ''}</td>
       <td>${stockHtml}</td>

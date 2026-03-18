@@ -1109,7 +1109,7 @@ app.get('/api/products', authRequired, ensureAllow('sales_products','view'), asy
   }
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
   const pageSize = Math.max(1, Math.min(500, parseInt(size, 10) || 50));
-  sql += ' order by sku asc';
+  sql += ' order by length(sku) asc, sku asc';
   sql += ` limit ${pageSize} offset ${(pageNum-1)*pageSize}`;
   const r = await query(sql, p);
   const count = await query('select count(*)::int as c from products ' + (q.trim() ? 'where (name ilike $1 or name_cn ilike $1 or sku ilike $1 or barcode ilike $1)' : ''), q.trim() ? ['%'+q.trim()+'%'] : []);
@@ -1641,7 +1641,7 @@ app.get('/api/inventory/finished', authRequired, async (req, res) => {
       where product_id=p.id and quantity>0
     ) as batches
     from products p
-    order by p.sku asc
+    order by length(p.sku) asc, p.sku asc
   `);
   res.json(r.rows);
 });
