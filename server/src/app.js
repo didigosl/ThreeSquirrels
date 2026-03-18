@@ -306,6 +306,15 @@ async function ensureSchema() {
       expiration_date text,
       created_at bigint
     );
+    create table if not exists inventory_logs (
+      id serial primary key,
+      product_id int,
+      quantity numeric,
+      type text, -- 'in', 'out'
+      created_at bigint,
+      created_by text,
+      notes text
+    );
     create table if not exists materials (
       id serial primary key,
       name text,
@@ -1790,7 +1799,45 @@ app.post('/api/inventory/finished', authRequired, async (req, res) => {
   }
   
   await query('update products set stock = stock + $1 where id=$2', [qty, productId]);
+  
+  // Log addition
+  await query('insert into inventory_logs(product_id, quantity, type, created_at, created_by) values($1,$2,$3,$4,$5)',
+    [productId, qty, 'in', Date.now(), req.user.name]);
+    
   res.json({ ok: true });
+});
+
+app.get('/api/inventory/finished/:id/logs', authRequired, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  
+  // 1. Get Additions (In)
+  const ins = await query('select * from inventory_logs where product_id=$1 and type=\'in\' order by created_at desc', [id]);
+  
+  // 2. Get Sales (Out) from invoices
+  const outs = await query(`
+    select i.created_at, i.created_by, i.invoice_no, (item->>'qty')::numeric as qty
+    from invoices i, jsonb_array_elements(i.items) as item
+    where (item->>'productId')::int = $1
+    order by i.created_at desc
+  `, [id]);
+  
+  const logs = [
+    ...ins.rows.map(x => ({
+      type: 'in',
+      date: Number(x.created_at),
+      qty: Number(x.quantity),
+      user: x.created_by
+    })),
+    ...outs.rows.map(x => ({
+      type: 'out',
+      date: Number(x.created_at),
+      qty: Number(x.qty),
+      user: x.created_by,
+      ref: x.invoice_no
+    }))
+  ].sort((a,b) => b.date - a.date);
+  
+  res.json(logs);
 });
 
 // Inventory (Raw)

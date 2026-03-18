@@ -6473,9 +6473,53 @@ async function loadFinishedStock() {
       <td>${p.name_cn || ''}</td>
       <td>${stockHtml}</td>
       <td>${expiryHtml}</td>
+      <td style="text-align:center">
+        <button class="btn-secondary" style="padding:4px 8px; font-size:12px" onclick="openStockHistoryModal(${p.id})">查看</button>
+      </td>
     </tr>
     `;
   }).join('');
+}
+async function openStockHistoryModal(id) {
+  const m = document.getElementById('stock-history-modal');
+  if (!m) return;
+  m.style.display = 'flex';
+  const tbody = document.getElementById('stock-history-rows');
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8">加载中...</td></tr>';
+  
+  try {
+    const res = await fetchWithAuth(`/api/inventory/finished/${id}/logs`);
+    if (!res.ok) throw new Error('Failed to load logs');
+    const logs = await res.json();
+    
+    if (logs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8">暂无记录</td></tr>';
+      return;
+    }
+    
+    tbody.innerHTML = logs.map((log, i) => {
+      const isIn = log.type === 'in';
+      const color = isIn ? '#10b981' : '#f97316';
+      const typeLabel = isIn ? '入库' : '销售出库';
+      const d = new Date(log.date);
+      const dateStr = `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const user = log.user || '-';
+      
+      return `
+        <tr style="color:${color}">
+          <td>${i + 1}</td>
+          <td>${dateStr}</td>
+          <td>${isIn ? '+' : '-'}${log.qty}</td>
+          <td>${typeLabel}</td>
+          <td>${user}</td>
+        </tr>
+      `;
+    }).join('');
+    
+  } catch (e) {
+    console.error(e);
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#ef4444">加载失败</td></tr>';
+  }
 }
 function openFinishedStockModal() {
   const m = document.getElementById('fs-add-modal');

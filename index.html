@@ -289,7 +289,7 @@
         <div class="brand" style="padding:0; display:flex !important"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <div class="mobile-menu-btn" onclick="toggleSidebar()">☰</div>
       </div>
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-33-test</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-34-test</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -498,6 +498,7 @@
                   <th>中文名称</th>
                   <th>总库存</th>
                   <th>最近过期时间</th>
+                  <th style="width:80px; text-align:center">详情</th>
                 </tr>
               </thead>
               <tbody id="finished-stock-rows"></tbody>
@@ -528,6 +529,30 @@
         </div>
 
         <!-- Modals for Daily Operations -->
+        <!-- Stock History Modal -->
+        <div id="stock-history-modal" class="modal-overlay" style="display:none; z-index:500">
+          <div class="modal" style="width:700px; max-width:95vw">
+            <div class="modal-header">
+              <div class="modal-title">库存变动详情</div>
+              <button class="btn-secondary" onclick="document.getElementById('stock-history-modal').style.display='none'">关闭</button>
+            </div>
+            <div class="modal-body" style="padding:0">
+              <table class="table" style="margin:0">
+                <thead>
+                  <tr>
+                    <th style="width:60px">序号</th>
+                    <th>日期时间</th>
+                    <th>变动数量</th>
+                    <th>类型</th>
+                    <th>操作人</th>
+                  </tr>
+                </thead>
+                <tbody id="stock-history-rows"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <!-- Task Modal -->
         <div id="task-modal" class="modal-overlay" style="display:none">
           <div class="modal">
@@ -2348,6 +2373,6 @@
 
       </aside>
     </div>
-    <script src="app.js?v=20260307-33-test"></script>
+    <script src="app.js?v=20260307-34-test"></script>
   </body>
 </html>
