@@ -1243,32 +1243,64 @@ app.post('/api/invoices', authRequired, ensureAllow('sales_order','view'), async
     return sum + rowVal + rowTax;
   }, 0);
 
+  // Update Stock
+  for (const item of items) {
+    const qty = Number(item.qty || 0);
+    if (qty > 0) {
+      let pid = item.productId;
+      if (!pid) {
+         if (item.sku) {
+            const p = await query('select id from products where sku=$1', [item.sku]);
+            if (p.rows[0]) pid = p.rows[0].id;
+         } else if (item.name) {
+            const p = await query('select id from products where name=$1', [item.name]);
+            if (p.rows[0]) pid = p.rows[0].id;
+         }
+      }
+
+      if (pid) {
+        // 1. Update total stock
+        await query('update products set stock = stock - $1 where id=$2', [qty, pid]);
+        
+        // 2. Deduct from batches (FIFO)
+        let remaining = qty;
+        const batches = await query('select * from inventory_batches where product_id=$1 and quantity > 0 order by expiration_date asc', [pid]);
+        
+        item.deductions = []; // Store deduction info
+        
+        for (const b of batches.rows) {
+          if (remaining <= 0) break;
+          const take = Math.min(Number(b.quantity), remaining);
+          
+          if (Number(b.quantity) === take) {
+            await query('update inventory_batches set quantity = 0 where id=$1', [b.id]);
+          } else {
+            await query('update inventory_batches set quantity = quantity - $1 where id=$2', [take, b.id]);
+          }
+          
+          item.deductions.push({
+            batch_id: b.id,
+            qty: take,
+            expiry: b.expiration_date
+          });
+          
+          remaining -= take;
+        }
+      }
+    }
+  }
+
   const r = await query(`
     insert into invoices(invoice_no, customer, date, items, total_amount, notes, sales, created_at, created_by)
     values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id, invoice_no
   `, [invoiceNo, x.customer||'', x.date||'', JSON.stringify(items), total, x.notes||'', x.sales||'', now, req.user.name||'']);
-  
+
   // Create payable (receivable)
   const trustDays = parseInt(x.trust_days, 10) || 30;
   await query(`
     insert into payables(type, partner, doc, amount, paid, settled, trust_days, notes, invoice_no, invoice_date, invoice_amount, sales, date, created_at, batch_at, source)
     values($1,$2,$3,$4,0,false,$5,$6,$7,$8,$9,$10,$11,$12,$13,'sales_order')
   `, ['应收账款', x.customer||'', invoiceNo, total, trustDays, x.notes||'', invoiceNo, x.date||'', total, x.sales||'', x.date||'', now, now]);
-
-  // Update Stock
-  for (const item of items) {
-    const qty = Number(item.qty || 0);
-    if (qty > 0) {
-      // Try to find product by id, sku, or name
-      if (item.productId) {
-        await query('update products set stock = stock - $1 where id=$2', [qty, item.productId]);
-      } else if (item.sku) {
-        await query('update products set stock = stock - $1 where sku=$2', [qty, item.sku]);
-      } else if (item.name) {
-        await query('update products set stock = stock - $1 where name=$2', [qty, item.name]);
-      }
-    }
-  }
 
   res.json({ id: r.rows[0].id, invoice_no: r.rows[0].invoice_no });
 });
@@ -1291,12 +1323,33 @@ app.delete('/api/invoices/:id', authRequired, ensureAllow('sales_invoice','delet
   for (const item of items) {
     const qty = Number(item.qty || 0);
     if (qty > 0) {
-       if (item.productId) {
-        await query('update products set stock = stock + $1 where id=$2', [qty, item.productId]);
-      } else if (item.sku) {
-        await query('update products set stock = stock + $1 where sku=$2', [qty, item.sku]);
-      } else if (item.name) {
-        await query('update products set stock = stock + $1 where name=$2', [qty, item.name]);
+       let pid = item.productId;
+       if (!pid) {
+          if (item.sku) {
+             const p = await query('select id from products where sku=$1', [item.sku]);
+             if (p.rows[0]) pid = p.rows[0].id;
+          } else if (item.name) {
+             const p = await query('select id from products where name=$1', [item.name]);
+             if (p.rows[0]) pid = p.rows[0].id;
+          }
+       }
+
+       if (pid) {
+        await query('update products set stock = stock + $1 where id=$2', [qty, pid]);
+        
+        // Restore batches if deduction info exists
+        if (item.deductions && Array.isArray(item.deductions)) {
+           for (const d of item.deductions) {
+              const b = await query('select id from inventory_batches where id=$1', [d.batch_id]);
+              if (b.rows[0]) {
+                 await query('update inventory_batches set quantity = quantity + $1 where id=$2', [d.qty, d.batch_id]);
+              } else {
+                 // Recreate batch
+                 await query('insert into inventory_batches(product_id, quantity, expiration_date, created_at) values($1,$2,$3,$4)',
+                      [pid, d.qty, d.expiry, Date.now()]);
+              }
+           }
+        }
       }
     }
   }
@@ -1344,12 +1397,31 @@ app.put('/api/invoices/:id', authRequired, ensureAllow('sales_order','view'), as
   for (const item of oldItems) {
     const qty = Number(item.qty || 0);
     if (qty > 0) {
-       if (item.productId) {
-        await query('update products set stock = stock + $1 where id=$2', [qty, item.productId]);
-      } else if (item.sku) {
-        await query('update products set stock = stock + $1 where sku=$2', [qty, item.sku]);
-      } else if (item.name) {
-        await query('update products set stock = stock + $1 where name=$2', [qty, item.name]);
+       let pid = item.productId;
+       if (!pid) {
+          if (item.sku) {
+             const p = await query('select id from products where sku=$1', [item.sku]);
+             if (p.rows[0]) pid = p.rows[0].id;
+          } else if (item.name) {
+             const p = await query('select id from products where name=$1', [item.name]);
+             if (p.rows[0]) pid = p.rows[0].id;
+          }
+       }
+
+       if (pid) {
+        await query('update products set stock = stock + $1 where id=$2', [qty, pid]);
+        
+        if (item.deductions && Array.isArray(item.deductions)) {
+           for (const d of item.deductions) {
+              const b = await query('select id from inventory_batches where id=$1', [d.batch_id]);
+              if (b.rows[0]) {
+                 await query('update inventory_batches set quantity = quantity + $1 where id=$2', [d.qty, d.batch_id]);
+              } else {
+                 await query('insert into inventory_batches(product_id, quantity, expiration_date, created_at) values($1,$2,$3,$4)',
+                      [pid, d.qty, d.expiry, Date.now()]);
+              }
+           }
+        }
       }
     }
   }
@@ -1359,12 +1431,43 @@ app.put('/api/invoices/:id', authRequired, ensureAllow('sales_order','view'), as
   for (const item of items) {
     const qty = Number(item.qty || 0);
     if (qty > 0) {
-       if (item.productId) {
-        await query('update products set stock = stock - $1 where id=$2', [qty, item.productId]);
-      } else if (item.sku) {
-        await query('update products set stock = stock - $1 where sku=$2', [qty, item.sku]);
-      } else if (item.name) {
-        await query('update products set stock = stock - $1 where name=$2', [qty, item.name]);
+      let pid = item.productId;
+      if (!pid) {
+         if (item.sku) {
+            const p = await query('select id from products where sku=$1', [item.sku]);
+            if (p.rows[0]) pid = p.rows[0].id;
+         } else if (item.name) {
+            const p = await query('select id from products where name=$1', [item.name]);
+            if (p.rows[0]) pid = p.rows[0].id;
+         }
+      }
+
+      if (pid) {
+        await query('update products set stock = stock - $1 where id=$2', [qty, pid]);
+        
+        let remaining = qty;
+        const batches = await query('select * from inventory_batches where product_id=$1 and quantity > 0 order by expiration_date asc', [pid]);
+        
+        item.deductions = [];
+        
+        for (const b of batches.rows) {
+          if (remaining <= 0) break;
+          const take = Math.min(Number(b.quantity), remaining);
+          
+          if (Number(b.quantity) === take) {
+            await query('update inventory_batches set quantity = 0 where id=$1', [b.id]);
+          } else {
+            await query('update inventory_batches set quantity = quantity - $1 where id=$2', [take, b.id]);
+          }
+          
+          item.deductions.push({
+            batch_id: b.id,
+            qty: take,
+            expiry: b.expiration_date
+          });
+          
+          remaining -= take;
+        }
       }
     }
   }
@@ -1581,6 +1684,47 @@ app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
     }, 0);
 
     const now = Date.now();
+
+    // Deduct Stock (FIFO Logic) & populate deductions
+    for (const item of invoiceItems) {
+      const qty = Number(item.qty || 0);
+      let pid = item.productId;
+      if (!pid && item.name) {
+        const p = await query('select id from products where name=$1', [item.name]);
+        if (p.rows[0]) pid = p.rows[0].id;
+      }
+
+      if (qty > 0 && pid) {
+         // Update total stock
+         await query('update products set stock = stock - $1 where id=$2', [qty, pid]);
+
+         // Deduct from batches
+         let remaining = qty;
+         const batches = await query('select * from inventory_batches where product_id=$1 and quantity > 0 order by expiration_date asc', [pid]);
+         
+         item.deductions = [];
+         
+         for (const b of batches.rows) {
+           if (remaining <= 0) break;
+           const take = Math.min(Number(b.quantity), remaining);
+           
+           if (Number(b.quantity) === take) {
+             await query('update inventory_batches set quantity = 0 where id=$1', [b.id]);
+           } else {
+             await query('update inventory_batches set quantity = quantity - $1 where id=$2', [take, b.id]);
+           }
+           
+           item.deductions.push({
+             batch_id: b.id,
+             qty: take,
+             expiry: b.expiration_date
+           });
+           
+           remaining -= take;
+         }
+      }
+    }
+
     // Insert Invoice
     const inv = await query(`
       insert into invoices(invoice_no, customer, date, items, total_amount, sales, created_at, created_by)
@@ -1592,32 +1736,6 @@ app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
       insert into payables(type, partner, doc, amount, paid, settled, trust_days, invoice_no, invoice_date, invoice_amount, sales, date, created_at, batch_at, source)
       values($1,$2,$3,$4,0,false,30,$5,$6,$7,$8,$9,$10,$11,'sales_order')
     `, ['应收账款', ord.customer, invoiceNo, total, invoiceNo, ord.date, total, ord.sales, ord.date, now, now]);
-
-    // Deduct Stock (FIFO Logic)
-    for (const item of items) {
-      const qty = Number(item.allocated_qty || item.qty || 0);
-      let pid = item.productId;
-      
-      // If productId missing, lookup by name
-      if (!pid && item.name) {
-        const p = await query('select id from products where name=$1', [item.name]);
-        if (p.rows[0]) pid = p.rows[0].id;
-      }
-
-      if (qty > 0 && pid) {
-         // Deduct from batches
-         let remaining = qty;
-         const batches = await query('select * from inventory_batches where product_id=$1 and quantity > 0 order by expiration_date asc', [pid]);
-         for (const b of batches.rows) {
-           if (remaining <= 0) break;
-           const take = Math.min(Number(b.quantity), remaining);
-           await query('update inventory_batches set quantity = quantity - $1 where id=$2', [take, b.id]);
-           remaining -= take;
-         }
-         // Update total stock cache
-         await query('update products set stock = stock - $1 where id=$2', [qty, pid]);
-      }
-    }
     
     await query('update daily_orders set invoice_id=$1 where id=$2', [inv.rows[0].id, id]);
   }
