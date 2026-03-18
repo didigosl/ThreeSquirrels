@@ -1765,8 +1765,25 @@ app.get('/api/inventory/finished', authRequired, async (req, res) => {
 });
 app.post('/api/inventory/finished', authRequired, async (req, res) => {
   const { productId, qty, expiry } = req.body;
-  await query('insert into inventory_batches(product_id, quantity, expiration_date, created_at) values($1,$2,$3,$4)',
-    [productId, qty, expiry, Date.now()]);
+  
+  const p = await query('select stock from products where id=$1', [productId]);
+  const currentStock = Number(p.rows[0]?.stock || 0);
+  let batchQty = Number(qty);
+  
+  if (currentStock < 0) {
+    const deficit = Math.abs(currentStock);
+    if (batchQty > deficit) {
+      batchQty -= deficit;
+    } else {
+      batchQty = 0;
+    }
+  }
+  
+  if (batchQty > 0) {
+    await query('insert into inventory_batches(product_id, quantity, expiration_date, created_at) values($1,$2,$3,$4)',
+      [productId, batchQty, expiry, Date.now()]);
+  }
+  
   await query('update products set stock = stock + $1 where id=$2', [qty, productId]);
   res.json({ ok: true });
 });
@@ -1789,16 +1806,33 @@ app.post('/api/inventory/raw', authRequired, async (req, res) => {
   const { name, qty, expiry } = req.body;
   // Check if material exists
   let mid;
-  const exist = await query('select id from materials where name=$1', [name]);
+  const exist = await query('select id, stock from materials where name=$1', [name]);
+  
+  let currentStock = 0;
   if (exist.rows[0]) {
     mid = exist.rows[0].id;
+    currentStock = Number(exist.rows[0].stock || 0);
     await query('update materials set stock = stock + $1 where id=$2', [qty, mid]);
   } else {
     const n = await query('insert into materials(name, stock) values($1,$2) returning id', [name, qty]);
     mid = n.rows[0].id;
   }
-  await query('insert into material_batches(material_id, quantity, expiration_date, created_at) values($1,$2,$3,$4)',
-    [mid, qty, expiry, Date.now()]);
+  
+  let batchQty = Number(qty);
+  if (currentStock < 0) {
+    const deficit = Math.abs(currentStock);
+    if (batchQty > deficit) {
+      batchQty -= deficit;
+    } else {
+      batchQty = 0;
+    }
+  }
+  
+  if (batchQty > 0) {
+    await query('insert into material_batches(material_id, quantity, expiration_date, created_at) values($1,$2,$3,$4)',
+      [mid, batchQty, expiry, Date.now()]);
+  }
+  
   res.json({ ok: true });
 });
 app.put('/api/inventory/raw/audit', authRequired, async (req, res) => {
