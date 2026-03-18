@@ -1237,23 +1237,20 @@ app.get('/api/invoices/next-no', authRequired, ensureAllow('sales_order','view')
 app.post('/api/invoices', authRequired, ensureAllow('sales_order','view'), async (req, res) => {
   const x = req.body || {};
   const now = Date.now();
-  const dateObj = new Date();
-  const year = dateObj.getFullYear();
-  
   // Use provided invoice_no or generate new one
   let invoiceNo = x.invoice_no;
   if (!invoiceNo) {
-    const prefix = String(year);
-    const rMax = await query('select invoice_no from invoices where invoice_no like $1 order by invoice_no desc limit 1', [prefix + '%']);
-    let nextSeq = 1;
+    const rMax = await query("select invoice_no from invoices where invoice_no like 'Factura- %' order by invoice_no desc limit 1");
+    let nextSeq = 231; // Default starting sequence as requested
     if (rMax.rows[0]) {
       const lastNo = rMax.rows[0].invoice_no;
-      const seqPart = lastNo.slice(4); // remove YYYY
-      if (/^\d+$/.test(seqPart)) {
-        nextSeq = parseInt(seqPart, 10) + 1;
+      const match = lastNo.match(/Factura- (\d{6})-\d{2}/);
+      if (match) {
+        nextSeq = parseInt(match[1], 10) + 1;
       }
     }
-    invoiceNo = prefix + String(nextSeq).padStart(5, '0');
+    const year2 = String(new Date().getFullYear()).slice(-2);
+    invoiceNo = `Factura- ${String(nextSeq).padStart(6, '0')}-${year2}`;
   }
 
   const items = Array.isArray(x.items) ? x.items : [];
@@ -1688,16 +1685,17 @@ app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
     const items = typeof ord.items === 'string' ? JSON.parse(ord.items) : (ord.items || []);
     
     // Generate invoice logic
-    const year = new Date().getFullYear();
-    const prefix = String(year);
-    const rMax = await query('select invoice_no from invoices where invoice_no like $1 order by invoice_no desc limit 1', [prefix + '%']);
-    let nextSeq = 1;
+    const rMax = await query("select invoice_no from invoices where invoice_no like 'Factura- %' order by invoice_no desc limit 1");
+    let nextSeq = 231; // Default starting sequence as requested
     if (rMax.rows[0]) {
       const lastNo = rMax.rows[0].invoice_no;
-      const seqPart = lastNo.slice(4);
-      if (/^\d+$/.test(seqPart)) nextSeq = parseInt(seqPart, 10) + 1;
+      const match = lastNo.match(/Factura- (\d{6})-\d{2}/);
+      if (match) {
+        nextSeq = parseInt(match[1], 10) + 1;
+      }
     }
-    const invoiceNo = prefix + String(nextSeq).padStart(5, '0');
+    const year2 = String(new Date().getFullYear()).slice(-2);
+    const invoiceNo = `Factura- ${String(nextSeq).padStart(6, '0')}-${year2}`;
     
     // Use allocated_qty for invoice items
     const invoiceItems = items.map(item => {
