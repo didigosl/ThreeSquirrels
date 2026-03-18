@@ -5715,6 +5715,11 @@ async function handleRoute() {
     document.getElementById('page-raw-stock').style.display = 'block';
     loadRawStock();
   }
+  else if (hash.startsWith('stock-history')) {
+    const id = hash.split('=')[1];
+    document.getElementById('page-stock-history').style.display = 'block';
+    loadStockHistory(id);
+  }
   else if (hash === 'login') {
     document.getElementById('page-login').style.display = 'block';
   }
@@ -6474,17 +6479,15 @@ async function loadFinishedStock() {
       <td>${stockHtml}</td>
       <td>${expiryHtml}</td>
       <td style="text-align:center">
-        <button class="btn-secondary" style="padding:4px 8px; font-size:12px" onclick="openStockHistoryModal(${p.id})">查看</button>
+        <button class="btn-secondary" style="padding:4px 8px; font-size:12px" onclick="location.hash='#stock-history?id=${p.id}'">查看</button>
       </td>
     </tr>
     `;
   }).join('');
 }
-async function openStockHistoryModal(id) {
-  const m = document.getElementById('stock-history-modal');
-  if (!m) return;
-  m.style.display = 'flex';
+async function loadStockHistory(id) {
   const tbody = document.getElementById('stock-history-rows');
+  if (!tbody) return;
   tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8">加载中...</td></tr>';
   
   try {
@@ -6507,7 +6510,7 @@ async function openStockHistoryModal(id) {
       
       return `
         <tr style="color:${color}">
-          <td>${i + 1}</td>
+          <td>${logs.length - i}</td>
           <td>${dateStr}</td>
           <td>${isIn ? '+' : '-'}${log.qty}</td>
           <td>${typeLabel}</td>
