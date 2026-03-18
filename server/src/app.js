@@ -1485,6 +1485,18 @@ app.put('/api/tasks/:id/audit', authRequired, async (req, res) => {
 });
 
 // Daily Orders
+app.get('/api/daily-orders/stats', authRequired, async (req, res) => {
+  const r = await query(`
+    select status, count(*)::int as c from daily_orders group by status
+  `);
+  const stats = { new: 0, allocated: 0, shipped: 0 };
+  r.rows.forEach(x => {
+    if (x.status === 'new') stats.new = x.c;
+    else if (x.status === 'allocated') stats.allocated = x.c;
+    else if (x.status === 'shipped') stats.shipped = x.c;
+  });
+  res.json(stats);
+});
 app.get('/api/daily-orders', authRequired, async (req, res) => {
   const { status } = req.query;
   let sql = `

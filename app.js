@@ -6465,3 +6465,53 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 });
+
+// Auto-refresh Badges Logic
+async function updateGlobalBadges() {
+  if (!localStorage.getItem('authToken')) return;
+
+  try {
+    // 1. Task Stats (New + Review)
+    let taskCount = 0;
+    try {
+      const tRes = await fetchWithAuth(`/api/tasks?status=new&size=1&_t=${Date.now()}`);
+      if (tRes.ok) {
+        const tData = await tRes.json();
+        taskCount = Number(tData.stats?.new_count || 0) + Number(tData.stats?.review_count || 0);
+      }
+    } catch {}
+
+    // 2. Order Stats (New)
+    let orderCount = 0;
+    try {
+      const oRes = await fetchWithAuth(`/api/daily-orders/stats?_t=${Date.now()}`);
+      if (oRes.ok) {
+        const oStats = await oRes.json();
+        orderCount = Number(oStats.new || 0);
+      }
+    } catch {}
+
+    // 3. Update UI
+    const setBadge = (id, n) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.textContent = n;
+        el.style.display = n > 0 ? 'inline-block' : 'none';
+      }
+    };
+
+    setBadge('nav-task-badge', taskCount);
+    setBadge('nav-order-badge', orderCount);
+    setBadge('nav-daily-ops-badge', taskCount + orderCount);
+
+  } catch (e) {
+    console.error('Badge update failed', e);
+  }
+}
+
+// Start polling
+setInterval(updateGlobalBadges, 30000); // 30 seconds
+// Initial call
+if (localStorage.getItem('authToken')) {
+  updateGlobalBadges();
+}
