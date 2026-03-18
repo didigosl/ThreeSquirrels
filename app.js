@@ -6407,7 +6407,7 @@ async function saveDailyOrder() {
   loadDailyOrders('new');
 }
 
-function openAllocateModal(id) {
+async function openAllocateModal(id) {
   const order = currentDailyOrders.find(o => o.id === id);
   if (!order) return;
   const m = document.getElementById('do-allocate-modal');
@@ -6415,19 +6415,41 @@ function openAllocateModal(id) {
   const tbody = document.getElementById('do-allocate-rows');
   const items = Array.isArray(order.items) ? order.items : (typeof order.items === 'string' ? JSON.parse(order.items) : []);
   
-  tbody.innerHTML = items.map((item, idx) => `
-    <tr>
-      <td>
-        <div style="display:flex;align-items:center;gap:8px">
-          ${item.image ? `<img src="${item.image}" style="width:32px;height:32px;object-fit:cover;border-radius:4px">` : ''}
-          <span>${item.name}</span>
-        </div>
-      </td>
-      <td>${item.qty}</td>
-      <td><input type="number" class="alloc-qty" data-idx="${idx}" value="${item.allocated_qty || item.qty}" style="width:80px"></td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8">加载中...</td></tr>';
   m.style.display = 'flex';
+  
+  try {
+    const res = await fetchWithAuth('/api/products?size=5000');
+    let products = [];
+    if (res.ok) {
+      const data = await res.json();
+      products = data.list || [];
+    }
+    
+    tbody.innerHTML = items.map((item, idx) => {
+      const p = products.find(p => p.id == item.productId || p.name === item.name);
+      const nameCn = p ? (p.name_cn || item.name_cn || '') : (item.name_cn || '');
+      const stock = p ? (p.stock || 0) : '-';
+      
+      return `
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              ${item.image ? `<img src="${item.image}" style="width:32px;height:32px;object-fit:cover;border-radius:4px">` : ''}
+              <span>${item.name}</span>
+            </div>
+          </td>
+          <td>${nameCn}</td>
+          <td>${stock}</td>
+          <td>${item.qty}</td>
+          <td><input type="number" class="alloc-qty" data-idx="${idx}" value="${item.allocated_qty !== undefined ? item.allocated_qty : item.qty}" style="width:80px"></td>
+        </tr>
+      `;
+    }).join('');
+  } catch (e) {
+    console.error(e);
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#ef4444">加载失败</td></tr>';
+  }
 }
 async function confirmAllocate() {
   const id = Number(document.getElementById('do-allocate-id').value);
