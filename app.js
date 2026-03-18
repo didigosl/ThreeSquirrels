@@ -2565,7 +2565,8 @@ ctForm?.addEventListener('submit', async e => {
     editingIndex = null;
     editingTab = null;
     ctSubmitBtn.textContent = '保存';
-    await apiContactsUpdateByName({ name, company, code, contact, phone, city, remark, owner: contactsTab==='customers'?'客户':contactsTab==='merchants'?'商家':'其它', country, address, zip, sales: sales||'', use_price, is_iva, email, province, ship_address, ship_zip, ship_city, ship_province, ship_country, ship_phone, ship_contact });
+    const id = document.getElementById('ct-id').value;
+    await apiContactsUpdateById(id, { name, company, code, contact, phone, city, remark, owner: contactsTab==='customers'?'客户':contactsTab==='merchants'?'商家':'其它', country, address, zip, sales: sales||'', use_price, is_iva, email, province, ship_address, ship_zip, ship_city, ship_province, ship_country, ship_phone, ship_contact });
   } else {
     const now = new Date();
     const created = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
@@ -3433,9 +3434,9 @@ async function apiContactsCreate(obj) {
     return r.id;
   } catch { return null; }
 }
-async function apiContactsUpdateByName(obj) {
+async function apiContactsUpdateById(id, obj) {
   try {
-    await apiFetchJSON('/api/contacts/by-name', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(obj) });
+    await apiFetchJSON('/api/contacts/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(obj) });
   } catch {}
 }
 async function apiContactsDeleteByName(owner, name) {
