@@ -1770,6 +1770,11 @@ app.post('/api/inventory/finished', authRequired, async (req, res) => {
   const currentStock = Number(p.rows[0]?.stock || 0);
   let batchQty = Number(qty);
   
+  if (currentStock <= 0) {
+    // Clean up any ghost batches from before FIFO was implemented
+    await query('update inventory_batches set quantity = 0 where product_id=$1', [productId]);
+  }
+  
   if (currentStock < 0) {
     const deficit = Math.abs(currentStock);
     if (batchQty > deficit) {
@@ -1819,6 +1824,12 @@ app.post('/api/inventory/raw', authRequired, async (req, res) => {
   }
   
   let batchQty = Number(qty);
+  
+  if (currentStock <= 0) {
+    // Clean up ghost batches
+    if (mid) await query('update material_batches set quantity = 0 where material_id=$1', [mid]);
+  }
+  
   if (currentStock < 0) {
     const deficit = Math.abs(currentStock);
     if (batchQty > deficit) {
