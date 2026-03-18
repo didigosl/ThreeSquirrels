@@ -289,7 +289,7 @@
         <div class="brand" style="padding:0; display:flex !important"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <div class="mobile-menu-btn" onclick="toggleSidebar()">☰</div>
       </div>
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-29-test</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-30-test</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -2074,36 +2074,49 @@
                     <option value="21">21%</option>
                   </select>
                 </div>
-                <div class="group">
-                  <span class="label">* 价格1</span>
-                  <input id="prod-p1" type="number" step="0.01" placeholder="0.00">
-                </div>
-                <div class="group">
-                  <span class="label">价格2</span>
-                  <input id="prod-p2" type="number" step="0.01" placeholder="0.00">
-                </div>
-                <div class="group">
-                  <span class="label">价格3</span>
-                  <input id="prod-p3" type="number" step="0.01" placeholder="0.00">
-                </div>
-                <div class="group">
-                  <span class="label">价格4</span>
-                  <input id="prod-p4" type="number" step="0.01" placeholder="0.00">
-                </div>
-                <div class="group">
-                  <span class="label">库存数量</span>
-                  <input id="prod-stock" type="number" step="1" value="0">
-                </div>
-                <div class="group">
-                  <span class="label">商品图片</span>
-                  <div style="display:flex; align-items:center; gap:8px">
-                    <input id="prod-file" type="file" accept="image/*" style="display:none">
-                    <button type="button" class="btn-secondary" onclick="document.getElementById('prod-file').click()" style="padding:8px 12px; font-size:12px">选择图片</button>
-                    <span id="prod-file-name" style="font-size:12px; color:#94a3b8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:120px">未选择文件</span>
-                    <img id="prod-preview" src="" style="width:36px; height:36px; object-fit:cover; border-radius:4px; display:none; border:1px solid #334155">
+                
+                <div style="grid-column:span 2; display:grid; grid-template-columns:1fr 1fr; gap:16px">
+                  <div style="display:flex; flex-direction:column; gap:16px">
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px">
+                      <div class="group">
+                        <span class="label">* 价格1</span>
+                        <input id="prod-p1" type="number" step="0.01" placeholder="0.00">
+                      </div>
+                      <div class="group">
+                        <span class="label">价格2</span>
+                        <input id="prod-p2" type="number" step="0.01" placeholder="0.00">
+                      </div>
+                      <div class="group">
+                        <span class="label">价格3</span>
+                        <input id="prod-p3" type="number" step="0.01" placeholder="0.00">
+                      </div>
+                      <div class="group">
+                        <span class="label">价格4</span>
+                        <input id="prod-p4" type="number" step="0.01" placeholder="0.00">
+                      </div>
+                    </div>
+                    <div class="group">
+                      <span class="label">库存数量</span>
+                      <input id="prod-stock" type="number" step="1" value="0">
+                    </div>
                   </div>
-                  <input id="prod-image" type="hidden">
+                  
+                  <div class="group" style="height:100%">
+                    <span class="label">商品图片</span>
+                    <div style="display:flex; flex-direction:column; gap:8px; height:100%">
+                      <div style="display:flex; align-items:center; gap:8px">
+                        <input id="prod-file" type="file" accept="image/*" style="display:none">
+                        <button type="button" class="btn-secondary" onclick="document.getElementById('prod-file').click()" style="padding:8px 12px; font-size:12px">选择图片</button>
+                        <span id="prod-file-name" style="font-size:12px; color:#94a3b8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:120px">未选择文件</span>
+                      </div>
+                      <div style="flex:1; border:1px dashed #334155; border-radius:8px; display:flex; align-items:center; justify-content:center; overflow:hidden; background:#0f172a; min-height:160px; max-height:220px">
+                        <img id="prod-preview" src="" style="width:100%; height:100%; object-fit:contain; display:none;">
+                      </div>
+                      <input id="prod-image" type="hidden">
+                    </div>
+                  </div>
                 </div>
+
                 <div class="group" style="grid-column:span 2">
                   <span class="label">商品描述</span>
                   <textarea id="prod-desc" style="min-height:60px" placeholder="详细描述..."></textarea>
@@ -2335,6 +2348,6 @@
 
       </aside>
     </div>
-    <script src="app.js?v=20260307-29-test"></script>
+    <script src="app.js?v=20260307-30-test"></script>
   </body>
 </html>
