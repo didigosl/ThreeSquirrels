@@ -2342,6 +2342,140 @@ function clearContactsForm() {
   loadContactNotes(null);
   document.getElementById('ct-note-input-area').style.display = 'none';
 }
+// Upload Contacts Logic
+const ctUploadBtn = document.getElementById('contacts-upload-btn');
+const ctUploadModal = document.getElementById('contacts-upload-modal');
+const ctUploadConfirm = document.getElementById('ct-upload-confirm');
+const ctUploadFile = document.getElementById('ct-upload-file');
+const ctUploadType = document.getElementById('ct-upload-type');
+
+ctUploadBtn?.addEventListener('click', () => {
+  if (ctUploadModal) {
+    ctUploadType.value = contactsTab; // default to current tab
+    ctUploadFile.value = '';
+    ctUploadModal.style.display = 'flex';
+  }
+});
+
+ctUploadConfirm?.addEventListener('click', async () => {
+  if (!ctUploadFile.files.length) return alert('请先选择文件');
+  
+  const file = ctUploadFile.files[0];
+  const typeVal = ctUploadType.value;
+  const ownerLabel = typeVal === 'merchants' ? '商家' : (typeVal === 'others' ? '其它' : '客户');
+  
+  ctUploadConfirm.disabled = true;
+  ctUploadConfirm.textContent = '上传中...';
+  
+  try {
+    // Get existing contacts to check for matches
+    const params = new URLSearchParams({ tab: typeVal, size: '5000' });
+    const existList = await apiFetchJSON('/api/contacts?' + params.toString());
+    
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, {type: 'array'});
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(sheet);
+        
+        if (json.length === 0) {
+          alert('表格为空');
+          return;
+        }
+        
+        let successCount = 0;
+        let updateCount = 0;
+        
+        for (const row of json) {
+          const name = String(row['店名'] || '').trim();
+          const company = String(row['公司名称'] || '').trim();
+          if (!name && !company) continue; // Skip empty rows
+          
+          const code = String(row['税号'] || '').trim();
+          const email = String(row['邮箱'] || '').trim();
+          const is_iva = String(row['是否 IVA'] || '').trim() === '是';
+          
+          let use_price = 'price1';
+          const priceVal = String(row['使用价格'] || '').trim();
+          if (['1', '价格1', 'price1'].includes(priceVal)) use_price = 'price1';
+          else if (['2', '价格2', 'price2'].includes(priceVal)) use_price = 'price2';
+          else if (['3', '价格3', 'price3'].includes(priceVal)) use_price = 'price3';
+          else if (['4', '价格4', 'price4'].includes(priceVal)) use_price = 'price4';
+          
+          const sales = String(row['业务员'] || '').trim();
+          const address = String(row['街道地址'] || '').trim();
+          const zip = String(row['邮编'] || '').trim();
+          const city = String(row['城市'] || '').trim();
+          const province = String(row['省份'] || '').trim();
+          const country = String(row['国家'] || '').trim();
+          const phone = String(row['电话'] || '').trim();
+          const contact = String(row['联系人'] || '').trim();
+          const remark = String(row['备注 (开票时提示)'] || '').trim();
+          const sameAddr = String(row['与公司地址相同'] || '').trim() === '是';
+          
+          const contactObj = {
+            name: name || company, // Fallback if no store name
+            company, code, email, is_iva, use_price, sales, address, zip, city, province, country, phone, contact, remark,
+            owner: ownerLabel,
+            ship_address: sameAddr ? address : '',
+            ship_zip: sameAddr ? zip : '',
+            ship_city: sameAddr ? city : '',
+            ship_province: sameAddr ? province : '',
+            ship_country: sameAddr ? country : '',
+            ship_phone: sameAddr ? phone : '',
+            ship_contact: sameAddr ? contact : ''
+          };
+          
+          // Check if exists by company (if company is provided)
+          const exist = company ? existList.find(c => c.company === company) : null;
+          
+          if (exist) {
+            // Update
+            await apiFetchJSON('/api/contacts/by-company', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(contactObj)
+            });
+            updateCount++;
+          } else {
+            // Create
+            const now = new Date();
+            contactObj.created = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+            await apiFetchJSON('/api/contacts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(contactObj)
+            });
+            successCount++;
+          }
+        }
+        
+        alert(`上传完成！\n新增: ${successCount} 条\n更新: ${updateCount} 条`);
+        ctUploadModal.style.display = 'none';
+        await apiContactsList(contactsTab, contactsSearch?.value || '', contactsPage, contactsPageSize);
+        renderContacts();
+        
+      } catch (err) {
+        console.error(err);
+        alert('解析或上传失败，请检查表格格式');
+      } finally {
+        ctUploadConfirm.disabled = false;
+        ctUploadConfirm.textContent = '一键上传';
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    
+  } catch (err) {
+    console.error(err);
+    alert('获取现有联系人失败，请重试');
+    ctUploadConfirm.disabled = false;
+    ctUploadConfirm.textContent = '一键上传';
+  }
+});
+
 ctSubmitTop?.addEventListener('click', () => {
   clearContactsForm();
   editingIndex = null;

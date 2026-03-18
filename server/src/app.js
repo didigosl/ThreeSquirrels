@@ -805,6 +805,24 @@ app.put('/api/contacts/by-name', authRequired, ensureAllow('contacts','edit'), a
   res.json({ ok: true });
 });
 
+app.put('/api/contacts/by-company', authRequired, ensureAllow('contacts','edit'), async (req, res) => {
+  const x = req.body || {};
+  const owner = x.owner || '客户';
+  const isIva = x.is_iva === undefined ? true : Boolean(x.is_iva);
+  
+  const exist = await query('select id from contacts where owner=$1 and company=$2 limit 1', [owner, x.company]);
+  if (!exist.rows[0]) return res.status(404).json({ error: 'not_found' });
+  
+  await query(`
+    update contacts set name=$1, contact=$2, phone=$3, city=$4, remark=$5, code=$6, country=$7, address=$8, zip=$9, sales=$10, use_price=$11, is_iva=$12,
+    email=$13, province=$14, ship_address=$15, ship_zip=$16, ship_city=$17, ship_province=$18, ship_country=$19, ship_phone=$20, ship_contact=$21
+    where id=$22
+  `, [x.name||'', x.contact||'', x.phone||'', x.city||'', x.remark||'', x.code||'', x.country||'', x.address||'', x.zip||'', x.sales||'', x.use_price||'price1', isIva,
+      x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'',
+      exist.rows[0].id]);
+  res.json({ ok: true });
+});
+
 app.delete('/api/contacts/by-name', authRequired, ensureAllow('contacts','delete'), async (req, res) => {
   const { owner = '客户', name = '' } = req.query;
   const p1 = await query('select count(*)::int as c from payables where partner=$1', [name]);
