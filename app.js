@@ -3787,7 +3787,7 @@ async function loadNextInvoiceNo() {
     const res = await fetchWithAuth('/api/invoices/next-no');
     if (res.ok) {
       const data = await res.json();
-      soInvoiceNo.textContent = `Factura：${data.nextNo}`;
+      soInvoiceNo.textContent = data.nextNo;
       soInvoiceNo.dataset.nextNo = data.nextNo;
     }
   } catch {}
@@ -4448,7 +4448,7 @@ window.previewInvoice = async function(id) {
   const custEl = document.getElementById('prev-customer-info');
   if (custEl) custEl.innerHTML = customerInfoHtml;
 
-  document.getElementById('prev-no').textContent = (inv.invoice_no||'').replace('Factura：','');
+  document.getElementById('prev-no').textContent = inv.invoice_no || '';
   
   // Update status based on payment
   const total = Number(inv.total_amount||0);
@@ -4688,7 +4688,7 @@ window.editInvoice = function(id) {
   
   // Fill basic info
   document.getElementById('edit-id').value = inv.id;
-  document.getElementById('edit-invoice-no').textContent = `Factura：${inv.invoice_no}`;
+  document.getElementById('edit-invoice-no').textContent = inv.invoice_no;
   editCustomer.value = inv.customer || '';
   document.getElementById('edit-date').value = inv.date || '';
   document.getElementById('edit-notes').value = inv.notes || '';

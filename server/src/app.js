@@ -1219,18 +1219,23 @@ app.get('/api/invoices', authRequired, ensureAllow('sales_invoice','view'), asyn
 });
 
 app.get('/api/invoices/next-no', authRequired, ensureAllow('sales_order','view'), async (req, res) => {
-  const year = new Date().getFullYear();
-  const prefix = String(year);
-  const rMax = await query('select invoice_no from invoices where invoice_no like $1 order by invoice_no desc limit 1', [prefix + '%']);
-  let nextSeq = 1;
+  const rMax = await query("select invoice_no from invoices where invoice_no like 'Factura- %' order by invoice_no desc limit 1");
+  let nextSeq = 231;
   if (rMax.rows[0]) {
     const lastNo = rMax.rows[0].invoice_no;
-    const seqPart = lastNo.slice(4); // remove YYYY
-    if (/^\d+$/.test(seqPart)) {
-      nextSeq = parseInt(seqPart, 10) + 1;
+    const match = lastNo.match(/Factura- (\d{6})-\d{2}/);
+    if (match) {
+      nextSeq = parseInt(match[1], 10) + 1;
     }
   }
-  const nextNo = prefix + String(nextSeq).padStart(5, '0');
+  const year2 = String(new Date().getFullYear()).slice(-2);
+  const nextNo = `Factura- ${String(nextSeq).padStart(6, '0')}-${year2}`;
+  
+  // Since frontend expects just the number part (or adds 'Factura：' prefix itself)
+  // Wait, let's check frontend: soInvoiceNo.textContent = `Factura：${data.nextNo}`;
+  // If we send `Factura- 000231-26`, it will show `Factura：Factura- 000231-26`.
+  // Wait! We should check how it's used.
+  // We can just send the full string and modify frontend.
   res.json({ nextNo });
 });
 
