@@ -289,7 +289,7 @@
         <div class="brand" style="padding:0; display:flex !important"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <div class="mobile-menu-btn" onclick="toggleSidebar()">☰</div>
       </div>
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-41-test</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-42-test</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -470,6 +470,7 @@
                     <th>客户</th>
                     <th>日期</th>
                     <th>状态</th>
+                    <th>备注信息</th>
                     <th>单号</th>
                     <th>操作</th>
                   </tr>
@@ -681,6 +682,18 @@
               </table>
             </div>
             <div class="modal-actions" style="justify-content:center"><button class="btn" onclick="document.getElementById('do-details-modal').style.display='none'">关闭</button></div>
+          </div>
+        </div>
+
+        <!-- Order Notes Modal -->
+        <div id="do-notes-modal" class="modal-overlay" style="display:none; z-index:10000">
+          <div class="modal" style="width:400px; max-width:90vw">
+            <div class="modal-header">
+              <div class="modal-title">备注信息</div>
+              <button class="btn-secondary" onclick="document.getElementById('do-notes-modal').style.display='none'">关闭</button>
+            </div>
+            <div class="modal-body" style="padding:20px; color:#10b981; line-height:1.6; word-break:break-word; white-space:pre-wrap" id="do-notes-content">
+            </div>
           </div>
         </div>
 
@@ -2373,6 +2386,6 @@
 
       </aside>
     </div>
-    <script src="app.js?v=20260307-41-test"></script>
+    <script src="app.js?v=20260307-42-test"></script>
   </body>
 </html>

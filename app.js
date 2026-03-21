@@ -6055,6 +6055,17 @@ async function auditTask(id) {
     loadTasks('review');
 }
 
+function openOrderNotesModal(id) {
+  const o = currentDailyOrders.find(x => x.id === id);
+  if (!o || !o.notes) return;
+  const m = document.getElementById('do-notes-modal');
+  const c = document.getElementById('do-notes-content');
+  if (m && c) {
+    c.textContent = o.notes;
+    m.style.display = 'flex';
+  }
+}
+
 function openOrderDetailsModal(id) {
   const o = currentDailyOrders.find(x => x.id === id);
   if (!o) return;
@@ -6238,6 +6249,9 @@ async function loadDailyOrders(status = 'new', btn = null) {
       <td><span class="tag ${o.status==='new'?'red':(o.status==='allocated'?'blue':'green')}" style="cursor:pointer; text-decoration:underline" onclick="openOrderDetailsModal(${o.id})" title="点击查看详情">
         ${o.status==='new'?'新订单':(o.status==='allocated'?'已配货':'已发货')}
       </span></td>
+      <td>
+        ${o.notes ? `<div style="color:#10b981; font-size:13px; cursor:pointer; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; word-break:break-all; max-width:160px; line-height:1.4" onclick="openOrderNotesModal(${o.id})" title="点击查看完整备注">${o.notes}</div>` : '<span style="color:#64748b">-</span>'}
+      </td>
       <td>${o.status === 'shipped' && o.invoice_no ? o.invoice_no : '-'}</td>
       <td>
         ${o.status==='new' ? `<button class="btn-sm" onclick="openAllocateModal(${o.id})">配货</button> <button class="btn-sm btn-secondary" style="margin-left:4px" onclick="openOrderPreview(${o.id})">预览</button>` : ''}
