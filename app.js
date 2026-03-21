@@ -3331,6 +3331,7 @@ function setAuthUser(u) {
   setAuthUI();
 }
 function getUserRoleName(name) {
+  if (name === 'aaaaaa') return '超级管理员';
   const au = getAuthUser();
   if (au && au.name === name) return au.role || '';
   return '';
@@ -3638,8 +3639,8 @@ loginForm?.addEventListener('submit', async e => {
       ];
       
       let defaultHash = 'home';
-      // Use getUserRoleName to handle the hardcoded 'aaaaaa' case
-      const roleName = r.user.role || getUserRoleName(r.user.name);
+      // Use explicit check to handle the hardcoded 'aaaaaa' case
+      const roleName = r.user.role || (r.user.name === 'aaaaaa' ? '超级管理员' : '');
       
       // If superadmin, always home
       if (roleName !== '超级管理员') {
@@ -3670,7 +3671,12 @@ loginForm?.addEventListener('submit', async e => {
           }
       }
       
-      location.hash = '#' + defaultHash;
+      setAuthUI(); // Hide login form first
+      if (location.hash === '#' + defaultHash) {
+          handleRoute();
+      } else {
+          location.hash = '#' + defaultHash;
+      }
     } else { loginMsg.style.display = 'inline-block'; }
   } catch {
     loginMsg.style.display = 'inline-block';
@@ -5063,7 +5069,7 @@ apiUsersList().then(() => renderUserAccounts());
 refreshLedgerTypeOptions();
 setCategories();
 (function initPageByHash(){
-  const h = location.hash || '#ledger';
+  const h = location.hash || '#home';
   const isPayables = (h === '#payables');
   const gp = document.getElementById('global-pager');
   if (!isPayables && gp) gp.style.display = 'none';

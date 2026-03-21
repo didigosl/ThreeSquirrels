@@ -290,11 +290,11 @@
         <div class="brand" style="padding:0; display:flex !important"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <div class="mobile-menu-btn" onclick="toggleSidebar()">☰</div>
       </div>
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-50-test</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-51-test</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
-          <a href="#home">首页</a>
+          <a href="#home" class="active">首页</a>
 
           <div class="nav-group">
             <div class="nav-group-header collapsed" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed');">
@@ -322,7 +322,7 @@
             </div>
           </div>
 
-          <a href="#ledger" class="active">收支记账</a>
+          <a href="#ledger">收支记账</a>
           <a href="#payables">应收/应付账款</a>
           <a href="#contacts">往来单位</a>
           
@@ -758,7 +758,7 @@
           </div>
         </div>
         
-        <div id="page-ledger">
+        <div id="page-ledger" style="display:none">
           <div class="card search">
             <div class="field">
               <span class="label">类型</span>
@@ -984,7 +984,7 @@
             </div>
           </div>
         </div>
-        <div id="page-home" style="display:none">
+        <div id="page-home">
           <div class="card" style="padding:16px; margin-bottom:16px">
             <div class="bar" style="display:flex; align-items:center; justify-content:space-between">
               <h3 style="margin:0">收入/开支对比</h3>
@@ -2408,6 +2408,6 @@
 
       </aside>
     </div>
-    <script src="app.js?v=20260307-50-test"></script>
+    <script src="app.js?v=20260307-51-test"></script>
   </body>
 </html>
