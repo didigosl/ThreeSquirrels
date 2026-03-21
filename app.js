@@ -4010,6 +4010,7 @@ function renderProductSelector(list) {
   table.innerHTML = `
     <thead>
       <tr style="border-bottom:1px solid #334155; color:#94a3b8; font-size:12px; text-align:left">
+        <th style="padding:8px; width:40px; text-align:center"><input type="checkbox" id="prod-sel-select-all" onclick="toggleAllProdSelection(this)"></th>
         <th style="padding:8px">图片</th>
         <th style="padding:8px">编号</th>
         <th style="padding:8px">名称</th>
@@ -4017,7 +4018,6 @@ function renderProductSelector(list) {
         <th style="padding:8px">规格</th>
         <th style="padding:8px; text-align:right">价格</th>
         <th style="padding:8px; text-align:right">库存</th>
-        <th style="padding:8px; text-align:center">操作</th>
       </tr>
     </thead>
     <tbody id="prod-sel-tbody"></tbody>
@@ -4037,7 +4037,13 @@ function renderProductSelector(list) {
     tr.onmouseover = () => tr.style.background = '#1e293b';
     tr.onmouseout = () => tr.style.background = 'transparent';
     
+    // Check if already selected in global set
+    const isSelected = window.selectedProducts && window.selectedProducts.has(p.id);
+    
     tr.innerHTML = `
+      <td style="padding:8px; text-align:center">
+        <input type="checkbox" class="prod-sel-checkbox" value="${p.id}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleProdSelection(${p.id})">
+      </td>
       <td style="padding:8px">
         ${p.image ? `<img src="${p.image}" style="width:48px; height:48px; object-fit:cover; border-radius:4px; border:1px solid #334155">` : '<div style="width:48px; height:48px; background:#0f172a; border-radius:4px; border:1px solid #334155"></div>'}
       </td>
@@ -4047,18 +4053,17 @@ function renderProductSelector(list) {
       <td style="padding:8px; color:#94a3b8">${p.spec||''}</td>
       <td style="padding:8px; text-align:right; color:var(--blue); font-weight:600">€${displayPrice.toFixed(2)}</td>
       <td style="padding:8px; text-align:right; color:#64748b">${Number(p.stock||0)}</td>
-      <td style="padding:8px; text-align:center">
-        <button class="btn-icon btn-green" style="font-size:12px; padding:4px 8px">选择</button>
-      </td>
     `;
     
-    // Click row to select
+    // Store product data on the row for easy access
+    tr.dataset.prod = JSON.stringify(p);
+    
+    // Click row to toggle selection
     tr.addEventListener('click', (e) => {
-      if (typeof window.onProdSelect === 'function') {
-        window.onProdSelect(p);
-      } else {
-        addSoItem(p);
-        prodSelModal.style.display = 'none'; 
+      if (e.target.tagName.toLowerCase() !== 'input') {
+        const cb = tr.querySelector('.prod-sel-checkbox');
+        cb.checked = !cb.checked;
+        toggleProdSelection(p.id, p);
       }
     });
     
@@ -4067,7 +4072,87 @@ function renderProductSelector(list) {
   
   prodSelList.style.display = 'block'; // Ensure it's not grid
   prodSelList.appendChild(table);
+  
+  // Update select all checkbox state
+  updateSelectAllCheckbox();
 }
+
+// Multi-select product logic
+window.selectedProducts = new Map();
+
+window.toggleProdSelection = function(id, prodObj) {
+  if (!prodObj) {
+    // If clicked from checkbox directly, we need to find the prod obj from the row dataset
+    const cb = document.querySelector(`.prod-sel-checkbox[value="${id}"]`);
+    if (cb && cb.closest('tr')) {
+      prodObj = JSON.parse(cb.closest('tr').dataset.prod);
+      if (!cb.checked) {
+        window.selectedProducts.delete(id);
+      } else {
+        window.selectedProducts.set(id, prodObj);
+      }
+    }
+  } else {
+    // Clicked from row
+    const cb = document.querySelector(`.prod-sel-checkbox[value="${id}"]`);
+    if (cb) {
+      if (cb.checked) {
+        window.selectedProducts.set(id, prodObj);
+      } else {
+        window.selectedProducts.delete(id);
+      }
+    }
+  }
+  updateSelectAllCheckbox();
+};
+
+window.toggleAllProdSelection = function(el) {
+  const checkboxes = document.querySelectorAll('.prod-sel-checkbox');
+  checkboxes.forEach(cb => {
+    cb.checked = el.checked;
+    const id = parseInt(cb.value, 10);
+    const prodObj = JSON.parse(cb.closest('tr').dataset.prod);
+    if (el.checked) {
+      window.selectedProducts.set(id, prodObj);
+    } else {
+      window.selectedProducts.delete(id);
+    }
+  });
+};
+
+function updateSelectAllCheckbox() {
+  const selectAllCb = document.getElementById('prod-sel-select-all');
+  const checkboxes = document.querySelectorAll('.prod-sel-checkbox');
+  if (selectAllCb && checkboxes.length > 0) {
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    selectAllCb.checked = allChecked;
+  }
+}
+
+window.confirmProductSelection = function() {
+  if (window.selectedProducts.size === 0) {
+    alert('请先选择至少一个商品');
+    return;
+  }
+  
+  const selectedArray = Array.from(window.selectedProducts.values());
+  
+  if (typeof window.onProdSelect === 'function') {
+    // Call the callback with the array, or loop if it only supports single
+    // For safety, we loop through them to support existing single-item handlers
+    // But we need to close the modal ourselves since the handler might not
+    selectedArray.forEach(p => {
+      window.onProdSelect(p, true); // true indicates it's part of a batch
+    });
+    prodSelModal.style.display = 'none';
+  } else {
+    // Default fallback for Sales Invoice
+    selectedArray.forEach(p => {
+      addSoItem(p);
+    });
+    prodSelModal.style.display = 'none';
+  }
+};
 
 if (soAddItem) {
   soAddItem.addEventListener('click', () => {
@@ -4075,6 +4160,7 @@ if (soAddItem) {
       alert('请先选择客户');
       return;
     }
+    window.selectedProducts.clear(); // Clear previous selections
     prodSelModal.style.display = 'flex';
     prodSelSearch.value = '';
     loadProductSelector();
@@ -6482,12 +6568,13 @@ function closeDailyOrderModal() {
 function openDoProdSelector() {
   const m = document.getElementById('prod-selector-modal');
   if (m) {
+    window.selectedProducts.clear();
     m.style.display = 'flex';
     loadProductSelector(1); // Load first page
     // Override the select callback for this context
-    window.onProdSelect = function(prod) {
+    window.onProdSelect = function(prod, isBatch) {
       addDoItemRow(prod);
-      m.style.display = 'none';
+      if (!isBatch) m.style.display = 'none';
     };
   }
 }
@@ -6707,12 +6794,15 @@ function openFinishedStockModal() {
 function openFsProdSelector() {
   const m = document.getElementById('prod-selector-modal');
   if (m) {
+    window.selectedProducts.clear();
     m.style.display = 'flex';
     loadProductSelector(1);
-    window.onProdSelect = function(prod) {
+    window.onProdSelect = function(prod, isBatch) {
       document.getElementById('fs-prod-search').value = prod.name;
       document.getElementById('fs-prod-id').value = prod.id;
-      m.style.display = 'none';
+      // For inventory, we only want single selection logically, but multi-select UI might call it once or more.
+      // We'll just take the last one or close it.
+      if (!isBatch) m.style.display = 'none';
     };
   }
 }
