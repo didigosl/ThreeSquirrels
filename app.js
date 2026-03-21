@@ -3664,7 +3664,7 @@ loginForm?.addEventListener('submit', async e => {
                           break;
                       }
                   }
-                  if (!defaultHash) defaultHash = 'login'; // or something if no perms
+                  if (!defaultHash) defaultHash = 'empty'; // or something if no perms
               }
           } catch(err) {
               console.warn(err);
@@ -5696,6 +5696,11 @@ async function handleRoute() {
   const u = getAuthUser(); 
   const roleName = (u?.role) || getUserRoleName(u?.name || '');
   
+  // Ensure roles are loaded before checking permissions
+  if (u && rolesData.length === 0 && roleName !== '超级管理员') {
+    try { await apiRolesList(); } catch(e) {}
+  }
+  
   // Hide all pages first
   document.querySelectorAll('[id^="page-"]').forEach(el => el.style.display = 'none');
   const gp = document.getElementById('global-pager'); if (gp) gp.style.display = 'none';
@@ -5737,7 +5742,7 @@ async function handleRoute() {
               }
           }
       }
-      if (!fallback) fallback = 'login'; // If no permissions at all
+      if (!fallback) fallback = 'empty'; // If no permissions at all
       if (location.hash !== '#' + fallback) {
           location.hash = '#' + fallback;
       }
