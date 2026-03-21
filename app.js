@@ -6062,6 +6062,7 @@ function openOrderDetailsModal(id) {
   if (m) {
     document.getElementById('do-details-customer').textContent = o.customer;
     document.getElementById('do-details-date').textContent = o.date;
+    document.getElementById('do-details-notes').textContent = o.notes || '-';
     document.getElementById('do-details-status').textContent = o.status === 'new' ? '新订单' : (o.status === 'allocated' ? '已配货' : '已发货');
     
     const tbody = document.getElementById('do-details-rows');
@@ -6105,6 +6106,7 @@ function openOrderPreview(id) {
           <div>
             <div><strong>客户:</strong> ${o.customer}</div>
             <div><strong>日期:</strong> ${o.date}</div>
+            ${o.notes ? `<div><strong>备注:</strong> ${o.notes}</div>` : ''}
           </div>
           <div>
             <div><strong>订单号:</strong> #${o.id}</div>
@@ -6336,7 +6338,7 @@ function openDailyOrderModal() {
          });
     }
     
-    document.getElementById('do-date').valueAsDate = new Date();
+    document.getElementById('do-notes').value = '';
   }
 }
 
@@ -6385,7 +6387,7 @@ function addDoItemRow(prod) {
 
 async function saveDailyOrder() {
   const customer = document.getElementById('do-customer').value;
-  const date = document.getElementById('do-date').value;
+  const notes = document.getElementById('do-notes').value;
   if (!customer) return alert('请选择客户');
   
   const items = [];
@@ -6402,7 +6404,7 @@ async function saveDailyOrder() {
   
   await fetchWithAuth('/api/daily-orders', {
     method: 'POST',
-    body: JSON.stringify({ customer, date, items })
+    body: JSON.stringify({ customer, notes, items })
   });
   closeDailyOrderModal();
   loadDailyOrders('new');

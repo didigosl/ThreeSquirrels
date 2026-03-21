@@ -297,8 +297,10 @@ async function ensureSchema() {
       created_by text,
       created_at bigint,
       invoice_id int,
-      date text
+      date text,
+      notes text
     );
+    alter table daily_orders add column if not exists notes text;
     create table if not exists inventory_batches (
       id serial primary key,
       product_id int,
@@ -1667,8 +1669,11 @@ app.get('/api/daily-orders', authRequired, async (req, res) => {
 app.post('/api/daily-orders', authRequired, async (req, res) => {
   const x = req.body || {};
   const items = Array.isArray(x.items) ? x.items : [];
-  const r = await query(`insert into daily_orders(customer,sales,items,created_by,created_at,date) values($1,$2,$3,$4,$5,$6) returning id`,
-    [x.customer||'', x.sales||'', JSON.stringify(items), req.user.name, Date.now(), x.date||'']);
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  
+  const r = await query(`insert into daily_orders(customer,sales,items,created_by,created_at,date,notes) values($1,$2,$3,$4,$5,$6,$7) returning id`,
+    [x.customer||'', x.sales||'', JSON.stringify(items), req.user.name, Date.now(), dateStr, x.notes||'']);
   res.json({ id: r.rows[0].id });
 });
 app.put('/api/daily-orders/:id/allocate', authRequired, async (req, res) => {
@@ -1761,9 +1766,9 @@ app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
 
     // Insert Invoice
     const inv = await query(`
-      insert into invoices(invoice_no, customer, date, items, total_amount, sales, created_at, created_by)
-      values($1,$2,$3,$4,$5,$6,$7,$8) returning id
-    `, [invoiceNo, ord.customer, ord.date, JSON.stringify(invoiceItems), total, ord.sales, now, 'system']);
+      insert into invoices(invoice_no, customer, date, items, total_amount, sales, created_at, created_by, notes)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id
+    `, [invoiceNo, ord.customer, ord.date, JSON.stringify(invoiceItems), total, ord.sales, now, 'system', ord.notes||'']);
     
     // Create Payable
     await query(`
