@@ -2846,17 +2846,23 @@ const roleCancel = document.getElementById('role-cancel');
 const rolesData = [];
 const permSchema = {
   home: { label:'首页', actions:{ view:'进入' } },
-  ledger: { label:'收支记账', actions:{ view:'进入', create:'新增', edit:'编辑', delete:'删除', export:'导出' } },
-  payables: { label:'应收/应付账款', actions:{ view:'进入', create:'新增', edit:'编辑', delete:'删除', import:'批量导入', export:'导出' } },
-  contacts: { label:'往来单位', actions:{ view:'进入', create:'新增', edit:'编辑', delete:'删除' } },
+  tasks: { label:'任务信息', actions:{ view:'进入' } },
+  daily_orders: { label:'订单管理', actions:{ view:'进入' } },
+  finished_stock: { label:'商品库存', actions:{ view:'进入' } },
+  raw_stock: { label:'原材料库存', actions:{ view:'进入' } },
   sales_order: { label:'出单系统', actions:{ view:'进入' } },
   sales_invoice: { label:'发票', actions:{ view:'进入' } },
   sales_products: { label:'商品列表', actions:{ view:'进入' } },
+  ledger: { label:'收支记账', actions:{ view:'进入', create:'新增', edit:'编辑', delete:'删除', confirm:'确认对账', import:'批量导入', export:'导出' } },
+  payables: { label:'应收/应付账款', actions:{ view:'进入', create:'新增', edit:'编辑', delete:'删除', import:'批量导入', export:'导出' } },
+  contacts: { label:'往来单位', actions:{ view:'进入', create:'新增', edit:'编辑', delete:'删除' } },
   categories: { label:'分类管理', actions:{ view:'进入', manage:'维护类目' } },
   accounts: { label:'账户管理', actions:{ view:'进入', create_account:'新增账户', edit_account:'编辑账户', delete_account:'删除账户', init_account:'初始金额' } },
+  sales_accounts: { label:'业务员管理', actions:{ view:'进入', create_sales:'新增', edit_sales:'编辑', delete_sales:'删除' } },
+  company_info: { label:'公司信息', actions:{ view:'进入' } },
   user_accounts: { label:'帐号管理', actions:{ view:'进入', create_user:'创建账号', reset_password:'重置密码', enable_user:'启用/停用' } },
   role_accounts: { label:'角色管理', actions:{ view:'进入', create_role:'创建角色', edit_role:'编辑角色', delete_role:'删除角色' } },
-  sales_accounts: { label:'业务员管理', actions:{ view:'进入', create_sales:'新增', edit_sales:'编辑', delete_sales:'删除' } }
+  system: { label:'基础设置', actions:{ view:'进入' } }
 };
 function allTruePerms() {
   const p = {}; Object.keys(permSchema).forEach(m => { p[m]={}; Object.keys(permSchema[m].actions).forEach(a => p[m][a]=true); }); return p;
@@ -3619,23 +3625,24 @@ loginForm?.addEventListener('submit', async e => {
       // So we just rely on `can` which falls back to role name logic.
       // We will define a list of modules in sidebar order to check.
       const modulesInOrder = [
-        'home',
-        'tasks', // No explicit perm for tasks, everyone can see? Actually let's just check home first.
-        'ledger',
-        'payables',
-        'contacts',
-        'sales_order',
-        'sales_invoice',
-        'sales_products',
-        'daily_orders',
-        'inventory_finished',
-        'inventory_raw',
-        'categories',
-        'accounts',
-        'user_accounts',
-        'role_accounts',
-        'sales_accounts',
-        'company_info'
+        { mod: 'home', hash: 'home' },
+        { mod: 'tasks', hash: 'tasks' },
+        { mod: 'daily_orders', hash: 'daily-orders' },
+        { mod: 'finished_stock', hash: 'finished-stock' },
+        { mod: 'raw_stock', hash: 'raw-stock' },
+        { mod: 'sales_order', hash: 'sales-order' },
+        { mod: 'sales_invoice', hash: 'sales-invoice' },
+        { mod: 'sales_products', hash: 'sales-products' },
+        { mod: 'ledger', hash: 'ledger' },
+        { mod: 'payables', hash: 'payables' },
+        { mod: 'contacts', hash: 'contacts' },
+        { mod: 'categories', hash: 'categories' },
+        { mod: 'accounts', hash: 'accounts' },
+        { mod: 'sales_accounts', hash: 'sales-accounts' },
+        { mod: 'company_info', hash: 'company-info' },
+        { mod: 'user_accounts', hash: 'user-accounts' },
+        { mod: 'role_accounts', hash: 'role-accounts' },
+        { mod: 'system', hash: 'system' }
       ];
       
       let defaultHash = 'home';
@@ -3644,27 +3651,20 @@ loginForm?.addEventListener('submit', async e => {
       
       // If superadmin, always home
       if (roleName !== '超级管理员') {
-          // Need to fetch user's perms from backend because rolesData is loaded asynchronously
-          // Let's use the `/api/roles/me` endpoint to get perms.
           try {
               const permRes = await fetchWithAuth('/api/roles/me');
               if (permRes.ok) {
                   const permData = await permRes.json();
                   const perms = permData.perms || {};
                   
-                  for (let mod of modulesInOrder) {
-                      if (mod === 'home') {
-                          if (perms['home'] && perms['home']['view']) { defaultHash = 'home'; break; }
-                      } else if (mod === 'tasks' || mod === 'daily_orders' || mod === 'inventory_finished' || mod === 'inventory_raw' || mod === 'company_info') {
-                          // These don't have explicit perm checks, but let's check if the role has them defined, 
-                          // or default to tasks if nothing else matches? 
-                          // Actually, let's just use `can` logic. Wait, `rolesData` might not be loaded yet.
-                          // We can just rely on `perms[mod]` if they are defined.
-                          if (perms[mod] && perms[mod]['view']) { defaultHash = mod; break; }
-                      } else if (perms[mod] && perms[mod]['view']) {
-                          defaultHash = mod; break;
+                  defaultHash = ''; // default to empty until we find one
+                  for (let m of modulesInOrder) {
+                      if (perms[m.mod] && perms[m.mod].view) {
+                          defaultHash = m.hash;
+                          break;
                       }
                   }
+                  if (!defaultHash) defaultHash = 'login'; // or something if no perms
               }
           } catch(err) {
               console.warn(err);
@@ -5703,14 +5703,51 @@ async function handleRoute() {
 
   // Helper for permission
   const ensureView = (module) => {
-    if (roleName==='超级管理员' || module==='home') return true;
+    if (roleName === '超级管理员') return true;
     const role = rolesData.find(r => r.name === roleName);
     const allow = !!(role && role.perms && role.perms[module] && role.perms[module].view);
-    if (!allow) { location.hash = '#home'; return false; }
+    if (!allow) {
+      // Find the first module they can view
+      const modulesInOrder = [
+        { mod: 'home', hash: 'home' },
+        { mod: 'tasks', hash: 'tasks' },
+        { mod: 'daily_orders', hash: 'daily-orders' },
+        { mod: 'finished_stock', hash: 'finished-stock' },
+        { mod: 'raw_stock', hash: 'raw-stock' },
+        { mod: 'sales_order', hash: 'sales-order' },
+        { mod: 'sales_invoice', hash: 'sales-invoice' },
+        { mod: 'sales_products', hash: 'sales-products' },
+        { mod: 'ledger', hash: 'ledger' },
+        { mod: 'payables', hash: 'payables' },
+        { mod: 'contacts', hash: 'contacts' },
+        { mod: 'categories', hash: 'categories' },
+        { mod: 'accounts', hash: 'accounts' },
+        { mod: 'sales_accounts', hash: 'sales-accounts' },
+        { mod: 'company_info', hash: 'company-info' },
+        { mod: 'user_accounts', hash: 'user-accounts' },
+        { mod: 'role_accounts', hash: 'role-accounts' },
+        { mod: 'system', hash: 'system' }
+      ];
+      let fallback = '';
+      if (role && role.perms) {
+          for (let m of modulesInOrder) {
+              if (role.perms[m.mod] && role.perms[m.mod].view) {
+                  fallback = m.hash;
+                  break;
+              }
+          }
+      }
+      if (!fallback) fallback = 'login'; // If no permissions at all
+      if (location.hash !== '#' + fallback) {
+          location.hash = '#' + fallback;
+      }
+      return false;
+    }
     return true;
   };
 
   if (hash === 'home') {
+    if (!ensureView('home')) return;
     document.getElementById('page-home').style.display = 'block';
     if (typeof homePeriodSel !== 'undefined' && homePeriodSel) homePeriodSel.value = 'month';
     if (typeof renderHomeChart === 'function') renderHomeChart('month');
@@ -5718,6 +5755,7 @@ async function handleRoute() {
     if (typeof renderSalesChart === 'function') renderSalesChart('month');
   } 
   else if (hash === 'tasks') {
+    if (!ensureView('tasks')) return;
     document.getElementById('page-tasks').style.display = 'block';
     loadTasks(currentTaskTab);
   }
@@ -5792,6 +5830,7 @@ async function handleRoute() {
     loadProducts();
   }
   else if (hash.startsWith('partner-orders')) {
+    if (!ensureView('contacts')) return;
     const nameParam = decodeURIComponent((hash.split(':')[1] || '').trim());
     const page = document.getElementById('page-partner-orders');
     if (page) {
@@ -5852,30 +5891,35 @@ async function handleRoute() {
     });
   }
   else if (hash === 'role-perms') {
+    if (!ensureView('role_accounts')) return;
     document.getElementById('page-role-perms').style.display = 'block';
   }
   else if (hash === 'system') {
-    if (roleName !== '超级管理员') { location.hash = '#home'; return; }
+    if (!ensureView('system')) return;
     document.getElementById('page-system').style.display = 'block';
   }
   else if (hash === 'company-info') {
-    if (roleName !== '超级管理员') { location.hash = '#home'; return; }
+    if (!ensureView('company_info')) return;
     document.getElementById('page-company-info').style.display = 'block';
     loadCompanyInfo();
   }
   else if (hash === 'daily-orders') {
+    if (!ensureView('daily_orders')) return;
     document.getElementById('page-daily-orders').style.display = 'block';
     loadDailyOrders();
   }
   else if (hash === 'finished-stock') {
+    if (!ensureView('finished_stock')) return;
     document.getElementById('page-finished-stock').style.display = 'block';
     loadFinishedStock();
   }
   else if (hash === 'raw-stock') {
+    if (!ensureView('raw_stock')) return;
     document.getElementById('page-raw-stock').style.display = 'block';
     loadRawStock();
   }
   else if (hash.startsWith('stock-history')) {
+    if (!ensureView('finished_stock') && !ensureView('raw_stock')) return;
     const id = hash.split('=')[1];
     document.getElementById('page-stock-history').style.display = 'block';
     loadStockHistory(id);
