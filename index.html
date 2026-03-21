@@ -289,7 +289,7 @@
         <div class="brand" style="padding:0; display:flex !important"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <div class="mobile-menu-btn" onclick="toggleSidebar()">☰</div>
       </div>
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-43-test</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-44-test</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -557,8 +557,9 @@
         <!-- Task Modal -->
         <div id="task-modal" class="modal-overlay" style="display:none">
           <div class="modal">
-            <div class="modal-header"><div class="modal-title">创建任务</div><button class="btn-secondary" onclick="closeTaskModal()">关闭</button></div>
+            <div class="modal-header"><div class="modal-title" id="task-modal-title">创建任务</div><button class="btn-secondary" onclick="closeTaskModal()">关闭</button></div>
             <div class="modal-body">
+              <input type="hidden" id="task-id">
               <div class="group"><span class="label">标题</span><input id="task-title" type="text"></div>
               <div class="group">
                 <span class="label">时限</span>
@@ -608,6 +609,21 @@
           </div>
         </div>
         
+        <!-- Task Details Modal -->
+        <div id="task-details-modal" class="modal-overlay" style="display:none">
+          <div class="modal" style="width:500px; max-width:90vw">
+            <div class="modal-header">
+              <div class="modal-title">任务详情</div>
+              <button class="btn-secondary" onclick="document.getElementById('task-details-modal').style.display='none'">关闭</button>
+            </div>
+            <div class="modal-body" style="line-height:1.6; color:#e2e8f0" id="task-details-content">
+            </div>
+            <div class="modal-actions" style="justify-content:center">
+              <button class="btn" onclick="document.getElementById('task-details-modal').style.display='none'">确定</button>
+            </div>
+          </div>
+        </div>
+
         <!-- Image Lightbox -->
         <div id="image-lightbox" class="modal-overlay" style="display:none; background:rgba(0,0,0,0.9); z-index:10000" onclick="this.style.display='none'">
           <div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center">
@@ -2387,6 +2403,6 @@
 
       </aside>
     </div>
-    <script src="app.js?v=20260307-43-test"></script>
+    <script src="app.js?v=20260307-44-test"></script>
   </body>
 </html>

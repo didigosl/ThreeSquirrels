@@ -1631,6 +1631,19 @@ app.post('/api/tasks', authRequired, async (req, res) => {
     [x.title||'', x.desc||'', req.user.name, Date.now(), x.assign||'', timeLimit]);
   res.json({ id: r.rows[0].id });
 });
+app.put('/api/tasks/:id', authRequired, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const x = req.body || {};
+  const timeLimit = parseInt(x.time_limit, 10) || 0;
+  // Ensure only creator or admin can edit
+  const t = await query('select created_by from tasks where id=$1', [id]);
+  if (!t.rows[0]) return res.status(404).json({ error: 'not_found' });
+  if (t.rows[0].created_by !== req.user.name && req.user.role !== '超级管理员') return res.status(403).json({ error: 'forbidden' });
+  
+  await query('update tasks set title=$1, description=$2, assigned_to=$3, time_limit=$4 where id=$5',
+    [x.title||'', x.description||'', x.assigned_to||'', timeLimit, id]);
+  res.json({ ok: true });
+});
 app.put('/api/tasks/:id/complete', authRequired, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const { image, desc } = req.body;

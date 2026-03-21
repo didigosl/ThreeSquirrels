@@ -5751,6 +5751,7 @@ async function handleRoute() {
 // Tasks
 let currentTaskTab = 'new';
 let currentTaskPage = 1;
+let currentTasksList = [];
 
 async function loadTasks(tab = 'new', btn = null, page = 1) {
   currentTaskTab = tab;
@@ -5779,6 +5780,7 @@ async function loadTasks(tab = 'new', btn = null, page = 1) {
   
   // Handle response format { list, total, stats }
   const list = data.list || [];
+  currentTasksList = list;
   const total = data.total || 0;
   const stats = data.stats || { new_count: 0, review_count: 0 };
 
@@ -5817,6 +5819,9 @@ async function loadTasks(tab = 'new', btn = null, page = 1) {
     if (t.status === 'pending' || !t.status) {
         if (t.assigned_to === myName || isAdmin) {
             action = `<button class="btn-sm" onclick="completeTask(${t.id})">完成任务</button>`;
+        }
+        if (t.created_by === myName || isAdmin) {
+            action += `<button class="btn-sm btn-secondary" style="margin-left:4px" onclick="editTask(${t.id})">修改</button>`;
         }
     } else if (t.status === 'waiting_audit') {
         if (isAdmin) {
@@ -5864,7 +5869,7 @@ async function loadTasks(tab = 'new', btn = null, page = 1) {
       <td>${assignInfo}</td>
       <td>${t.created_by||''}<br><span style="font-size:12px;color:#666">${new Date(Number(t.created_at)).toLocaleString()}</span></td>
       <td>${timeLimitText}</td>
-      <td><span class="tag ${t.status==='completed'?'green':(t.status==='waiting_audit'?'orange':'blue')}">
+      <td><span class="tag ${t.status==='completed'?'green':(t.status==='waiting_audit'?'orange':'blue')}" style="cursor:pointer; text-decoration:underline" onclick="openTaskDetailsModal(${t.id})" title="点击查看详情">
         ${t.status==='completed'?'已完成':(t.status==='waiting_audit'?'审核中':'新任务')}
       </span></td>
       <td>${action}</td>
@@ -5903,6 +5908,8 @@ function openTaskModal() {
   const m = document.getElementById('task-modal');
   if (m) {
     m.style.display = 'flex';
+    document.getElementById('task-modal-title').textContent = '创建任务';
+    document.getElementById('task-id').value = '';
     document.getElementById('task-title').value = '';
     document.getElementById('task-desc').value = '';
     document.getElementById('task-assign').value = '';
@@ -5940,9 +5947,10 @@ function openTaskModal() {
         });
         
         function renderUserChips(users) {
+           const currentAssign = document.getElementById('task-assign').value;
            listDiv.innerHTML = users.map(u => `
             <div class="user-chip" onclick="selectTaskUser(this, '${u.name}')" 
-                 style="border:1px solid #334155; padding:8px; border-radius:6px; cursor:pointer; text-align:center; background:#0f172a; color:#cbd5e1; user-select:none; display:flex; flex-direction:column; align-items:center; gap:4px">
+                 style="border:1px solid ${u.name === currentAssign ? '#1a73e8' : '#334155'}; padding:8px; border-radius:6px; cursor:pointer; text-align:center; background:${u.name === currentAssign ? '#1a73e8' : '#0f172a'}; color:${u.name === currentAssign ? '#fff' : '#cbd5e1'}; user-select:none; display:flex; flex-direction:column; align-items:center; gap:4px">
               <span style="font-weight:600">${u.name}</span>
               <span style="font-size:10px; opacity:0.7; background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px">${u.role||'员工'}</span>
             </div>
@@ -5950,6 +5958,56 @@ function openTaskModal() {
         }
     }
   }
+}
+window.editTask = function(id) {
+    const t = currentTasksList.find(x => x.id === id);
+    if (!t) return;
+    openTaskModal();
+    document.getElementById('task-modal-title').textContent = '修改任务';
+    document.getElementById('task-id').value = t.id;
+    document.getElementById('task-title').value = t.title || '';
+    document.getElementById('task-desc').value = t.description || '';
+    document.getElementById('task-assign').value = t.assigned_to || '';
+    if (document.getElementById('task-time-limit')) {
+        document.getElementById('task-time-limit').value = t.time_limit || '1';
+    }
+}
+window.openTaskDetailsModal = function(id) {
+    const t = currentTasksList.find(x => x.id === id);
+    if (!t) return;
+    const m = document.getElementById('task-details-modal');
+    const c = document.getElementById('task-details-content');
+    if (m && c) {
+        let statusStr = t.status === 'completed' ? '<span style="color:#22c55e">已完成</span>' : (t.status === 'waiting_audit' ? '<span style="color:#f97316">审核中</span>' : '<span style="color:#3b82f6">新任务</span>');
+        let html = `
+            <div style="margin-bottom:12px; font-size:18px; font-weight:bold; color:#fff">${t.title || '无标题'}</div>
+            <div style="margin-bottom:8px"><strong>状态：</strong> ${statusStr}</div>
+            <div style="margin-bottom:8px"><strong>指派给：</strong> ${t.assigned_to || '-'}</div>
+            <div style="margin-bottom:8px"><strong>创建人：</strong> ${t.created_by || '-'}</div>
+            <div style="margin-bottom:8px"><strong>创建时间：</strong> ${new Date(Number(t.created_at)).toLocaleString()}</div>
+        `;
+        if (t.time_limit) {
+            const limitDays = Number(t.time_limit);
+            let label = limitDays + '天内';
+            if (limitDays === 7) label = '一周内';
+            if (limitDays === 30) label = '一个月';
+            html += `<div style="margin-bottom:8px"><strong>时限：</strong> ${label}</div>`;
+        }
+        if (t.description) {
+            html += `<div style="margin-bottom:12px; margin-top:16px; border-top:1px solid #334155; padding-top:12px"><strong>任务描述：</strong><br><div style="white-space:pre-wrap; margin-top:8px; color:#cbd5e1">${t.description}</div></div>`;
+        }
+        if (t.completion_desc) {
+            html += `<div style="margin-bottom:12px; margin-top:16px; border-top:1px dashed #334155; padding-top:12px"><strong>完成备注：</strong><br><div style="white-space:pre-wrap; margin-top:8px; color:#22c55e">${t.completion_desc}</div></div>`;
+        }
+        if (t.completion_image) {
+            html += `<div style="margin-bottom:8px"><strong>完成图片：</strong><br><img src="${t.completion_image}" style="max-width:100%; max-height:200px; border-radius:4px; margin-top:8px; cursor:zoom-in; border:1px solid #334155" onclick="showTaskImage(this.src)" title="点击放大"></div>`;
+        }
+        if (t.completed_at) {
+            html += `<div style="margin-bottom:8px; color:#94a3b8"><strong>完成时间：</strong> ${new Date(Number(t.completed_at)).toLocaleString()}</div>`;
+        }
+        c.innerHTML = html;
+        m.style.display = 'flex';
+    }
 }
 window.selectTaskUser = function(el, name) {
     document.getElementById('task-assign').value = name;
@@ -5967,6 +6025,7 @@ function closeTaskModal() {
   if (m) m.style.display = 'none';
 }
 async function saveTask() {
+  const id = document.getElementById('task-id').value;
   const title = document.getElementById('task-title').value;
   const desc = document.getElementById('task-desc').value;
   const assign = document.getElementById('task-assign').value;
@@ -5974,18 +6033,27 @@ async function saveTask() {
   if (!title) return alert('请输入标题');
   if (!assign) return alert('请选择指派人员');
   
-  await fetchWithAuth('/api/tasks', {
-    method: 'POST',
-    body: JSON.stringify({ title, desc, assign, timeLimit })
-  });
+  if (id) {
+    await fetchWithAuth('/api/tasks/' + id, {
+      method: 'PUT',
+      body: JSON.stringify({ title, description: desc, assigned_to: assign, time_limit: timeLimit })
+    });
+  } else {
+    await fetchWithAuth('/api/tasks', {
+      method: 'POST',
+      body: JSON.stringify({ title, desc, assign, timeLimit })
+    });
+  }
   closeTaskModal();
-  loadTasks('new');
-  // Update badge immediately after creation
-  const badge = document.getElementById('nav-task-badge');
-  if (badge) {
-    const count = Number(badge.textContent || 0) + 1;
-    badge.textContent = count;
-    badge.style.display = 'inline-block';
+  loadTasks(currentTaskTab);
+  // Update badge immediately after creation if it's new
+  if (!id) {
+    const badge = document.getElementById('nav-task-badge');
+    if (badge) {
+      const count = Number(badge.textContent || 0) + 1;
+      badge.textContent = count;
+      badge.style.display = 'inline-block';
+    }
   }
 }
 function openCompleteTaskModal(id) {
