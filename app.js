@@ -3638,8 +3638,11 @@ loginForm?.addEventListener('submit', async e => {
       ];
       
       let defaultHash = 'home';
+      // Use getUserRoleName to handle the hardcoded 'aaaaaa' case
+      const roleName = r.user.role || getUserRoleName(r.user.name);
+      
       // If superadmin, always home
-      if (r.user.role !== '超级管理员') {
+      if (roleName !== '超级管理员') {
           // Need to fetch user's perms from backend because rolesData is loaded asynchronously
           // Let's use the `/api/roles/me` endpoint to get perms.
           try {
@@ -3649,12 +3652,14 @@ loginForm?.addEventListener('submit', async e => {
                   const perms = permData.perms || {};
                   
                   for (let mod of modulesInOrder) {
-                      // tasks, daily_orders, inventory_finished, inventory_raw, company_info don't have explicit perm checks in some places, but let's check standard ones
                       if (mod === 'home') {
                           if (perms['home'] && perms['home']['view']) { defaultHash = 'home'; break; }
-                      } else if (mod === 'tasks') {
-                          // tasks is visible to all
-                          defaultHash = 'tasks'; break;
+                      } else if (mod === 'tasks' || mod === 'daily_orders' || mod === 'inventory_finished' || mod === 'inventory_raw' || mod === 'company_info') {
+                          // These don't have explicit perm checks, but let's check if the role has them defined, 
+                          // or default to tasks if nothing else matches? 
+                          // Actually, let's just use `can` logic. Wait, `rolesData` might not be loaded yet.
+                          // We can just rely on `perms[mod]` if they are defined.
+                          if (perms[mod] && perms[mod]['view']) { defaultHash = mod; break; }
                       } else if (perms[mod] && perms[mod]['view']) {
                           defaultHash = mod; break;
                       }
