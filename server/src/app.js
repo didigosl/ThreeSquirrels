@@ -1693,6 +1693,30 @@ app.post('/api/daily-orders', authRequired, async (req, res) => {
     [x.customer||'', x.sales||'', JSON.stringify(items), req.user.name, Date.now(), dateStr, x.notes||'']);
   res.json({ id: r.rows[0].id });
 });
+app.put('/api/daily-orders/:id', authRequired, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const x = req.body || {};
+  const items = Array.isArray(x.items) ? x.items : [];
+  
+  const ord = await query('select status, items from daily_orders where id=$1', [id]);
+  if (!ord.rows[0]) return res.status(404).json({ error: 'not_found' });
+  if (ord.rows[0].status === 'shipped') return res.status(400).json({ error: 'cannot_edit_shipped' });
+  
+  // If status is allocated, we need to preserve allocated_qty if possible, or we can just overwrite items.
+  // The user says "可以修改订单中的商品或数量", if they modify an allocated order, does it reset allocated_qty?
+  // Let's merge the old allocated_qty into the new items by product name if status is allocated.
+  let newItems = items;
+  if (ord.rows[0].status === 'allocated') {
+      const oldItems = typeof ord.rows[0].items === 'string' ? JSON.parse(ord.rows[0].items) : (ord.rows[0].items || []);
+      const oldAllocatedMap = {};
+      oldItems.forEach(i => oldAllocatedMap[i.name] = i.allocated_qty || 0);
+      newItems = items.map(i => ({ ...i, allocated_qty: oldAllocatedMap[i.name] || 0 }));
+  }
+
+  await query('update daily_orders set customer=$1, notes=$2, items=$3 where id=$4', 
+    [x.customer||'', x.notes||'', JSON.stringify(newItems), id]);
+  res.json({ ok: true });
+});
 app.put('/api/daily-orders/:id/allocate', authRequired, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const { items } = req.body; // updated items with allocated_qty

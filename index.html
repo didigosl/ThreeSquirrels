@@ -289,7 +289,7 @@
         <div class="brand" style="padding:0; display:flex !important"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <div class="mobile-menu-btn" onclick="toggleSidebar()">☰</div>
       </div>
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-44-test</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-45-test</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -634,8 +634,9 @@
         <!-- Daily Order Create Modal -->
         <div id="daily-order-modal" class="modal-overlay" style="display:none">
           <div class="modal" style="width:800px; max-width:95vw">
-            <div class="modal-header"><div class="modal-title">新订单</div><button class="btn-secondary" onclick="closeDailyOrderModal()">关闭</button></div>
+            <div class="modal-header"><div class="modal-title" id="daily-order-modal-title">新订单</div><button class="btn-secondary" onclick="closeDailyOrderModal()">关闭</button></div>
             <div class="modal-body">
+              <input type="hidden" id="do-id">
               <div class="group">
                 <span class="label">往来单位 (客户)</span>
                 <div class="select">
@@ -2403,6 +2404,6 @@
 
       </aside>
     </div>
-    <script src="app.js?v=20260307-44-test"></script>
+    <script src="app.js?v=20260307-45-test"></script>
   </body>
 </html>

@@ -6314,7 +6314,7 @@ async function loadDailyOrders(status = 'new', btn = null) {
         <div style="font-size:13px">下单: ${o.date}</div>
         ${o.status === 'shipped' && o.shipped_at ? `<div style="color:#64748b;font-size:12px">发货: ${new Date(Number(o.shipped_at)).toLocaleString()}</div>` : ''}
       </td>
-      <td><span class="tag ${o.status==='new'?'red':(o.status==='allocated'?'blue':'green')}" style="cursor:pointer; text-decoration:underline" onclick="openOrderDetailsModal(${o.id})" title="点击查看详情">
+      <td><span class="tag ${o.status==='new'?'red':(o.status==='allocated'?'blue':'green')}" style="cursor:pointer; text-decoration:underline" onclick="${(o.status==='new' || o.status==='allocated') ? `editDailyOrder(${o.id})` : `openOrderDetailsModal(${o.id})`}" title="点击查看/修改详情">
         ${o.status==='new'?'新订单':(o.status==='allocated'?'已配货':'已发货')}
       </span></td>
       <td>
@@ -6338,6 +6338,9 @@ function openDailyOrderModal() {
   const m = document.getElementById('daily-order-modal');
   if (m) {
     m.style.display = 'flex';
+    document.getElementById('daily-order-modal-title').textContent = '新订单';
+    document.getElementById('do-id').value = '';
+    document.getElementById('do-notes').value = '';
     document.getElementById('do-items-container').innerHTML = '';
     
     // Setup customer dropdown
@@ -6429,6 +6432,48 @@ function openDailyOrderModal() {
   }
 }
 
+function editDailyOrder(id) {
+  const o = currentDailyOrders.find(x => x.id === id);
+  if (!o) return;
+  openDailyOrderModal();
+  document.getElementById('daily-order-modal-title').textContent = '修改订单';
+  document.getElementById('do-id').value = o.id;
+  
+  // Need to set customer value slightly delayed to ensure the dropdown logic doesn't override it immediately
+  setTimeout(() => {
+    document.getElementById('do-customer').value = o.customer || '';
+  }, 50);
+  
+  document.getElementById('do-notes').value = o.notes || '';
+  
+  const items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+  const tbody = document.getElementById('do-items-container');
+  tbody.innerHTML = '';
+  items.forEach(prod => {
+    const tr = document.createElement('tr');
+    tr.className = 'do-item-row';
+    tr.innerHTML = `
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${prod.image ? `<img src="${prod.image}" style="width:32px;height:32px;object-fit:cover;border-radius:4px">` : ''}
+          <div>
+            <div style="font-weight:600">${prod.name}</div>
+            <div style="font-size:12px; color:#94a3b8">${prod.sku || ''}</div>
+          </div>
+        </div>
+        <input type="hidden" class="do-item-name" value="${prod.name}">
+        <input type="hidden" class="do-item-image" value="${prod.image || ''}">
+        <input type="hidden" class="do-item-cn" value="${prod.cn_name || prod.name_cn || ''}">
+      </td>
+      <td><div style="color:#94a3b8; font-size:13px">${prod.cn_name || prod.name_cn || ''}</div></td>
+      <td><input type="number" class="do-item-qty" value="${prod.qty || 1}" min="1" style="width:80px"></td>
+      <td><input type="number" class="do-item-price" value="${prod.price || prod.price1 || 0}" step="0.01" style="width:80px"></td>
+      <td><button class="btn-red btn-icon" onclick="this.closest('tr').remove()" style="width:32px; height:32px">×</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
 function closeDailyOrderModal() {
   const m = document.getElementById('daily-order-modal');
   if (m) m.style.display = 'none';
@@ -6473,6 +6518,7 @@ function addDoItemRow(prod) {
 }
 
 async function saveDailyOrder() {
+  const id = document.getElementById('do-id').value;
   const customer = document.getElementById('do-customer').value;
   const notes = document.getElementById('do-notes').value;
   if (!customer) return alert('请选择客户');
@@ -6489,12 +6535,19 @@ async function saveDailyOrder() {
   
   if (items.length === 0) return alert('请添加商品');
   
-  await fetchWithAuth('/api/daily-orders', {
-    method: 'POST',
-    body: JSON.stringify({ customer, notes, items })
-  });
+  if (id) {
+    await fetchWithAuth('/api/daily-orders/' + id, {
+      method: 'PUT',
+      body: JSON.stringify({ customer, notes, items })
+    });
+  } else {
+    await fetchWithAuth('/api/daily-orders', {
+      method: 'POST',
+      body: JSON.stringify({ customer, notes, items })
+    });
+  }
   closeDailyOrderModal();
-  loadDailyOrders('new');
+  loadDailyOrders(currentDailyOrdersTab);
 }
 
 async function openAllocateModal(id) {
