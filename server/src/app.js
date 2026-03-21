@@ -298,9 +298,13 @@ async function ensureSchema() {
       created_at bigint,
       invoice_id int,
       date text,
-      notes text
+      notes text,
+      allocated_by text,
+      shipped_by text
     );
     alter table daily_orders add column if not exists notes text;
+    alter table daily_orders add column if not exists allocated_by text;
+    alter table daily_orders add column if not exists shipped_by text;
     create table if not exists inventory_batches (
       id serial primary key,
       product_id int,
@@ -1681,13 +1685,13 @@ app.put('/api/daily-orders/:id/allocate', authRequired, async (req, res) => {
   const { items } = req.body; // updated items with allocated_qty
   
   // 1. Update order
-  await query('update daily_orders set items=$1, status=$2 where id=$3', [JSON.stringify(items), 'allocated', id]);
+  await query('update daily_orders set items=$1, status=$2, allocated_by=$3 where id=$4', [JSON.stringify(items), 'allocated', req.user.name, id]);
   
   res.json({ ok: true });
 });
 app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  await query('update daily_orders set status=$1 where id=$2', ['shipped', id]);
+  await query('update daily_orders set status=$1, shipped_by=$2 where id=$3', ['shipped', req.user.name, id]);
   
   // Auto Create Invoice & Deduct Stock
   const ord = (await query('select * from daily_orders where id=$1', [id])).rows[0];
