@@ -5597,13 +5597,12 @@ window.printShippingLabel = async function(id) {
 
   // HTML Structure matching the CSS classes
   let html = `
-    <div class="s-name">${name || ''}</div>
     ${company ? `<div class="s-meta">${company}</div>` : ''}
     <div class="s-address">${address || ''}</div>
     <div class="s-city">${zip || ''} ${city || ''}</div>
     <div class="s-meta">${province || ''} ${country || ''}</div>
     <div class="s-footer">
-        <div class="s-meta">${phone ? 'Tel: ' + phone : ''}</div>
+        <div class="s-phone">${phone ? 'Tel: ' + phone : ''}</div>
         <div class="s-contact">${contact || ''}</div>
      </div>
   `;
