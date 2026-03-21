@@ -3573,7 +3573,7 @@ const cpOk = document.getElementById('cp-ok');
 cpCancel?.addEventListener('click', () => {
   document.getElementById('change-pwd-modal').style.display = 'none';
 });
-cpOk?.addEventListener('click', () => {
+cpOk?.addEventListener('click', async () => {
   const u = getAuthUser();
   const name = u?.name || '';
   const old = document.getElementById('cp-old').value || '';
@@ -3581,16 +3581,26 @@ cpOk?.addEventListener('click', () => {
   const n2 = document.getElementById('cp-new2').value || '';
   if (!name || !old || !n1 || !n2) return;
   if (n1 !== n2) { alert('两次输入的新密码不一致'); return; }
-  const m = getPwdMap();
-  const current = m[name] || (userAccounts.find(x => x.name === name)?.password || '');
-  if (String(current) !== String(old)) { alert('当前密码不正确'); return; }
-  m[name] = n1;
-  setPwdMap(m);
-  const idx = userAccounts.findIndex(x => x.name === name);
-  if (idx >= 0) userAccounts[idx].password = n1;
-  saveJSON('userAccounts', userAccounts);
-  document.getElementById('change-pwd-modal').style.display = 'none';
-  alert('修改密码成功');
+  
+  try {
+    const res = await fetchWithAuth('/api/users/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ oldPassword: old, newPassword: n1 })
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      if (data.error === 'bad_credentials') {
+        alert('当前密码不正确');
+      } else {
+        alert('修改失败');
+      }
+      return;
+    }
+    document.getElementById('change-pwd-modal').style.display = 'none';
+    alert('修改密码成功');
+  } catch (err) {
+    alert('修改失败，请检查网络');
+  }
 });
 loginForm?.addEventListener('submit', async e => {
   e.preventDefault();
@@ -3602,7 +3612,60 @@ loginForm?.addEventListener('submit', async e => {
       localStorage.setItem('authToken', r.token);
       setAuthUser({ name: r.user.name, role: r.user.role || '' });
       loginMsg.style.display = 'none';
-      location.hash = '#ledger';
+      
+      // Determine default route based on permissions
+      // Load roles if not loaded, but since we just logged in we might not have rolesData yet.
+      // So we just rely on `can` which falls back to role name logic.
+      // We will define a list of modules in sidebar order to check.
+      const modulesInOrder = [
+        'home',
+        'tasks', // No explicit perm for tasks, everyone can see? Actually let's just check home first.
+        'ledger',
+        'payables',
+        'contacts',
+        'sales_order',
+        'sales_invoice',
+        'sales_products',
+        'daily_orders',
+        'inventory_finished',
+        'inventory_raw',
+        'categories',
+        'accounts',
+        'user_accounts',
+        'role_accounts',
+        'sales_accounts',
+        'company_info'
+      ];
+      
+      let defaultHash = 'home';
+      // If superadmin, always home
+      if (r.user.role !== '超级管理员') {
+          // Need to fetch user's perms from backend because rolesData is loaded asynchronously
+          // Let's use the `/api/roles/me` endpoint to get perms.
+          try {
+              const permRes = await fetchWithAuth('/api/roles/me');
+              if (permRes.ok) {
+                  const permData = await permRes.json();
+                  const perms = permData.perms || {};
+                  
+                  for (let mod of modulesInOrder) {
+                      // tasks, daily_orders, inventory_finished, inventory_raw, company_info don't have explicit perm checks in some places, but let's check standard ones
+                      if (mod === 'home') {
+                          if (perms['home'] && perms['home']['view']) { defaultHash = 'home'; break; }
+                      } else if (mod === 'tasks') {
+                          // tasks is visible to all
+                          defaultHash = 'tasks'; break;
+                      } else if (perms[mod] && perms[mod]['view']) {
+                          defaultHash = mod; break;
+                      }
+                  }
+              }
+          } catch(err) {
+              console.warn(err);
+          }
+      }
+      
+      location.hash = '#' + defaultHash;
     } else { loginMsg.style.display = 'inline-block'; }
   } catch {
     loginMsg.style.display = 'inline-block';
