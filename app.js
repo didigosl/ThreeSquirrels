@@ -5603,7 +5603,7 @@ window.printShippingLabel = async function(id) {
     <div class="s-city">${zip || ''} ${city || ''}</div>
     <div class="s-meta">${province || ''} ${country || ''}</div>
     <div class="s-footer">
-        <div class="s-phone">${phone ? 'Tel: ' + phone : ''}</div>
+        <div class="s-meta">${phone ? 'Tel: ' + phone : ''}</div>
         <div class="s-contact">${contact || ''}</div>
      </div>
   `;

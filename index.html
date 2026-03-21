@@ -103,28 +103,29 @@
       .invoice-paper .sign-area { display:none; }
       
       /* Shipping Label Preview */
-      .shipping-paper { background:#fff; color:#000; width:297mm; height:210mm; padding:60px; margin:0 auto; font-family:"Helvetica Neue", Helvetica, Arial, sans-serif; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; position:relative; }
+      .shipping-paper { background:#fff; color:#000; width:297mm; height:210mm; padding:60px; margin:0 auto; font-family:"Helvetica Neue", Helvetica, Arial, sans-serif; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; position:relative; box-sizing:border-box; }
       .shipping-paper .s-name { font-size: 52px; margin-bottom: 30px; font-weight: 400; }
       .shipping-paper .s-address { font-size: 80px; font-weight: 800; line-height: 1.2; margin-bottom: 20px; text-transform: lowercase; }
       .shipping-paper .s-city { font-size: 64px; font-weight: 800; margin-bottom: 50px; text-transform: uppercase; }
-      .shipping-paper .s-meta { font-size: 48px; margin-bottom: 20px; }
-      .shipping-paper .s-footer { display: flex; justify-content: space-between; width: 100%; margin-top: auto; align-items: flex-end; padding: 0 40px; }
-      .shipping-paper .s-phone { font-size: 80px; font-weight:800; }
+      .shipping-paper .s-meta { font-size: 48px; margin-bottom: 20px; font-weight: 400; }
+      .shipping-paper .s-footer { display: flex; justify-content: space-between; width: 100%; margin-top: auto; align-items: flex-end; padding: 0 40px; box-sizing:border-box; }
+      .shipping-paper .s-phone { font-size: 48px; font-weight: 400; }
       .shipping-paper .s-contact { font-size: 48px; text-align: right; }
 
       @media print {
-        @page { size: landscape; margin: 0; }
+        @page { size: A4 landscape; margin: 0; }
         body * { visibility:hidden; }
+        html, body { width: 100%; height: 100%; margin: 0; padding: 0; }
         
         /* Invoice Preview Print */
         #invoice-preview-modal, #invoice-preview-modal * { visibility:visible; }
-        #invoice-preview-modal { position:fixed; left:0; top:0; width:100%; height:100%; background:#fff; padding:0; z-index:9999; }
-        .invoice-paper { box-shadow:none; margin:0; width:100%; max-width:none; padding:20px; min-height:auto; }
+        #invoice-preview-modal { position:absolute; left:0; top:0; width:100%; height:100%; background:#fff; padding:0; z-index:9999; }
+        .invoice-paper { box-shadow:none; margin:0; width:100%; max-width:none; padding:20px; min-height:auto; page-break-after: avoid; }
         
         /* Shipping Label Print */
         #shipping-preview-modal, #shipping-preview-modal * { visibility:visible; }
-        #shipping-preview-modal { position:fixed; left:0; top:0; width:100%; height:100%; background:#fff; padding:0; z-index:9999; display:flex !important; align-items:center; justify-content:center; }
-        .shipping-paper { box-shadow:none; margin:0; width:100%; height:100%; padding:0; }
+        #shipping-preview-modal { position:absolute; left:0; top:0; width:100vw; height:100vh; background:#fff; padding:0; margin:0; z-index:9999; display:flex !important; align-items:center; justify-content:center; overflow:hidden; }
+        .shipping-paper { box-shadow:none; margin:0; padding:40px; width:297mm; height:210mm; max-width:100%; max-height:100%; border:none; outline:none; page-break-after: avoid; transform-origin: center center; }
         
         .modal-header, .modal-actions { display:none !important; }
       }
@@ -289,7 +290,7 @@
         <div class="brand" style="padding:0; display:flex !important"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <div class="mobile-menu-btn" onclick="toggleSidebar()">☰</div>
       </div>
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-46-test</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-47-test</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -2407,6 +2408,6 @@
 
       </aside>
     </div>
-    <script src="app.js?v=20260307-46-test"></script>
+    <script src="app.js?v=20260307-47-test"></script>
   </body>
 </html>
