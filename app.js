@@ -767,7 +767,7 @@ function linkDocToPayable() {
     }
     entryClient.value = rec.partner || '';
     const remaining = Math.max(0, (rec.amount||0) - (rec.paid||0));
-    entryAmount.value = String(remaining || rec.amount || 0);
+    entryAmount.value = (remaining || rec.amount || 0).toFixed(2);
     if (typeof clientDD !== 'undefined' && clientDD) clientDD.style.display = 'none';
     entryMethod?.focus();
   }
@@ -872,7 +872,7 @@ function setLedgerEdit(rec) {
   if (entryCategory) entryCategory.value = rec.category || '';
   if (entryDoc) entryDoc.value = rec.doc || '';
   if (entryClient) entryClient.value = rec.client || '';
-  if (entryAmount) entryAmount.value = String(rec.amount || 0);
+  if (entryAmount) entryAmount.value = Number(rec.amount || 0).toFixed(2);
   if (entryMethod) entryMethod.value = rec.method || '';
   if (entryNotes) entryNotes.value = rec.notes || '';
   if (entryFile) entryFile.value = '';
@@ -1477,7 +1477,7 @@ function openInvoiceModal(rec) {
   invoiceCurrentRec = rec;
   if (invoiceNoEl) invoiceNoEl.value = rec.invoiceNo || '';
   if (invoiceDateEl) invoiceDateEl.value = rec.invoiceDate || '';
-  if (invoiceAmountEl) invoiceAmountEl.value = ((rec.invoiceAmount||0) > 0) ? String(rec.invoiceAmount) : '';
+  if (invoiceAmountEl) invoiceAmountEl.value = ((rec.invoiceAmount||0) > 0) ? Number(rec.invoiceAmount).toFixed(2) : '';
   if (invoiceModal) invoiceModal.style.display = 'flex';
 }
 invoiceCancel?.addEventListener('click', () => { if (invoiceModal) invoiceModal.style.display = 'none'; });
@@ -1536,7 +1536,7 @@ function setPayEdit(rec) {
     const sv = rec.sales || '';
     paySales.value = [...paySales.options].some(o => o.value === sv) ? sv : '';
   }
-  if (payAmount) payAmount.value = String(rec.amount || 0);
+  if (payAmount) payAmount.value = Number(rec.amount || 0).toFixed(2);
   if (payTrust) payTrust.value = (rec.trustDays ?? '').toString();
   if (payNotes) payNotes.value = rec.notes || '';
   if (paySubmitBtn) paySubmitBtn.textContent = '保存修改';
