@@ -625,8 +625,10 @@ entryMethod?.addEventListener('keydown', (e) => {
   else if (e.key === 'Enter') { e.preventDefault(); entryMethod.blur(); }
 });
 let ledgerEditingId = null;
+let ledgerEditingFile = '';
 function setLedgerEdit(rec) {
   ledgerEditingId = rec.id || null;
+  ledgerEditingFile = rec.file || '';
   if (entryType) entryType.value = rec.type || '';
   setCategories();
   if (entryCategory) entryCategory.value = rec.category || '';
@@ -641,6 +643,7 @@ function setLedgerEdit(rec) {
 }
 function clearLedgerEdit() {
   ledgerEditingId = null;
+  ledgerEditingFile = '';
   if (entrySubmitBtn) entrySubmitBtn.textContent = '提交';
 }
 function render(data) {
@@ -882,27 +885,42 @@ document.getElementById('entry-form').addEventListener('submit', async e => {
   const now = new Date();
   const date = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   const dateTime = `${date} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-  const rec = { type, category, doc, client: clientVal, amount, method, file, entry:'手动', notes: entryNotes.value.trim(), date, dateTime, createdAt: Date.now(), confirmed: false };
+  let fileUrl = '';
   if (fileObj) {
     const extOk = /(\.jpe?g|\.pdf)$/i.test(fileObj.name);
     if (!extOk) { alert('仅支持 JPG 或 PDF 文件'); return; }
-    rec.fileType = fileObj.type || '';
-    rec.fileName = fileObj.name;
-    rec.fileUrl = URL.createObjectURL(fileObj);
+    const fd = new FormData();
+    fd.append('file', fileObj);
+    try {
+      const token = getAuthToken();
+      const r = await fetch(API_BASE + '/api/upload', {
+        method: 'POST',
+        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+        body: fd
+      });
+      if (r.ok) {
+        const d = await r.json();
+        fileUrl = d.url;
+      }
+    } catch(e) {
+      console.warn('upload failed', e);
+    }
   }
+  
   try {
     if (ledgerEditingId) {
+      const finalFile = fileUrl || ledgerEditingFile;
       await apiFetchJSON('/api/ledger/' + String(ledgerEditingId), {
         method:'PUT',
         headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ type, category, doc, client: clientVal, amount, method, file:'', notes: rec.notes || '', date, dateTime, createdBy: (getAuthUser()?.name || '') })
+        body: JSON.stringify({ type, category, doc, client: clientVal, amount, method, file: finalFile, notes: entryNotes.value.trim(), date, dateTime, createdBy: (getAuthUser()?.name || '') })
       });
       clearLedgerEdit();
     } else {
       await apiFetchJSON('/api/ledger', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ type, category, doc, client: clientVal, amount, method, file:'', notes: rec.notes || '', date, dateTime, createdBy: (getAuthUser()?.name || ''), confirmed:false })
+        body: JSON.stringify({ type, category, doc, client: clientVal, amount, method, file: fileUrl, notes: entryNotes.value.trim(), date, dateTime, createdBy: (getAuthUser()?.name || ''), confirmed:false })
       });
     }
   } catch {}
@@ -3533,6 +3551,8 @@ async function loadLedgerFromServer() {
           amount: Number(r.amount || 0),
           method: r.method || '',
           file: r.file || '',
+          fileUrl: (r.file && r.file.startsWith('/')) ? r.file : '',
+          fileName: r.file ? r.file.split('/').pop() : '',
           notes: r.notes || '',
           date: r.date || '',
           dateTime: r.date_time || '',

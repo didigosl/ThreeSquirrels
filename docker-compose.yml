@@ -27,6 +27,7 @@ services:
       - ts-db
     volumes:
       - ./server/src:/app/src
+      - ./uploads:/app/uploads
     networks:
       - ts-web
   ts-nginx:
@@ -36,6 +37,7 @@ services:
       - ./server/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./server/certs:/etc/letsencrypt/live/threesquirrels.didigo.es:ro
       - ./:/usr/share/nginx/html:ro
+      - ./uploads:/usr/share/nginx/html/uploads:ro
     ports:
       - "8080:80"
       - "8443:443"

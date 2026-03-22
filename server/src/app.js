@@ -3,6 +3,24 @@ import cors from 'cors';
 import morgan from 'morgan';
 import { query } from './db.js';
 import crypto from 'crypto';
+import multer from 'multer';
+import path from 'path';
+
+// Storage for uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    // If not running in docker, fallback to local uploads folder
+    cb(null, process.env.UPLOAD_DIR || '/app/uploads');
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+});
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -705,6 +723,14 @@ app.put('/api/payables/:id/confirm', authRequired, ensureAllow('payables','creat
 app.delete('/api/payables', authRequired, ensureAdmin, async (req, res) => {
   await query('delete from payables');
   res.json({ ok: true });
+});
+
+app.post('/api/upload', authRequired, upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  const fileUrl = `/uploads/${req.file.filename}`;
+  res.json({ url: fileUrl, filename: req.file.originalname });
 });
 
 app.get('/api/ledger', authRequired, ensureAllow('ledger','view'), async (req, res) => {
