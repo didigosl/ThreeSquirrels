@@ -37,6 +37,7 @@ const entryCategory = document.getElementById('entry-category');
 const entryClient = document.getElementById('entry-client');
 const entryAmount = document.getElementById('entry-amount');
 const entryMethod = document.getElementById('entry-method');
+const entryFile = document.getElementById('entry-file');
 let ledgerImportData = [];
 const ledgerImportPreview = document.getElementById('ledger-import-preview');
 const ledgerImportRows = document.getElementById('ledger-import-rows');
