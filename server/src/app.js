@@ -514,7 +514,13 @@ function ensureAllow(module, action) {
       rolePermsCache.set(roleName, perms);
     }
     
+    // We now only check if the user has 'view' permission for the module.
+    // All granular permissions (create, edit, delete, etc.) are merged into 'view'.
+    if (perms[module] && perms[module]['view']) return next();
+    
+    // Fallback: If they somehow have the specific action but not view (legacy data), allow it.
     if (perms[module] && perms[module][action]) return next();
+    
     return res.status(403).json({ error:'forbidden' });
   };
 }

@@ -2844,28 +2844,52 @@ const roleModal = document.getElementById('role-modal');
 const roleForm = document.getElementById('role-form');
 const roleCancel = document.getElementById('role-cancel');
 const rolesData = [];
-const permSchema = {
-  home: { label:'首页', actions:{ view:'进入' } },
-  tasks: { label:'任务信息', actions:{ view:'进入' } },
-  daily_orders: { label:'订单管理', actions:{ view:'进入' } },
-  finished_stock: { label:'商品库存', actions:{ view:'进入' } },
-  raw_stock: { label:'原材料库存', actions:{ view:'进入' } },
-  sales_order: { label:'出单系统', actions:{ view:'进入' } },
-  sales_invoice: { label:'发票', actions:{ view:'进入' } },
-  sales_products: { label:'商品列表', actions:{ view:'进入' } },
-  ledger: { label:'收支记账', actions:{ view:'进入', create:'新增', edit:'编辑', delete:'删除', confirm:'确认对账', import:'批量导入', export:'导出' } },
-  payables: { label:'应收/应付账款', actions:{ view:'进入', create:'新增', edit:'编辑', delete:'删除', import:'批量导入', export:'导出' } },
-  contacts: { label:'往来单位', actions:{ view:'进入', create:'新增', edit:'编辑', delete:'删除' } },
-  categories: { label:'分类管理', actions:{ view:'进入', manage:'维护类目' } },
-  accounts: { label:'账户管理', actions:{ view:'进入', create_account:'新增账户', edit_account:'编辑账户', delete_account:'删除账户', init_account:'初始金额' } },
-  sales_accounts: { label:'业务员管理', actions:{ view:'进入', create_sales:'新增', edit_sales:'编辑', delete_sales:'删除' } },
-  company_info: { label:'公司信息', actions:{ view:'进入' } },
-  user_accounts: { label:'帐号管理', actions:{ view:'进入', create_user:'创建账号', reset_password:'重置密码', enable_user:'启用/停用' } },
-  role_accounts: { label:'角色管理', actions:{ view:'进入', create_role:'创建角色', edit_role:'编辑角色', delete_role:'删除角色' } },
-  system: { label:'基础设置', actions:{ view:'进入' } }
-};
+const permStructure = [
+  { mod: 'home', label: '首页' },
+  { 
+    group: '日常运营', 
+    children: [
+      { mod: 'tasks', label: '任务信息' },
+      { mod: 'daily_orders', label: '订单管理' },
+      { mod: 'finished_stock', label: '商品库存' },
+      { mod: 'raw_stock', label: '原材料库存' }
+    ]
+  },
+  {
+    group: '销售',
+    children: [
+      { mod: 'sales_order', label: '出单系统' },
+      { mod: 'sales_invoice', label: '发票' },
+      { mod: 'sales_products', label: '商品列表' }
+    ]
+  },
+  { mod: 'ledger', label: '收支记账' },
+  { mod: 'payables', label: '应收/应付账款' },
+  { mod: 'contacts', label: '往来单位' },
+  { mod: 'categories', label: '分类管理' },
+  { mod: 'accounts', label: '账户管理' },
+  { mod: 'sales_accounts', label: '业务员管理' },
+  {
+    group: '系统设置',
+    children: [
+      { mod: 'company_info', label: '公司信息' },
+      { mod: 'user_accounts', label: '帐号管理' },
+      { mod: 'role_accounts', label: '角色管理' },
+      { mod: 'system', label: '基础设置' }
+    ]
+  }
+];
+
 function allTruePerms() {
-  const p = {}; Object.keys(permSchema).forEach(m => { p[m]={}; Object.keys(permSchema[m].actions).forEach(a => p[m][a]=true); }); return p;
+  const p = {};
+  permStructure.forEach(item => {
+    if (item.group && item.children) {
+      item.children.forEach(c => p[c.mod] = { view: true });
+    } else if (item.mod) {
+      p[item.mod] = { view: true };
+    }
+  });
+  return p;
 }
 function getRoleByName(name) { return rolesData.find(r => r.name === name); }
 function currentUserRole() {
@@ -2886,7 +2910,7 @@ function can(module, action) {
   const role = rolesData.find(r => r.name === roleName);
   const perms = role?.perms || {};
   const m = perms[module] || {};
-  return action ? !!m[action] : !!m.view;
+  return !!m.view;
 }
 const rolePermsModal = document.getElementById('role-perms-modal');
 const rolePermsForm = document.getElementById('role-perms-form');
@@ -2901,18 +2925,60 @@ function openPermsEditor(role) {
   editingPermRole = role;
   permsPageWrap.innerHTML = '';
   const perms = role.perms || {};
-  Object.keys(permSchema).forEach(mod => {
-    const box = document.createElement('div'); box.className='cat-panel';
-    const top = document.createElement('div'); top.className='cat-header'; top.textContent = permSchema[mod].label;
-    const cont = document.createElement('div'); cont.style.padding='12px 16px';
-    Object.entries(permSchema[mod].actions).forEach(([act,label]) => {
-      const row = document.createElement('label'); row.style.display='block'; row.style.margin='6px 0'; row.style.cursor='pointer';
-      const cb = document.createElement('input'); cb.type='checkbox'; cb.dataset.mod=mod; cb.dataset.act=act; cb.checked = !!(perms[mod] && perms[mod][act]);
-      cb.style.marginRight='8px';
-      row.append(cb, document.createTextNode(label));
+  
+  permStructure.forEach(item => {
+    const box = document.createElement('div'); 
+    box.className = 'cat-panel';
+    box.style.marginBottom = '16px';
+    
+    if (item.group) {
+      const top = document.createElement('div'); 
+      top.className = 'cat-header'; 
+      top.textContent = item.group;
+      const cont = document.createElement('div'); 
+      cont.style.padding = '12px 16px';
+      cont.style.display = 'flex';
+      cont.style.flexWrap = 'wrap';
+      cont.style.gap = '16px';
+      
+      item.children.forEach(c => {
+        const row = document.createElement('label'); 
+        row.style.display = 'flex'; 
+        row.style.alignItems = 'center'; 
+        row.style.cursor = 'pointer';
+        
+        const cb = document.createElement('input'); 
+        cb.type = 'checkbox'; 
+        cb.dataset.mod = c.mod; 
+        cb.dataset.act = 'view'; 
+        cb.checked = !!(perms[c.mod] && perms[c.mod].view);
+        cb.style.marginRight = '8px';
+        
+        row.append(cb, document.createTextNode(c.label));
+        cont.appendChild(row);
+      });
+      box.append(top, cont);
+    } else {
+      const cont = document.createElement('div'); 
+      cont.style.padding = '12px 16px';
+      
+      const row = document.createElement('label'); 
+      row.style.display = 'flex'; 
+      row.style.alignItems = 'center'; 
+      row.style.cursor = 'pointer';
+      
+      const cb = document.createElement('input'); 
+      cb.type = 'checkbox'; 
+      cb.dataset.mod = item.mod; 
+      cb.dataset.act = 'view'; 
+      cb.checked = !!(perms[item.mod] && perms[item.mod].view);
+      cb.style.marginRight = '8px';
+      
+      row.append(cb, document.createTextNode(item.label));
       cont.appendChild(row);
-    });
-    box.append(top, cont);
+      box.appendChild(cont);
+    }
+    
     permsPageWrap.appendChild(box);
   });
   location.hash = '#role-perms';
@@ -2922,10 +2988,18 @@ rolePermsForm?.addEventListener('submit', async e => {
   e.preventDefault();
   if (!editingPermRole) return;
   const newPerms = {};
-  Object.keys(permSchema).forEach(m => { newPerms[m] = {}; });
+  
+  permStructure.forEach(item => {
+    if (item.group && item.children) {
+      item.children.forEach(c => newPerms[c.mod] = {});
+    } else if (item.mod) {
+      newPerms[item.mod] = {};
+    }
+  });
+  
   permsWrap.querySelectorAll('input[type=checkbox]').forEach(cb => {
-    const mod = cb.dataset.mod; const act = cb.dataset.act;
-    if (cb.checked) newPerms[mod][act] = true;
+    const mod = cb.dataset.mod; 
+    if (cb.checked) newPerms[mod]['view'] = true;
   });
   editingPermRole.perms = newPerms;
   await apiRoleUpdatePerms(editingPermRole.id, newPerms);
@@ -5707,11 +5781,38 @@ async function handleRoute() {
   const uw = document.getElementById('undo-wrap'); if (uw) uw.style.display = 'none';
 
   // Helper for permission
-  const ensureView = (module) => {
+  const checkView = (module) => {
     if (roleName === '超级管理员') return true;
     const role = rolesData.find(r => r.name === roleName);
-    const allow = !!(role && role.perms && role.perms[module] && role.perms[module].view);
-    if (!allow) {
+    return !!(role && role.perms && role.perms[module] && role.perms[module].view);
+  };
+
+  // Update sidebar visibility based on permissions
+  document.querySelectorAll('.sidebar .nav a').forEach(a => {
+      const href = a.getAttribute('href');
+      if (href && href.startsWith('#')) {
+          let mod = href.slice(1).replace(/-/g, '_'); // e.g. 'sales-order' -> 'sales_order'
+          if (checkView(mod)) {
+              a.style.display = 'block';
+          } else {
+              a.style.display = 'none';
+          }
+      }
+  });
+  
+  // Hide empty groups
+  document.querySelectorAll('.sidebar .nav-group').forEach(group => {
+      const children = Array.from(group.querySelectorAll('.nav-children a'));
+      const hasVisible = children.some(a => a.style.display !== 'none');
+      if (hasVisible) {
+          group.style.display = 'block';
+      } else {
+          group.style.display = 'none';
+      }
+  });
+
+  const ensureView = (module) => {
+    if (!checkView(module)) {
       // Find the first module they can view
       const modulesInOrder = [
         { mod: 'home', hash: 'home' },
