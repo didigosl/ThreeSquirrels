@@ -290,7 +290,7 @@
         <div class="brand" style="padding:0; display:flex !important"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <div class="mobile-menu-btn" onclick="toggleSidebar()">☰</div>
       </div>
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-54-test</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-55-test</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -839,9 +839,12 @@
                     <option value="">请选择子类目</option>
                   </select>
                 </div>
-                <div class="group">
+                <div class="group" style="position:relative">
                   <span class="label">* 单据 / 凭证号</span>
                   <input id="entry-doc" type="text" placeholder="输入单据/凭证号">
+                  <div id="doc-dd" class="dropdown" style="display:none; position:absolute; top:0; right:100%; margin-right:12px; width:450px; max-height:400px; overflow-y:auto; z-index:9999; border:1px solid #334155; box-shadow:0 10px 15px -3px rgba(0,0,0,.5); border-radius:8px; background:#1e293b;">
+                    <div id="doc-dd-list" class="dd-list" style="padding:4px 0"></div>
+                  </div>
                 </div>
                 <div class="group">
                   <span class="label">* 往来单位</span>
@@ -2409,6 +2412,6 @@
 
       </aside>
     </div>
-    <script src="app.js?v=20260307-54-test"></script>
+    <script src="app.js?v=20260307-55-test"></script>
   </body>
 </html>

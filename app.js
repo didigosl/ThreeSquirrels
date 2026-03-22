@@ -504,15 +504,29 @@ function setCategories() {
 }
 // entryType.addEventListener('change', setCategories); // No longer needed as hidden input doesn't fire change on programmatic update usually
 const entryDoc = document.getElementById('entry-doc');
+const docDD = document.getElementById('doc-dd');
+const docDDList = document.getElementById('doc-dd-list');
+
 entryCategory.addEventListener('change', () => { entryDoc?.focus(); });
 function linkDocToPayable() {
   const doc = (entryDoc?.value || '').trim();
   const type = entryType.value;
   if (!doc) return;
-  const targetType = type === '收入' ? '应收账款' : (type === '支出' ? '应付账款' : null);
-  if (!targetType) return;
-  const rec = payRecords.find(r => (r.doc||'') === doc && r.type === targetType);
+  // Let it find any matching document regardless of current type selection
+  const rec = payRecords.find(r => (r.doc||'') === doc);
   if (rec) {
+    // Auto set type
+    if (rec.type === '应收账款' && type !== '收入') {
+      entryType.value = '收入';
+      document.querySelectorAll('.type-item.recv').forEach(el => {
+        if(el.closest('#page-ledger')) el.click();
+      });
+    } else if (rec.type === '应付账款' && type !== '支出') {
+      entryType.value = '支出';
+      document.querySelectorAll('.type-item.pay').forEach(el => {
+        if(el.closest('#page-ledger')) el.click();
+      });
+    }
     entryClient.value = rec.partner || '';
     const remaining = Math.max(0, (rec.amount||0) - (rec.paid||0));
     entryAmount.value = String(remaining || rec.amount || 0);
@@ -520,9 +534,79 @@ function linkDocToPayable() {
     entryMethod?.focus();
   }
 }
-entryDoc?.addEventListener('blur', linkDocToPayable);
+
+function updateDocDropdown() {
+  const v = (entryDoc?.value || '').trim();
+  if (v.length < 3) {
+    if (docDD) docDD.style.display = 'none';
+    return;
+  }
+  
+  // Fuzzy search payRecords
+  let matches = payRecords.filter(r => {
+    return (r.doc || '').toLowerCase().includes(v.toLowerCase()) || 
+           (r.partner || '').toLowerCase().includes(v.toLowerCase());
+  });
+  
+  // Sort: unpaid first
+  matches.sort((a, b) => {
+    const aRemaining = Math.max(0, (a.amount||0) - (a.paid||0));
+    const bRemaining = Math.max(0, (b.amount||0) - (b.paid||0));
+    const aUnpaid = (!a.settled && aRemaining > 0) ? 1 : 0;
+    const bUnpaid = (!b.settled && bRemaining > 0) ? 1 : 0;
+    if (aUnpaid !== bUnpaid) return bUnpaid - aUnpaid; // unpaid (1) comes before paid (0)
+    return bRemaining - aRemaining; // sort by remaining amount desc
+  });
+  
+  if (matches.length === 0) {
+    if (docDD) docDD.style.display = 'none';
+    return;
+  }
+  
+  docDDList.innerHTML = '';
+  matches.forEach(r => {
+    const remaining = Math.max(0, (r.amount||0) - (r.paid||0));
+    const isUnpaid = !r.settled && remaining > 0;
+    const item = document.createElement('div');
+    item.className = 'dd-item';
+    const isRecv = /应收/.test(r.type || '');
+    if (!isUnpaid) item.style.color = '#ffffff';
+    else if (isRecv) item.style.color = 'var(--green)';
+    else item.style.color = 'var(--orange)';
+    
+    const left = document.createElement('div');
+    left.innerHTML = `<div style="font-weight:bold">${r.doc || '无单号'}</div><div style="font-size:12px; opacity:0.8">${r.partner || '未知客户'} (${r.type || ''})</div>`;
+    
+    const right = document.createElement('div');
+    right.style.textAlign = 'right';
+    right.innerHTML = `<div>总: ${(r.amount||0).toFixed(2)}</div><div style="font-size:12px; opacity:0.8">欠: ${remaining.toFixed(2)}</div>`;
+    
+    item.appendChild(left);
+    item.appendChild(right);
+    
+    item.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // prevent blur
+      entryDoc.value = r.doc || '';
+      docDD.style.display = 'none';
+      linkDocToPayable();
+    });
+    
+    docDDList.appendChild(item);
+  });
+  
+  if (docDD) docDD.style.display = 'block';
+}
+
+entryDoc?.addEventListener('input', updateDocDropdown);
+entryDoc?.addEventListener('focus', updateDocDropdown);
+
+entryDoc?.addEventListener('blur', () => {
+  setTimeout(() => { if (docDD) docDD.style.display = 'none'; }, 150);
+  linkDocToPayable();
+});
 entryDoc?.addEventListener('keyup', (e) => {
   if (e.key === 'Enter') {
+    if (docDD) docDD.style.display = 'none';
     linkDocToPayable();
     entryMethod?.focus();
   }
