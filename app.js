@@ -86,13 +86,14 @@ if (ledgerImportCommit) {
       const now = new Date();
       const defaultDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
       const dateTime = `${defaultDate} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-      const method = entryMethod.value || '微信'; // Fallback if not selected
+      const defaultMethod = entryMethod.value || '微信'; // Fallback if not selected
       
       for (let d of ledgerImportData) {
         const type = d.amount >= 0 ? '收入' : '支出';
         const cat = d.amount >= 0 ? '主营业务收入' : '其它业务支出'; // Default categories
         const absAmount = Math.abs(d.amount);
         const rowDate = d.date || defaultDate;
+        const method = d.method || defaultMethod;
         
         try {
           await apiFetchJSON('/api/ledger', {
@@ -171,7 +172,7 @@ entryFile?.addEventListener('change', (e) => {
         for (let i=0; i<Math.min(10, rows.length); i++) {
           const row = rows[i];
           if (!row) continue;
-          let dateIdx=-1, docIdx=-1, partnerIdx=-1, notesIdx=-1, amtIdx=-1;
+          let dateIdx=-1, docIdx=-1, partnerIdx=-1, notesIdx=-1, amtIdx=-1, methodIdx=-1;
           row.forEach((cell, idx) => {
             const txt = String(cell||'').replace(/\s+/g,'');
             if (txt.includes('日期')) dateIdx = idx;
@@ -179,10 +180,11 @@ entryFile?.addEventListener('change', (e) => {
             else if (txt.includes('往来单位') || txt.includes('客户')) partnerIdx = idx;
             else if (txt.includes('备注')) notesIdx = idx;
             else if (txt.includes('金额')) amtIdx = idx;
+            else if (txt.includes('支付方式') || txt.includes('账户')) methodIdx = idx;
           });
           if (amtIdx !== -1 && partnerIdx !== -1) {
             headerRowIdx = i;
-            colMap = { date:dateIdx, doc:docIdx, partner:partnerIdx, notes:notesIdx, amt:amtIdx };
+            colMap = { date:dateIdx, doc:docIdx, partner:partnerIdx, notes:notesIdx, amt:amtIdx, method:methodIdx };
             break;
           }
         }
@@ -211,6 +213,13 @@ entryFile?.addEventListener('change', (e) => {
           let dateStr = colMap.date !== -1 ? parseLedgerDate(row[colMap.date]) : '';
           let docStr = colMap.doc !== -1 ? String(row[colMap.doc] || '').trim() : '';
           let notesStr = colMap.notes !== -1 ? String(row[colMap.notes] || '').trim() : '';
+          let methodStr = colMap.method !== -1 ? String(row[colMap.method] || '').trim() : '';
+          
+          // Validate method
+          let validMethod = true;
+          if (methodStr && !accountsData.some(a => a.name === methodStr)) {
+            validMethod = false;
+          }
           
           // Check if partner exists
           let exists = allContacts().some(c => c.name === partner);
@@ -228,9 +237,20 @@ entryFile?.addEventListener('change', (e) => {
             partner: partner,
             notes: notesStr,
             amount: amt,
+            method: methodStr,
+            validMethod,
             willCreate,
             createType
           });
+        }
+        
+        // Check for any invalid methods
+        const invalidMethods = [...new Set(ledgerImportData.filter(d => !d.validMethod).map(d => d.method))];
+        if (invalidMethods.length > 0) {
+          alert(`表格中包含未知的支付方式：\n${invalidMethods.join(', ')}\n\n请先在系统设置中添加该支付方式，或修改表格后重新上传。`);
+          entryFile.value = '';
+          ledgerImportData = [];
+          return;
         }
         
         if (ledgerImportData.length > 0 && ledgerImportModal) {
@@ -253,8 +273,10 @@ entryFile?.addEventListener('change', (e) => {
             const tdAmt = document.createElement('td'); tdAmt.style.padding = '6px'; tdAmt.style.borderBottom = '1px solid #334155'; tdAmt.style.textAlign = 'right';
             tdAmt.textContent = d.amount.toFixed(2);
             tdAmt.style.color = d.amount >= 0 ? 'var(--green)' : 'var(--orange)';
+            const tdMethod = document.createElement('td'); tdMethod.style.padding = '6px'; tdMethod.style.borderBottom = '1px solid #334155';
+            tdMethod.textContent = d.method;
             
-            tr.append(tdDate, tdDoc, tdPartner, tdNotes, tdAmt);
+            tr.append(tdDate, tdDoc, tdPartner, tdNotes, tdAmt, tdMethod);
             ledgerImportRows.appendChild(tr);
           });
           
@@ -907,7 +929,9 @@ function render(data) {
     };
     tr.appendChild(makeTd(r.type || ''));
     tr.appendChild(makeTd(r.category || ''));
-    tr.appendChild(makeTd(r.doc || ''));
+    const tdDoc = document.createElement('td');
+    tdDoc.innerHTML = `<div>${r.doc || ''}</div><div style="font-size:12px; color:#94a3b8; margin-top:4px">${r.date || ''}</div>`;
+    tr.appendChild(tdDoc);
     tr.appendChild(makeTd(r.client || ''));
     tr.appendChild(makeTd(amt));
     tr.appendChild(makeTd(r.method || ''));
@@ -946,7 +970,8 @@ function render(data) {
     tr.appendChild(tdFile);
     tr.appendChild(makeTd(r.entry || ''));
     tr.appendChild(makeTd(r.notes || ''));
-    tr.appendChild(makeTd(r.date || ''));
+    const uploadDate = r.dateTime ? r.dateTime.split(' ')[0] : (r.createdAt ? new Date(r.createdAt).toISOString().split('T')[0] : '');
+    tr.appendChild(makeTd(uploadDate));
     const tdOps = document.createElement('td');
     if (canEdit) {
       const editBtn = document.createElement('a'); editBtn.href = '#'; editBtn.textContent = '修改'; editBtn.className = 'link-blue';
@@ -4107,7 +4132,7 @@ loginForm?.addEventListener('submit', async e => {
   }
 });
 function tsOf(rec) {
-  const ts = rec.createdAt || Date.parse(rec.dateTime || rec.date || '');
+  const ts = Date.parse(rec.date || rec.dateTime || '') || rec.createdAt;
   return isNaN(ts) ? Date.now() : ts;
 }
 function formatLabel(ts, mode) {
