@@ -39,9 +39,88 @@ const entryAmount = document.getElementById('entry-amount');
 const entryMethod = document.getElementById('entry-method');
 const entryFile = document.getElementById('entry-file');
 let ledgerImportData = [];
-const ledgerImportPreview = document.getElementById('ledger-import-preview');
+const ledgerImportModal = document.getElementById('ledger-import-modal');
 const ledgerImportRows = document.getElementById('ledger-import-rows');
 const ledgerImportSummary = document.getElementById('ledger-import-summary');
+const ledgerImportCancel = document.getElementById('ledger-import-cancel');
+const ledgerImportCommit = document.getElementById('ledger-import-commit');
+
+if (ledgerImportCancel) {
+  ledgerImportCancel.addEventListener('click', () => {
+    ledgerImportModal.style.display = 'none';
+    entryFile.value = '';
+    ledgerImportData = [];
+  });
+}
+
+if (ledgerImportCommit) {
+  ledgerImportCommit.addEventListener('click', async () => {
+    if (ledgerImportData.length === 0) return;
+    ledgerImportCommit.disabled = true;
+    ledgerImportCommit.textContent = '导入中...';
+    
+    try {
+      // First, auto-create missing partners
+      const partnersToCreate = new Map(); // partnerName -> type
+      ledgerImportData.forEach(d => {
+        if (d.willCreate) partnersToCreate.set(d.partner, d.createType);
+      });
+      
+      for (let [pName, pType] of partnersToCreate.entries()) {
+        try {
+          await apiFetchJSON('/api/contacts', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name: pName, type: pType, contact: '', phone: '', email: '', notes: '导入时自动创建' })
+          });
+        } catch(e) {
+          console.error('Failed to create partner', pName, e);
+        }
+      }
+      
+      // Reload contacts if any were created
+      if (partnersToCreate.size > 0) {
+        await loadAllContacts();
+      }
+      
+      const now = new Date();
+      const defaultDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      const dateTime = `${defaultDate} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+      const method = entryMethod.value || '微信'; // Fallback if not selected
+      
+      for (let d of ledgerImportData) {
+        const type = d.amount >= 0 ? '收入' : '支出';
+        const cat = d.amount >= 0 ? '主营业务收入' : '其它业务支出'; // Default categories
+        const absAmount = Math.abs(d.amount);
+        const rowDate = d.date || defaultDate;
+        
+        try {
+          await apiFetchJSON('/api/ledger', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ 
+              type, category: cat, doc: d.doc, client: d.partner, 
+              amount: absAmount, method, file: '', notes: d.notes, 
+              date: rowDate, dateTime, createdBy: (getAuthUser()?.name || ''), confirmed: false 
+            })
+          });
+        } catch (e) {
+          console.error('Failed to import row', d, e);
+        }
+      }
+      
+      ledgerImportModal.style.display = 'none';
+      entryFile.value = '';
+      ledgerImportData = [];
+      loadLedgerFromServer();
+    } catch (err) {
+      alert('导入出错');
+    } finally {
+      ledgerImportCommit.disabled = false;
+      ledgerImportCommit.textContent = '批量入库';
+    }
+  });
+}
 
 function excelDateToJSDate(serial) {
   if (typeof serial !== 'number') return serial;
@@ -75,7 +154,7 @@ function parseLedgerDate(val) {
 entryFile?.addEventListener('change', (e) => {
   const file = e.target.files[0];
   ledgerImportData = [];
-  if (ledgerImportPreview) ledgerImportPreview.style.display = 'none';
+  if (ledgerImportModal) ledgerImportModal.style.display = 'none';
   if (!file) return;
   
   if (/\.(xls|xlsx|csv)$/i.test(file.name)) {
@@ -154,7 +233,7 @@ entryFile?.addEventListener('change', (e) => {
           });
         }
         
-        if (ledgerImportData.length > 0 && ledgerImportPreview) {
+        if (ledgerImportData.length > 0 && ledgerImportModal) {
           ledgerImportRows.innerHTML = '';
           ledgerImportData.forEach(d => {
             const tr = document.createElement('tr');
@@ -183,7 +262,7 @@ entryFile?.addEventListener('change', (e) => {
           if (newPartnersSet.size > 0) {
             ledgerImportSummary.innerHTML += `<span style="color:#f59e0b">将自动创建 ${newPartnersSet.size} 个新往来单位。</span>`;
           }
-          ledgerImportPreview.style.display = 'block';
+          ledgerImportModal.style.display = 'flex';
         } else {
           alert('未解析到有效数据行');
           entryFile.value = '';
@@ -1016,65 +1095,6 @@ document.getElementById('entry-form').addEventListener('submit', async e => {
     if (!allowed) { alert('当前角色无“收支记账”权限'); return; }
   }
 
-  // Handle batch import if excel
-  if (ledgerImportData.length > 0) {
-    if (!confirm(`确定要导入这 ${ledgerImportData.length} 条记录吗？`)) return;
-    
-    // First, auto-create missing partners
-    const partnersToCreate = new Map(); // partnerName -> type
-    ledgerImportData.forEach(d => {
-      if (d.willCreate) partnersToCreate.set(d.partner, d.createType);
-    });
-    
-    for (let [pName, pType] of partnersToCreate.entries()) {
-      try {
-        await apiFetchJSON('/api/contacts', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ name: pName, type: pType, contact: '', phone: '', email: '', notes: '导入时自动创建' })
-        });
-      } catch(e) {
-        console.error('Failed to create partner', pName, e);
-      }
-    }
-    
-    // Reload contacts if any were created
-    if (partnersToCreate.size > 0) {
-      await loadAllContacts();
-    }
-    
-    const now = new Date();
-    const defaultDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-    const dateTime = `${defaultDate} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-    const method = entryMethod.value || '微信'; // Fallback if not selected
-    
-    for (let d of ledgerImportData) {
-      const type = d.amount >= 0 ? '收入' : '支出';
-      const cat = d.amount >= 0 ? '主营业务收入' : '其它业务支出'; // Default categories
-      const absAmount = Math.abs(d.amount);
-      const rowDate = d.date || defaultDate;
-      
-      try {
-        await apiFetchJSON('/api/ledger', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ 
-            type, category: cat, doc: d.doc, client: d.partner, 
-            amount: absAmount, method, file: '', notes: d.notes, 
-            date: rowDate, dateTime, createdBy: (getAuthUser()?.name || ''), confirmed: false 
-          })
-        });
-      } catch (e) {
-        console.error('Failed to import row', d, e);
-      }
-    }
-    
-    ledgerImportData = [];
-    if (ledgerImportPreview) ledgerImportPreview.style.display = 'none';
-    entryFile.value = '';
-    loadLedgerFromServer();
-    return;
-  }
   const type = entryType.value;
   const category = entryCategory.value;
   const doc = (document.getElementById('entry-doc')?.value || '').trim();
