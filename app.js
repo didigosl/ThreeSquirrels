@@ -37,7 +37,165 @@ const entryCategory = document.getElementById('entry-category');
 const entryClient = document.getElementById('entry-client');
 const entryAmount = document.getElementById('entry-amount');
 const entryMethod = document.getElementById('entry-method');
-const entryFile = document.getElementById('entry-file');
+let ledgerImportData = [];
+const ledgerImportPreview = document.getElementById('ledger-import-preview');
+const ledgerImportRows = document.getElementById('ledger-import-rows');
+const ledgerImportSummary = document.getElementById('ledger-import-summary');
+
+function excelDateToJSDate(serial) {
+  if (typeof serial !== 'number') return serial;
+  const utc_days  = Math.floor(serial - 25569);
+  const utc_value = utc_days * 86400;                                        
+  const date_info = new Date(utc_value * 1000);
+  const fractional_day = serial - Math.floor(serial) + 0.0000001;
+  let total_seconds = Math.floor(86400 * fractional_day);
+  const seconds = total_seconds % 60;
+  total_seconds -= seconds;
+  const hours = Math.floor(total_seconds / (60 * 60));
+  const minutes = Math.floor(total_seconds / 60) % 60;
+  return new Date(date_info.getFullYear(), date_info.getMonth(), date_info.getDate(), hours, minutes, seconds);
+}
+
+function parseLedgerDate(val) {
+  if (!val) return '';
+  if (typeof val === 'number') {
+    const d = excelDateToJSDate(val);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+  const s = String(val).trim();
+  // match DD/MM/YYYY
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) {
+    return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  }
+  return s;
+}
+
+entryFile?.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  ledgerImportData = [];
+  if (ledgerImportPreview) ledgerImportPreview.style.display = 'none';
+  if (!file) return;
+  
+  if (/\.(xls|xlsx|csv)$/i.test(file.name)) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const wb = XLSX.read(reader.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+        
+        // Find headers
+        let headerRowIdx = -1;
+        let colMap = {};
+        for (let i=0; i<Math.min(10, rows.length); i++) {
+          const row = rows[i];
+          if (!row) continue;
+          let dateIdx=-1, docIdx=-1, partnerIdx=-1, notesIdx=-1, amtIdx=-1;
+          row.forEach((cell, idx) => {
+            const txt = String(cell||'').replace(/\s+/g,'');
+            if (txt.includes('日期')) dateIdx = idx;
+            else if (txt.includes('单据') || txt.includes('凭证')) docIdx = idx;
+            else if (txt.includes('往来单位') || txt.includes('客户')) partnerIdx = idx;
+            else if (txt.includes('备注')) notesIdx = idx;
+            else if (txt.includes('金额')) amtIdx = idx;
+          });
+          if (amtIdx !== -1 && partnerIdx !== -1) {
+            headerRowIdx = i;
+            colMap = { date:dateIdx, doc:docIdx, partner:partnerIdx, notes:notesIdx, amt:amtIdx };
+            break;
+          }
+        }
+        
+        if (headerRowIdx === -1) {
+          alert('无法在表格中找到“往来单位”和“金额”列');
+          entryFile.value = '';
+          return;
+        }
+        
+        let newPartnersCount = 0;
+        let newPartnersSet = new Set();
+        
+        for (let i = headerRowIdx + 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length === 0) continue;
+          
+          let rawAmt = row[colMap.amt];
+          if (rawAmt === undefined || rawAmt === null || rawAmt === '') continue;
+          let amt = parseFloat(String(rawAmt).replace(/[^\d\.\-]/g,''));
+          if (isNaN(amt)) continue;
+          
+          let partner = String(row[colMap.partner] || '').trim();
+          if (!partner) continue;
+          
+          let dateStr = colMap.date !== -1 ? parseLedgerDate(row[colMap.date]) : '';
+          let docStr = colMap.doc !== -1 ? String(row[colMap.doc] || '').trim() : '';
+          let notesStr = colMap.notes !== -1 ? String(row[colMap.notes] || '').trim() : '';
+          
+          // Check if partner exists
+          let exists = allContacts().some(c => c.name === partner);
+          let willCreate = false;
+          let createType = '';
+          if (!exists) {
+            willCreate = true;
+            createType = amt >= 0 ? '客户' : '其它往来单位';
+            newPartnersSet.add(`${partner} (${createType})`);
+          }
+          
+          ledgerImportData.push({
+            date: dateStr,
+            doc: docStr,
+            partner: partner,
+            notes: notesStr,
+            amount: amt,
+            willCreate,
+            createType
+          });
+        }
+        
+        if (ledgerImportData.length > 0 && ledgerImportPreview) {
+          ledgerImportRows.innerHTML = '';
+          ledgerImportData.forEach(d => {
+            const tr = document.createElement('tr');
+            
+            const tdDate = document.createElement('td'); tdDate.style.padding = '6px'; tdDate.style.borderBottom = '1px solid #334155';
+            tdDate.textContent = d.date;
+            const tdDoc = document.createElement('td'); tdDoc.style.padding = '6px'; tdDoc.style.borderBottom = '1px solid #334155';
+            tdDoc.textContent = d.doc;
+            const tdPartner = document.createElement('td'); tdPartner.style.padding = '6px'; tdPartner.style.borderBottom = '1px solid #334155';
+            if (d.willCreate) {
+              tdPartner.innerHTML = `<span>${d.partner}</span> <span style="color:#ef4444; font-size:10px; background:#450a0a; padding:2px 4px; border-radius:4px">新${d.createType}</span>`;
+            } else {
+              tdPartner.textContent = d.partner;
+            }
+            const tdNotes = document.createElement('td'); tdNotes.style.padding = '6px'; tdNotes.style.borderBottom = '1px solid #334155';
+            tdNotes.textContent = d.notes;
+            const tdAmt = document.createElement('td'); tdAmt.style.padding = '6px'; tdAmt.style.borderBottom = '1px solid #334155'; tdAmt.style.textAlign = 'right';
+            tdAmt.textContent = d.amount.toFixed(2);
+            tdAmt.style.color = d.amount >= 0 ? 'var(--green)' : 'var(--orange)';
+            
+            tr.append(tdDate, tdDoc, tdPartner, tdNotes, tdAmt);
+            ledgerImportRows.appendChild(tr);
+          });
+          
+          ledgerImportSummary.innerHTML = `已解析 <b>${ledgerImportData.length}</b> 条记录。<br>`;
+          if (newPartnersSet.size > 0) {
+            ledgerImportSummary.innerHTML += `<span style="color:#f59e0b">将自动创建 ${newPartnersSet.size} 个新往来单位。</span>`;
+          }
+          ledgerImportPreview.style.display = 'block';
+        } else {
+          alert('未解析到有效数据行');
+          entryFile.value = '';
+        }
+      } catch (e) {
+        console.error(e);
+        alert('解析Excel失败');
+        entryFile.value = '';
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+});
 const entryNotes = document.getElementById('entry-notes');
 const entryForm = document.getElementById('entry-form');
 const entrySubmitBtn = entryForm?.querySelector('button[type="submit"]');
@@ -853,8 +1011,68 @@ document.getElementById('entry-form').addEventListener('submit', async e => {
   const u = getAuthUser(); const roleName = u?.role || '';
   if (roleName !== '超级管理员') {
     const role = rolesData.find(r => r.name === roleName);
-    const allowed = !!(role && role.perms && role.perms.ledger && role.perms.ledger.create);
-    if (!allowed) { alert('当前角色无“收支记账新增”权限'); return; }
+    const allowed = !!(role && role.perms && role.perms.ledger && role.perms.ledger.view);
+    if (!allowed) { alert('当前角色无“收支记账”权限'); return; }
+  }
+
+  // Handle batch import if excel
+  if (ledgerImportData.length > 0) {
+    if (!confirm(`确定要导入这 ${ledgerImportData.length} 条记录吗？`)) return;
+    
+    // First, auto-create missing partners
+    const partnersToCreate = new Map(); // partnerName -> type
+    ledgerImportData.forEach(d => {
+      if (d.willCreate) partnersToCreate.set(d.partner, d.createType);
+    });
+    
+    for (let [pName, pType] of partnersToCreate.entries()) {
+      try {
+        await apiFetchJSON('/api/contacts', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ name: pName, type: pType, contact: '', phone: '', email: '', notes: '导入时自动创建' })
+        });
+      } catch(e) {
+        console.error('Failed to create partner', pName, e);
+      }
+    }
+    
+    // Reload contacts if any were created
+    if (partnersToCreate.size > 0) {
+      await loadAllContacts();
+    }
+    
+    const now = new Date();
+    const defaultDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    const dateTime = `${defaultDate} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+    const method = entryMethod.value || '微信'; // Fallback if not selected
+    
+    for (let d of ledgerImportData) {
+      const type = d.amount >= 0 ? '收入' : '支出';
+      const cat = d.amount >= 0 ? '主营业务收入' : '其它业务支出'; // Default categories
+      const absAmount = Math.abs(d.amount);
+      const rowDate = d.date || defaultDate;
+      
+      try {
+        await apiFetchJSON('/api/ledger', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ 
+            type, category: cat, doc: d.doc, client: d.partner, 
+            amount: absAmount, method, file: '', notes: d.notes, 
+            date: rowDate, dateTime, createdBy: (getAuthUser()?.name || ''), confirmed: false 
+          })
+        });
+      } catch (e) {
+        console.error('Failed to import row', d, e);
+      }
+    }
+    
+    ledgerImportData = [];
+    if (ledgerImportPreview) ledgerImportPreview.style.display = 'none';
+    entryFile.value = '';
+    loadLedgerFromServer();
+    return;
   }
   const type = entryType.value;
   const category = entryCategory.value;
@@ -3596,6 +3814,13 @@ async function loadPayablesFromServer() {
     }
   } catch {}
 }
+async function loadAllContacts() {
+  await Promise.all([
+    apiContactsList('customers'),
+    apiContactsList('merchants'),
+    apiContactsList('others')
+  ]);
+}
 async function apiContactsList(tab, q, page, size) {
   try {
     const params = new URLSearchParams({ tab: tab||'customers', q: q||'', page: String(page||1), size: String(size||100) });
@@ -5983,6 +6208,7 @@ async function handleRoute() {
     loadLedgerFromServer().then(() => {
       if (typeof applyFilters === 'function') applyFilters();
     });
+    loadAllContacts();
   }
   else if (hash === 'payables') {
     if (!ensureView('payables')) return;
@@ -6011,7 +6237,7 @@ async function handleRoute() {
   else if (hash === 'sales-order') {
     if (!ensureView('sales_order')) return;
     document.getElementById('page-sales-order').style.display = 'block';
-    Promise.all([apiContactsList(), loadSalesPeople()]).then(async () => {
+    Promise.all([loadAllContacts(), loadSalesPeople()]).then(async () => {
       if (typeof loadProductSelector === 'function') await loadProductSelector();
       if (typeof pendingEditInvoiceId !== 'undefined' && pendingEditInvoiceId) {
         await loadInvoiceForEdit(pendingEditInvoiceId);

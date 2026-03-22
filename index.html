@@ -290,7 +290,7 @@
         <div class="brand" style="padding:0; display:flex !important"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <div class="mobile-menu-btn" onclick="toggleSidebar()">☰</div>
       </div>
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-56-test</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260307-57-test</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -876,9 +876,27 @@
                   </select>
                 </div>
                 <div class="group">
-                  <span class="label">附件</span>
-                  <input id="entry-file" type="file" accept=".jpg,.jpeg,.pdf">
-                  <div class="label">文件只支持格式 jpg、pdf</div>
+                  <span class="label">附件 / 批量导入</span>
+                  <input id="entry-file" type="file" accept=".jpg,.jpeg,.pdf,.xls,.xlsx,.csv">
+                  <div class="label">图片/PDF作为单条附件，Excel/CSV作为批量导入</div>
+                </div>
+                <div id="ledger-import-preview" style="display:none; margin-bottom:16px; background:#0f172a; padding:12px; border-radius:8px; border:1px solid #334155;">
+                  <h4 style="margin:0 0 12px 0; color:#cbd5e1; font-size:14px">批量导入预览</h4>
+                  <div id="ledger-import-summary" style="margin-bottom:12px; font-size:13px; color:#94a3b8"></div>
+                  <div style="max-height:200px; overflow-y:auto; border:1px solid #334155; border-radius:4px">
+                    <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left">
+                      <thead style="position:sticky; top:0; background:#1e293b; z-index:10">
+                        <tr>
+                          <th style="padding:6px; border-bottom:1px solid #334155">日期</th>
+                          <th style="padding:6px; border-bottom:1px solid #334155">单据/凭证号</th>
+                          <th style="padding:6px; border-bottom:1px solid #334155">往来单位</th>
+                          <th style="padding:6px; border-bottom:1px solid #334155">备注</th>
+                          <th style="padding:6px; border-bottom:1px solid #334155; text-align:right">金额</th>
+                        </tr>
+                      </thead>
+                      <tbody id="ledger-import-rows"></tbody>
+                    </table>
+                  </div>
                 </div>
                 <div class="group">
                   <span class="label">备注</span>
@@ -2412,6 +2430,6 @@
 
       </aside>
     </div>
-    <script src="app.js?v=20260307-56-test"></script>
+    <script src="app.js?v=20260307-57-test"></script>
   </body>
 </html>
