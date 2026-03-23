@@ -4745,7 +4745,7 @@ function addSoItem(p) {
   tr.innerHTML = `
     <td style="padding:10px 16px"><input type="text" class="name light-input" style="width:100%; background:transparent; border:none; color:#e2e8f0" value="${p.name}"></td>
     <td style="padding:10px 16px"><input type="text" class="name-cn light-input" style="width:100%; background:transparent; border:none; color:#94a3b8" value="${p.name_cn||''}" placeholder="中文名"></td>
-    <td style="padding:10px 16px"><input type="text" class="desc light-input" style="width:100%; background:transparent; border:none; color:#94a3b8" value="${p.description||''}" placeholder="描述"></td>
+    <td style="padding:10px 16px"><input type="text" class="desc light-input" style="width:100%; background:transparent; border:none; color:#94a3b8" value="${p.description||''}" placeholder="规格"></td>
     <td style="padding:10px 16px"><input type="number" class="qty light-input" style="width:100%; text-align:center; background:#0f172a; border:1px solid #334155" value="1" min="1"></td>
     <td style="padding:10px 16px"><input type="number" class="price light-input" style="width:100%; text-align:center; background:#0f172a; border:1px solid #334155" value="${price.toFixed(2)}" min="0" step="0.01"></td>
     <td class="iva-amt" style="padding:10px 16px; text-align:right; font-family:monospace; color:#94a3b8">0.00</td>
@@ -5394,7 +5394,7 @@ function addEditItem(p = {}) {
   
   tr.innerHTML = `
     <td style="padding:10px 16px"><input type="text" class="name light-input" style="width:100%; background:transparent; border:none; color:#e2e8f0" value="${p.name || ''}"></td>
-    <td style="padding:10px 16px"><input type="text" class="desc light-input" style="width:100%; background:transparent; border:none; color:#94a3b8" value="${p.description||''}" placeholder="描述"></td>
+    <td style="padding:10px 16px"><input type="text" class="desc light-input" style="width:100%; background:transparent; border:none; color:#94a3b8" value="${p.description||''}" placeholder="规格"></td>
     <td style="padding:10px 16px"><input type="number" class="qty light-input" style="width:100%; text-align:center; background:#0f172a; border:1px solid #334155" value="${qty}" min="1"></td>
     <td style="padding:10px 16px"><input type="number" class="price light-input" style="width:100%; text-align:center; background:#0f172a; border:1px solid #334155" value="${price.toFixed(2)}" min="0" step="0.01"></td>
     <td class="iva-amt" style="padding:10px 16px; text-align:right; font-family:monospace; color:#94a3b8">${taxAmt.toFixed(2)}</td>
@@ -7381,7 +7381,14 @@ async function loadFinishedStock() {
     if (p.batches && p.batches.length > 0) {
       stockHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + p.batches.map(b => `<div>${b.qty}</div>`).join('') + `</div>`;
       expiryHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + p.batches.map(b => `<div>${b.expiry}</div>`).join('') + `</div>`;
-      loteHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + p.batches.map(b => `<div>${b.lote || '-'}</div>`).join('') + `</div>`;
+      loteHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + p.batches.map(b => {
+        let l = b.lote || '-';
+        if (l !== '-') {
+          const parts = l.split('-');
+          if (parts.length === 3) l = parts[2] + parts[1];
+        }
+        return `<div>${l}</div>`;
+      }).join('') + `</div>`;
     }
     return `
     <tr>

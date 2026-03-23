@@ -359,6 +359,141 @@ async function ensureSchema() {
   try { await query('alter table tasks add column completion_desc text'); } catch {}
   try { await query('alter table tasks add column time_limit int default 0'); } catch {}
 }
+function formatLote(loteDate) {
+  if (!loteDate) return '';
+  const parts = loteDate.split('-');
+  if (parts.length === 3) return parts[2] + parts[1];
+  return loteDate;
+}
+
+async function simulateSplitStock(items) {
+  let finalItems = [];
+  for (const item of items) {
+    const allocQty = Number(item.allocated_qty || 0);
+    const originalQty = Number(item.qty || 0);
+    if (allocQty <= 0) {
+      finalItems.push(item);
+      continue;
+    }
+    
+    let pid = item.productId;
+    if (!pid) {
+       if (item.sku) {
+          const p = await query('select id from products where sku=$1', [item.sku]);
+          if (p.rows[0]) pid = p.rows[0].id;
+       } else if (item.name) {
+          const p = await query('select id from products where name=$1', [item.name]);
+          if (p.rows[0]) pid = p.rows[0].id;
+       }
+    }
+
+    if (pid) {
+      let remainingAlloc = allocQty;
+      let remainingOrig = originalQty;
+      const batches = await query('select * from inventory_batches where product_id=$1 and quantity > 0 order by expiration_date asc', [pid]);
+      
+      let hasSplit = false;
+      for (const b of batches.rows) {
+        if (remainingAlloc <= 0) break;
+        const take = Math.min(Number(b.quantity), remainingAlloc);
+        
+        let splitItem = { ...item };
+        splitItem.allocated_qty = take;
+        splitItem.qty = take; 
+        
+        let spec = (splitItem.description || '').replace(/ Lote:\S+/g, '').trim();
+        let loteStr = formatLote(b.lote);
+        if (loteStr) spec = `${spec} Lote:${loteStr}`.trim();
+        splitItem.description = spec;
+        
+        finalItems.push(splitItem);
+        remainingAlloc -= take;
+        remainingOrig -= take;
+        hasSplit = true;
+      }
+      
+      if (remainingAlloc > 0 || remainingOrig > 0) {
+         let splitItem = { ...item };
+         splitItem.allocated_qty = remainingAlloc;
+         splitItem.qty = remainingOrig;
+         splitItem.description = (splitItem.description || '').replace(/ Lote:\S+/g, '').trim();
+         finalItems.push(splitItem);
+      }
+    } else {
+      finalItems.push(item);
+    }
+  }
+  return finalItems;
+}
+
+async function deductAndSplitStock(items) {
+  let finalItems = [];
+  for (const item of items) {
+    const qty = Number(item.qty || 0);
+    if (qty <= 0) {
+      finalItems.push(item);
+      continue;
+    }
+    
+    let pid = item.productId;
+    if (!pid) {
+       if (item.sku) {
+          const p = await query('select id from products where sku=$1', [item.sku]);
+          if (p.rows[0]) pid = p.rows[0].id;
+       } else if (item.name) {
+          const p = await query('select id from products where name=$1', [item.name]);
+          if (p.rows[0]) pid = p.rows[0].id;
+       }
+    }
+
+    if (pid) {
+      await query('update products set stock = stock - $1 where id=$2', [qty, pid]);
+      
+      let remaining = qty;
+      const batches = await query('select * from inventory_batches where product_id=$1 and quantity > 0 order by expiration_date asc', [pid]);
+      
+      for (const b of batches.rows) {
+        if (remaining <= 0) break;
+        const take = Math.min(Number(b.quantity), remaining);
+        
+        if (Number(b.quantity) === take) {
+          await query('update inventory_batches set quantity = 0 where id=$1', [b.id]);
+        } else {
+          await query('update inventory_batches set quantity = quantity - $1 where id=$2', [take, b.id]);
+        }
+        
+        let splitItem = { ...item };
+        splitItem.qty = take;
+        let spec = (splitItem.description || '').replace(/ Lote:\S+/g, '').trim();
+        let loteStr = formatLote(b.lote);
+        if (loteStr) spec = `${spec} Lote:${loteStr}`.trim();
+        splitItem.description = spec;
+        
+        splitItem.deductions = [{
+          batch_id: b.id,
+          qty: take,
+          expiry: b.expiration_date,
+          lote: b.lote
+        }];
+        
+        finalItems.push(splitItem);
+        remaining -= take;
+      }
+      
+      if (remaining > 0) {
+         let splitItem = { ...item };
+         splitItem.qty = remaining;
+         splitItem.description = (splitItem.description || '').replace(/ Lote:\S+/g, '').trim();
+         splitItem.deductions = [];
+         finalItems.push(splitItem);
+      }
+    } else {
+      finalItems.push(item);
+    }
+  }
+  return finalItems;
+}
+
 // Ensure schema then defaults sequentially to avoid race
 (async () => {
   try {
@@ -1315,57 +1450,13 @@ app.post('/api/invoices', authRequired, ensureAllow('sales_order','view'), async
     return sum + rowVal + rowTax;
   }, 0);
 
-  // Update Stock
-  for (const item of items) {
-    const qty = Number(item.qty || 0);
-    if (qty > 0) {
-      let pid = item.productId;
-      if (!pid) {
-         if (item.sku) {
-            const p = await query('select id from products where sku=$1', [item.sku]);
-            if (p.rows[0]) pid = p.rows[0].id;
-         } else if (item.name) {
-            const p = await query('select id from products where name=$1', [item.name]);
-            if (p.rows[0]) pid = p.rows[0].id;
-         }
-      }
-
-      if (pid) {
-        // 1. Update total stock
-        await query('update products set stock = stock - $1 where id=$2', [qty, pid]);
-        
-        // 2. Deduct from batches (FIFO)
-        let remaining = qty;
-        const batches = await query('select * from inventory_batches where product_id=$1 and quantity > 0 order by expiration_date asc', [pid]);
-        
-        item.deductions = []; // Store deduction info
-        
-        for (const b of batches.rows) {
-          if (remaining <= 0) break;
-          const take = Math.min(Number(b.quantity), remaining);
-          
-          if (Number(b.quantity) === take) {
-            await query('update inventory_batches set quantity = 0 where id=$1', [b.id]);
-          } else {
-            await query('update inventory_batches set quantity = quantity - $1 where id=$2', [take, b.id]);
-          }
-          
-          item.deductions.push({
-            batch_id: b.id,
-            qty: take,
-            expiry: b.expiration_date
-          });
-          
-          remaining -= take;
-        }
-      }
-    }
-  }
+  // Update Stock and Split Items
+  const finalItems = await deductAndSplitStock(items);
 
   const r = await query(`
     insert into invoices(invoice_no, customer, date, items, total_amount, notes, sales, created_at, created_by)
     values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id, invoice_no
-  `, [invoiceNo, x.customer||'', x.date||'', JSON.stringify(items), total, x.notes||'', x.sales||'', now, req.user.name||'']);
+  `, [invoiceNo, x.customer||'', x.date||'', JSON.stringify(finalItems), total, x.notes||'', x.sales||'', now, req.user.name||'']);
 
   // Create payable (receivable)
   const trustDays = parseInt(x.trust_days, 10) || 30;
@@ -1499,53 +1590,11 @@ app.put('/api/invoices/:id', authRequired, ensureAllow('sales_order','view'), as
   }
 
   const items = Array.isArray(x.items) ? x.items : [];
-  // Deduct New Stock
-  for (const item of items) {
-    const qty = Number(item.qty || 0);
-    if (qty > 0) {
-      let pid = item.productId;
-      if (!pid) {
-         if (item.sku) {
-            const p = await query('select id from products where sku=$1', [item.sku]);
-            if (p.rows[0]) pid = p.rows[0].id;
-         } else if (item.name) {
-            const p = await query('select id from products where name=$1', [item.name]);
-            if (p.rows[0]) pid = p.rows[0].id;
-         }
-      }
-
-      if (pid) {
-        await query('update products set stock = stock - $1 where id=$2', [qty, pid]);
-        
-        let remaining = qty;
-        const batches = await query('select * from inventory_batches where product_id=$1 and quantity > 0 order by expiration_date asc', [pid]);
-        
-        item.deductions = [];
-        
-        for (const b of batches.rows) {
-          if (remaining <= 0) break;
-          const take = Math.min(Number(b.quantity), remaining);
-          
-          if (Number(b.quantity) === take) {
-            await query('update inventory_batches set quantity = 0 where id=$1', [b.id]);
-          } else {
-            await query('update inventory_batches set quantity = quantity - $1 where id=$2', [take, b.id]);
-          }
-          
-          item.deductions.push({
-            batch_id: b.id,
-            qty: take,
-            expiry: b.expiration_date
-          });
-          
-          remaining -= take;
-        }
-      }
-    }
-  }
+  // Deduct New Stock and Split Items
+  const finalItems = await deductAndSplitStock(items);
 
   // Recalculate total
-  const total = items.reduce((sum, item) => {
+  const total = finalItems.reduce((sum, item) => {
     const qty = Number(item.qty||0);
     const price = Number(item.price||0);
     let taxRate = Number(item.tax_rate);
@@ -1561,7 +1610,7 @@ app.put('/api/invoices/:id', authRequired, ensureAllow('sales_order','view'), as
   await query(`
     update invoices set customer=$1, date=$2, items=$3, total_amount=$4, notes=$5, sales=$6
     where id=$7
-  `, [x.customer||'', x.date||'', JSON.stringify(items), total, x.notes||'', x.sales||'', id]);
+  `, [x.customer||'', x.date||'', JSON.stringify(finalItems), total, x.notes||'', x.sales||'', id]);
   
   // Update payable (receivable)
   // Only update fields that should sync. 
@@ -1765,8 +1814,11 @@ app.put('/api/daily-orders/:id/allocate', authRequired, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const { items } = req.body; // updated items with allocated_qty
   
-  // 1. Update order
-  await query('update daily_orders set items=$1, status=$2, allocated_by=$3 where id=$4', [JSON.stringify(items), 'allocated', req.user.name, id]);
+  // 1. Simulate FIFO split
+  const finalItems = await simulateSplitStock(items);
+  
+  // 2. Update order
+  await query('update daily_orders set items=$1, status=$2, allocated_by=$3 where id=$4', [JSON.stringify(finalItems), 'allocated', req.user.name, id]);
   
   res.json({ ok: true });
 });
@@ -1809,51 +1861,14 @@ app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
 
     const now = Date.now();
 
-    // Deduct Stock (FIFO Logic) & populate deductions
-    for (const item of invoiceItems) {
-      const qty = Number(item.qty || 0);
-      let pid = item.productId;
-      if (!pid && item.name) {
-        const p = await query('select id from products where name=$1', [item.name]);
-        if (p.rows[0]) pid = p.rows[0].id;
-      }
-
-      if (qty > 0 && pid) {
-         // Update total stock
-         await query('update products set stock = stock - $1 where id=$2', [qty, pid]);
-
-         // Deduct from batches
-         let remaining = qty;
-         const batches = await query('select * from inventory_batches where product_id=$1 and quantity > 0 order by expiration_date asc', [pid]);
-         
-         item.deductions = [];
-         
-         for (const b of batches.rows) {
-           if (remaining <= 0) break;
-           const take = Math.min(Number(b.quantity), remaining);
-           
-           if (Number(b.quantity) === take) {
-             await query('update inventory_batches set quantity = 0 where id=$1', [b.id]);
-           } else {
-             await query('update inventory_batches set quantity = quantity - $1 where id=$2', [take, b.id]);
-           }
-           
-           item.deductions.push({
-             batch_id: b.id,
-             qty: take,
-             expiry: b.expiration_date
-           });
-           
-           remaining -= take;
-         }
-      }
-    }
+    // Deduct Stock and Split Items
+    const finalItems = await deductAndSplitStock(invoiceItems);
 
     // Insert Invoice
     const inv = await query(`
       insert into invoices(invoice_no, customer, date, items, total_amount, sales, created_at, created_by, notes)
       values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id
-    `, [invoiceNo, ord.customer, ord.date, JSON.stringify(invoiceItems), total, ord.sales, now, 'system', ord.notes||'']);
+    `, [invoiceNo, ord.customer, ord.date, JSON.stringify(finalItems), total, ord.sales, now, 'system', ord.notes||'']);
     
     // Create Payable
     await query(`
