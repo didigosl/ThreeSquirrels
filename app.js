@@ -7209,6 +7209,10 @@ function editDailyOrder(id) {
         <input type="hidden" class="do-item-name" value="${prod.name}">
         <input type="hidden" class="do-item-image" value="${prod.image || ''}">
         <input type="hidden" class="do-item-cn" value="${prod.cn_name || prod.name_cn || ''}">
+        <input type="hidden" class="do-item-desc" value="${prod.description || prod.spec || ''}">
+        <input type="hidden" class="do-item-tax" value="${prod.tax_rate !== undefined && prod.tax_rate !== null && prod.tax_rate !== '' ? prod.tax_rate : 0.10}">
+        <input type="hidden" class="do-item-pid" value="${prod.productId || prod.id || ''}">
+        <input type="hidden" class="do-item-sku" value="${prod.sku || ''}">
       </td>
       <td><div style="color:#94a3b8; font-size:13px">${prod.cn_name || prod.name_cn || ''}</div></td>
       <td><input type="number" class="do-item-qty" value="${prod.qty || 1}" min="1" style="width:80px"></td>
@@ -7254,6 +7258,10 @@ function addDoItemRow(prod) {
       <input type="hidden" class="do-item-name" value="${prod.name}">
       <input type="hidden" class="do-item-image" value="${prod.image || ''}">
       <input type="hidden" class="do-item-cn" value="${prod.name_cn || ''}">
+      <input type="hidden" class="do-item-desc" value="${prod.spec || prod.description || ''}">
+      <input type="hidden" class="do-item-tax" value="${prod.tax_rate !== undefined && prod.tax_rate !== null && prod.tax_rate !== '' ? prod.tax_rate : 0.10}">
+      <input type="hidden" class="do-item-pid" value="${prod.id || ''}">
+      <input type="hidden" class="do-item-sku" value="${prod.sku || ''}">
     </td>
     <td><div style="color:#94a3b8; font-size:13px">${prod.name_cn||''}</div></td>
     <td><input type="number" class="do-item-qty" value="1" min="1" style="width:80px"></td>
@@ -7274,9 +7282,13 @@ async function saveDailyOrder() {
     const name = row.querySelector('.do-item-name').value;
     const image = row.querySelector('.do-item-image').value;
     const cn_name = row.querySelector('.do-item-cn').value;
+    const description = row.querySelector('.do-item-desc').value;
+    const tax_rate = Number(row.querySelector('.do-item-tax').value);
+    const productId = row.querySelector('.do-item-pid').value;
+    const sku = row.querySelector('.do-item-sku').value;
     const qty = row.querySelector('.do-item-qty').value;
     const price = row.querySelector('.do-item-price').value;
-    if (name && qty) items.push({ name, image, cn_name, qty: Number(qty), price: Number(price) });
+    if (name && qty) items.push({ name, image, cn_name, description, tax_rate, productId, sku, qty: Number(qty), price: Number(price) });
   });
   
   if (items.length === 0) return alert('请添加商品');
