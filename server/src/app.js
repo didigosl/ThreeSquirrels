@@ -1904,16 +1904,24 @@ app.get('/api/inventory/finished', authRequired, async (req, res) => {
 });
 app.post('/api/inventory/finished', authRequired, async (req, res) => {
   const items = req.body.items || [req.body]; // Support single or multiple
+  console.log("POST /api/inventory/finished received:", items);
   
   for (const item of items) {
     const { productId, qty, expiry, lote } = item;
+    console.log("Processing item:", item);
     // ensure qty is valid
-    if (!productId || !qty || isNaN(Number(qty))) continue;
+    if (!productId || !qty || isNaN(Number(qty))) {
+      console.log("Skipping invalid item:", item);
+      continue;
+    }
     
     const parsedQty = Number(qty);
     
     const p = await query('select stock from products where id=$1', [productId]);
-    if (!p.rows[0]) continue;
+    if (!p.rows[0]) {
+      console.log("Product not found:", productId);
+      continue;
+    }
     const currentStock = Number(p.rows[0]?.stock || 0);
     let batchQty = parsedQty;
     

@@ -4683,6 +4683,7 @@ if (soAddItem) {
       alert('请先选择客户');
       return;
     }
+    window.onProdSelect = null; // Clear any previous callbacks!
     window.selectedProducts.clear(); // Clear previous selections
     prodSelModal.style.display = 'flex';
     prodSelSearch.value = '';
