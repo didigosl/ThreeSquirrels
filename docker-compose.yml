@@ -27,7 +27,6 @@ services:
       - ts-db
     volumes:
       - ./server/src:/app/src
-      - ./server/node_modules:/app/node_modules
       - ./uploads:/app/uploads
     networks:
       - ts-web
