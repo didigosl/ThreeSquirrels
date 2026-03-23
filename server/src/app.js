@@ -330,6 +330,7 @@ async function ensureSchema() {
       expiration_date text,
       created_at bigint
     );
+    alter table inventory_batches add column if not exists lote text;
     create table if not exists inventory_logs (
       id serial primary key,
       product_id int,
@@ -1875,9 +1876,9 @@ app.get('/api/inventory/finished', authRequired, async (req, res) => {
   // User: "List shows product image, name, expiry time, stock qty".
   // Let's join products and batches.
   const r = await query(`
-    select p.id, p.name, p.name_cn, p.image, p.stock as total_stock,
+    select p.id, p.sku, p.name, p.name_cn, p.image, p.stock as total_stock,
     (
-      select json_agg(json_build_object('qty', quantity, 'expiry', expiration_date) order by expiration_date asc)
+      select json_agg(json_build_object('qty', quantity, 'expiry', expiration_date, 'lote', lote) order by expiration_date asc)
       from inventory_batches
       where product_id=p.id and quantity>0
     ) as batches
@@ -1887,36 +1888,40 @@ app.get('/api/inventory/finished', authRequired, async (req, res) => {
   res.json(r.rows);
 });
 app.post('/api/inventory/finished', authRequired, async (req, res) => {
-  const { productId, qty, expiry } = req.body;
+  const items = req.body.items || [req.body]; // Support single or multiple
   
-  const p = await query('select stock from products where id=$1', [productId]);
-  const currentStock = Number(p.rows[0]?.stock || 0);
-  let batchQty = Number(qty);
-  
-  if (currentStock <= 0) {
-    // Clean up any ghost batches from before FIFO was implemented
-    await query('update inventory_batches set quantity = 0 where product_id=$1', [productId]);
-  }
-  
-  if (currentStock < 0) {
-    const deficit = Math.abs(currentStock);
-    if (batchQty > deficit) {
-      batchQty -= deficit;
-    } else {
-      batchQty = 0;
+  for (const item of items) {
+    const { productId, qty, expiry, lote } = item;
+    if (!productId || !qty) continue;
+    
+    const p = await query('select stock from products where id=$1', [productId]);
+    if (!p.rows[0]) continue;
+    const currentStock = Number(p.rows[0]?.stock || 0);
+    let batchQty = Number(qty);
+    
+    if (currentStock <= 0) {
+      await query('update inventory_batches set quantity = 0 where product_id=$1', [productId]);
     }
+    
+    if (currentStock < 0) {
+      const deficit = Math.abs(currentStock);
+      if (batchQty > deficit) {
+        batchQty -= deficit;
+      } else {
+        batchQty = 0;
+      }
+    }
+    
+    if (batchQty > 0) {
+      await query('insert into inventory_batches(product_id, quantity, expiration_date, lote, created_at) values($1,$2,$3,$4,$5)',
+        [productId, batchQty, expiry, lote || '', Date.now()]);
+    }
+    
+    await query('update products set stock = stock + $1 where id=$2', [qty, productId]);
+    
+    await query('insert into inventory_logs(product_id, quantity, type, created_at, created_by) values($1,$2,$3,$4,$5)',
+      [productId, qty, 'in', Date.now(), req.user.name]);
   }
-  
-  if (batchQty > 0) {
-    await query('insert into inventory_batches(product_id, quantity, expiration_date, created_at) values($1,$2,$3,$4)',
-      [productId, batchQty, expiry, Date.now()]);
-  }
-  
-  await query('update products set stock = stock + $1 where id=$2', [qty, productId]);
-  
-  // Log addition
-  await query('insert into inventory_logs(product_id, quantity, type, created_at, created_by) values($1,$2,$3,$4,$5)',
-    [productId, qty, 'in', Date.now(), req.user.name]);
     
   res.json({ ok: true });
 });

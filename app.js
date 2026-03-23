@@ -7374,20 +7374,24 @@ async function loadFinishedStock() {
   const list = await res.json();
   const tbody = document.getElementById('finished-stock-rows');
   if (!tbody) return;
-  tbody.innerHTML = list.map(p => {
+  tbody.innerHTML = list.map((p, idx) => {
     let stockHtml = p.total_stock;
     let expiryHtml = '-';
+    let loteHtml = '-';
     if (p.batches && p.batches.length > 0) {
       stockHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + p.batches.map(b => `<div>${b.qty}</div>`).join('') + `</div>`;
       expiryHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + p.batches.map(b => `<div>${b.expiry}</div>`).join('') + `</div>`;
+      loteHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + p.batches.map(b => `<div>${b.lote || '-'}</div>`).join('') + `</div>`;
     }
     return `
     <tr>
-      <td>${p.id}</td>
+      <td>${idx + 1}</td>
       <td style="padding:0; width:50px; height:50px">${p.image ? `<img src="${p.image}" class="thumb-img" style="width:100%; height:100%; object-fit:contain; display:block">` : ''}</td>
+      <td>${p.sku || ''}</td>
       <td>${p.name}</td>
       <td>${p.name_cn || ''}</td>
       <td>${stockHtml}</td>
+      <td>${loteHtml}</td>
       <td>${expiryHtml}</td>
       <td style="text-align:center">
         <button class="btn-secondary" style="padding:4px 8px; font-size:12px" onclick="location.hash='#stock-history?id=${p.id}'">查看</button>
@@ -7435,19 +7439,60 @@ async function loadStockHistory(id) {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#ef4444">加载失败</td></tr>';
   }
 }
+let fsItems = [];
+
 function openFinishedStockModal() {
   const m = document.getElementById('fs-add-modal');
   if (m) {
     m.style.display = 'flex';
-    document.getElementById('fs-prod-search').value = '';
-    document.getElementById('fs-prod-id').value = '';
-    document.getElementById('fs-qty').value = '';
-    
-    // Default to today
-    const tzOffset = (new Date()).getTimezoneOffset() * 60000;
-    const localISOTime = (new Date(Date.now() - tzOffset)).toISOString().slice(0, 10);
-    document.getElementById('fs-expiry').value = localISOTime;
+    fsItems = [];
+    renderFsItems();
   }
+}
+
+function renderFsItems() {
+  const tbody = document.getElementById('fs-items-tbody');
+  if (!tbody) return;
+  
+  if (fsItems.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:20px">请先选择商品</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = fsItems.map((item, idx) => `
+    <tr>
+      <td>${item.name}</td>
+      <td><input type="number" class="fs-item-qty" data-idx="${idx}" value="${item.qty||''}" style="width:100%" placeholder="数量"></td>
+      <td><input type="date" class="fs-item-lote" data-idx="${idx}" value="${item.lote||''}" style="width:100%" onchange="updateFsExpiry(${idx}, this.value)"></td>
+      <td><input type="date" class="fs-item-expiry" data-idx="${idx}" value="${item.expiry||''}" style="width:100%"></td>
+      <td style="text-align:center"><button class="btn-sm btn-red" onclick="removeFsItem(${idx})">删除</button></td>
+    </tr>
+  `).join('');
+}
+
+function updateFsExpiry(idx, loteDateStr) {
+  if (!loteDateStr) return;
+  const parts = loteDateStr.split('-');
+  if (parts.length !== 3) return;
+  
+  const d = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+  if (isNaN(d.getTime())) return;
+  
+  // Add 6 months
+  d.setMonth(d.getMonth() + 6);
+  
+  const expYear = d.getFullYear();
+  const expMonth = String(d.getMonth() + 1).padStart(2, '0');
+  const expDay = String(d.getDate()).padStart(2, '0');
+  
+  fsItems[idx].lote = loteDateStr;
+  fsItems[idx].expiry = `${expYear}-${expMonth}-${expDay}`;
+  renderFsItems();
+}
+
+function removeFsItem(idx) {
+  fsItems.splice(idx, 1);
+  renderFsItems();
 }
 
 function openFsProdSelector() {
@@ -7457,24 +7502,57 @@ function openFsProdSelector() {
     m.style.display = 'flex';
     loadProductSelector(1);
     window.onProdSelect = function(prod, isBatch) {
-      document.getElementById('fs-prod-search').value = prod.name;
-      document.getElementById('fs-prod-id').value = prod.id;
-      // For inventory, we only want single selection logically, but multi-select UI might call it once or more.
-      // We'll just take the last one or close it.
+      if (!fsItems.some(i => i.productId === prod.id)) {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const loteDateStr = `${year}-${month}-${day}`;
+        
+        now.setMonth(now.getMonth() + 6);
+        const expYear = now.getFullYear();
+        const expMonth = String(now.getMonth() + 1).padStart(2, '0');
+        const expDay = String(now.getDate()).padStart(2, '0');
+        const expiryDateStr = `${expYear}-${expMonth}-${expDay}`;
+        
+        fsItems.push({
+          productId: prod.id,
+          name: prod.name,
+          qty: '',
+          lote: loteDateStr,
+          expiry: expiryDateStr
+        });
+        renderFsItems();
+      }
       if (!isBatch) m.style.display = 'none';
     };
   }
 }
+
 async function saveFinishedStock() {
-  const productId = document.getElementById('fs-prod-id').value;
-  const qty = document.getElementById('fs-qty').value;
-  const expiry = document.getElementById('fs-expiry').value;
-  if (!productId || !qty || !expiry) return alert('请填写完整信息');
+  if (fsItems.length === 0) return alert('请选择商品');
+  
+  // Update qtys and dates from DOM before saving
+  document.querySelectorAll('.fs-item-qty').forEach(el => {
+    fsItems[el.dataset.idx].qty = el.value;
+  });
+  document.querySelectorAll('.fs-item-lote').forEach(el => {
+    fsItems[el.dataset.idx].lote = el.value;
+  });
+  document.querySelectorAll('.fs-item-expiry').forEach(el => {
+    fsItems[el.dataset.idx].expiry = el.value;
+  });
+  
+  const invalid = fsItems.find(i => !i.qty || Number(i.qty) <= 0 || !i.lote || !i.expiry);
+  if (invalid) {
+    return alert(`请填写完整的数量、Lote和过期时间 (${invalid.name})`);
+  }
   
   await fetchWithAuth('/api/inventory/finished', {
     method: 'POST',
-    body: JSON.stringify({ productId, qty, expiry })
+    body: JSON.stringify({ items: fsItems })
   });
+  
   document.getElementById('fs-add-modal').style.display = 'none';
   loadFinishedStock();
 }
