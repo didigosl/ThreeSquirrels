@@ -1929,10 +1929,10 @@ app.post('/api/inventory/finished', authRequired, async (req, res) => {
     
     if (batchQty > 0) {
       await query('insert into inventory_batches(product_id, quantity, expiration_date, lote, created_at) values($1,$2,$3,$4,$5)',
-        [productId, batchQty, expiry, lote || '', Date.now()]);
+        [productId, batchQty, expiry || '', lote || '', Date.now()]);
     }
     
-    await query('update products set stock = stock + $1 where id=$2', [qty, productId]);
+    await query('update products set stock = stock + $1 where id=$2', [Number(qty), productId]);
     
     await query('insert into inventory_logs(product_id, quantity, type, created_at, created_by) values($1,$2,$3,$4,$5)',
       [productId, qty, 'in', Date.now(), req.user.name]);

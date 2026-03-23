@@ -7478,6 +7478,11 @@ function renderFsItems() {
 }
 
 function updateFsExpiry(idx, loteDateStr) {
+  // Save current qtys before re-render
+  document.querySelectorAll('.fs-item-qty').forEach(el => {
+    if (fsItems[el.dataset.idx]) fsItems[el.dataset.idx].qty = el.value;
+  });
+
   if (!loteDateStr) return;
   const parts = loteDateStr.split('-');
   if (parts.length !== 3) return;
@@ -7541,13 +7546,13 @@ async function saveFinishedStock() {
   
   // Update qtys and dates from DOM before saving
   document.querySelectorAll('.fs-item-qty').forEach(el => {
-    fsItems[el.dataset.idx].qty = el.value;
+    if (fsItems[el.dataset.idx]) fsItems[el.dataset.idx].qty = el.value;
   });
   document.querySelectorAll('.fs-item-lote').forEach(el => {
-    fsItems[el.dataset.idx].lote = el.value;
+    if (fsItems[el.dataset.idx]) fsItems[el.dataset.idx].lote = el.value;
   });
   document.querySelectorAll('.fs-item-expiry').forEach(el => {
-    fsItems[el.dataset.idx].expiry = el.value;
+    if (fsItems[el.dataset.idx]) fsItems[el.dataset.idx].expiry = el.value;
   });
   
   const invalid = fsItems.find(i => !i.qty || Number(i.qty) <= 0 || !i.lote || !i.expiry);
