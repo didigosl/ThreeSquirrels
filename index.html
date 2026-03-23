@@ -290,7 +290,7 @@
         <div class="brand" style="padding:0; display:flex !important"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <div class="mobile-menu-btn" onclick="toggleSidebar()">☰</div>
       </div>
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260323-2</div>
+      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260323-test1</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -461,6 +461,7 @@
                 <button class="tab active" data-tab="new" onclick="loadDailyOrders('new',this)">新订单 <span id="tab-order-new-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></button>
                 <button class="tab" data-tab="allocated" onclick="loadDailyOrders('allocated',this)">已配货 <span id="tab-order-alloc-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></button>
                 <button class="tab" data-tab="shipped" onclick="loadDailyOrders('shipped',this)">已发货</button>
+                <button class="tab" data-tab="cancelled" onclick="loadDailyOrders('cancelled',this)">已退单</button>
               </div>
             </div>
             <div class="table-wrap">
@@ -2443,6 +2444,6 @@
 
       </aside>
     </div>
-    <script src="app.js?v=20260323-2"></script>
+    <script src="app.js?v=20260323-test1"></script>
   </body>
 </html>

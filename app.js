@@ -6850,7 +6850,7 @@ function openOrderDetailsModal(id) {
     document.getElementById('do-details-customer').textContent = o.customer;
     document.getElementById('do-details-date').textContent = o.date;
     document.getElementById('do-details-notes').textContent = o.notes || '-';
-    document.getElementById('do-details-status').textContent = o.status === 'new' ? '新订单' : (o.status === 'allocated' ? '已配货' : '已发货');
+    document.getElementById('do-details-status').textContent = o.status === 'new' ? '新订单' : (o.status === 'allocated' ? '已配货' : (o.status === 'cancelled' ? '已退单' : '已发货'));
     
     const tbody = document.getElementById('do-details-rows');
     const items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
@@ -6897,7 +6897,7 @@ function openOrderPreview(id) {
           </div>
           <div>
             <div><strong>订单号:</strong> #${o.id}</div>
-            <div><strong>状态:</strong> ${o.status === 'new' ? '新订单' : (o.status === 'allocated' ? '已配货' : '已发货')}</div>
+            <div><strong>状态:</strong> ${o.status === 'new' ? '新订单' : (o.status === 'allocated' ? '已配货' : (o.status === 'cancelled' ? '已退单' : '已发货'))}</div>
           </div>
         </div>
         <table style="width:100%; border-collapse:collapse; margin-bottom:20px">
@@ -7043,8 +7043,8 @@ async function loadDailyOrders(status = 'new', btn = null) {
         <div style="font-size:13px">下单: ${o.date}</div>
         ${o.status === 'shipped' && o.shipped_at ? `<div style="color:#64748b;font-size:12px">发货: ${new Date(Number(o.shipped_at)).toLocaleString()}</div>` : ''}
       </td>
-      <td><span class="tag ${o.status==='new'?'red':(o.status==='allocated'?'blue':'green')}" style="cursor:pointer; text-decoration:underline" onclick="${(o.status==='new' || o.status==='allocated') ? `editDailyOrder(${o.id})` : `openOrderDetailsModal(${o.id})`}" title="点击查看/修改详情">
-        ${o.status==='new'?'新订单':(o.status==='allocated'?'已配货':'已发货')}
+      <td><span class="tag ${o.status==='new'?'red':(o.status==='allocated'?'blue':(o.status==='cancelled'?'gray':'green'))}" style="cursor:pointer; text-decoration:underline" onclick="${(o.status==='new' || o.status==='allocated') ? `editDailyOrder(${o.id})` : `openOrderDetailsModal(${o.id})`}" title="点击查看/修改详情">
+        ${o.status==='new'?'新订单':(o.status==='allocated'?'已配货':(o.status==='cancelled'?'已退单':'已发货'))}
       </span></td>
       <td>
         ${o.notes ? `<div style="color:#10b981; font-size:13px; cursor:pointer; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; word-break:break-all; max-width:160px; line-height:1.4" onclick="openOrderNotesModal(${o.id})" title="点击查看完整备注">${o.notes}</div>` : '<span style="color:#64748b">-</span>'}
@@ -7058,6 +7058,8 @@ async function loadDailyOrders(status = 'new', btn = null) {
       <td>
         ${o.status==='new' ? `<button class="btn-sm" onclick="openAllocateModal(${o.id})">配货</button> <button class="btn-sm btn-secondary" style="margin-left:4px" onclick="openOrderPreview(${o.id})">预览</button> <button class="btn-sm btn-red" style="margin-left:4px" onclick="cancelDailyOrder(${o.id})">退单</button>` : ''}
         ${o.status==='allocated' ? `<button class="btn-sm" onclick="confirmShip(${o.id})">发货</button> <button class="btn-sm btn-secondary" style="margin-left:4px" onclick="openOrderPreview(${o.id})">预览</button> <button class="btn-sm btn-red" style="margin-left:4px" onclick="cancelDailyOrder(${o.id})">退单</button>` : ''}
+        ${o.status==='shipped' ? `<button class="btn-sm btn-secondary" onclick="openOrderPreview(${o.id})">预览</button>` : ''}
+        ${o.status==='cancelled' ? `<button class="btn-sm btn-secondary" onclick="openOrderPreview(${o.id})">预览</button>` : ''}
       </td>
     </tr>
   `).join('');

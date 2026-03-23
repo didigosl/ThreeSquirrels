@@ -1756,7 +1756,7 @@ app.delete('/api/daily-orders/:id', authRequired, async (req, res) => {
   if (!ord.rows[0] || ord.rows[0].status === 'shipped') {
     return res.status(400).json({ error: 'cannot_cancel_shipped' });
   }
-  await query('delete from daily_orders where id=$1', [id]);
+  await query("update daily_orders set status='cancelled' where id=$1", [id]);
   res.json({ ok: true });
 });
 
