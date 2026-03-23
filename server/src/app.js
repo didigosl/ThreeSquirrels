@@ -1831,6 +1831,10 @@ app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
   if (!ord.invoice_id) {
     const items = typeof ord.items === 'string' ? JSON.parse(ord.items) : (ord.items || []);
     
+    // Check if customer requires IVA
+    const custRes = await query('select is_iva from contacts where name=$1 and owner=$2 limit 1', [ord.customer, '客户']);
+    const isIva = custRes.rows[0] ? custRes.rows[0].is_iva : true;
+    
     // Generate invoice logic
     const rMax = await query("select invoice_no from invoices where invoice_no like 'Factura- %' order by invoice_no desc limit 1");
     let nextSeq = 231; // Default starting sequence as requested
@@ -1847,15 +1851,17 @@ app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
     // Use allocated_qty for invoice items
     const invoiceItems = items.map(item => {
       const shipQty = Number(item.allocated_qty !== undefined ? item.allocated_qty : (item.qty || 0));
-      return { ...item, qty: shipQty, original_qty: item.qty };
+      let taxRate = Number(item.tax_rate);
+      if (isNaN(taxRate)) taxRate = 0.10;
+      if (!isIva) taxRate = 0;
+      return { ...item, qty: shipQty, original_qty: item.qty, tax_rate: taxRate };
     });
     
     // Calculate total
     const total = invoiceItems.reduce((sum, item) => {
       const qty = Number(item.qty || 0);
       const price = Number(item.price || 0);
-      let taxRate = Number(item.tax_rate);
-      if (isNaN(taxRate)) taxRate = 0.10;
+      const taxRate = Number(item.tax_rate) || 0;
       return sum + (qty * price * (1 + taxRate));
     }, 0);
 
