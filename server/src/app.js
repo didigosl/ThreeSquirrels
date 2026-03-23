@@ -1749,6 +1749,17 @@ app.put('/api/daily-orders/:id', authRequired, async (req, res) => {
     [x.customer||'', x.notes||'', JSON.stringify(newItems), id]);
   res.json({ ok: true });
 });
+app.delete('/api/daily-orders/:id', authRequired, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  // Only allow deleting if not shipped
+  const ord = await query('select status from daily_orders where id=$1', [id]);
+  if (!ord.rows[0] || ord.rows[0].status === 'shipped') {
+    return res.status(400).json({ error: 'cannot_cancel_shipped' });
+  }
+  await query('delete from daily_orders where id=$1', [id]);
+  res.json({ ok: true });
+});
+
 app.put('/api/daily-orders/:id/allocate', authRequired, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const { items } = req.body; // updated items with allocated_qty

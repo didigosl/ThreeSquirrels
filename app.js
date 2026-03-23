@@ -6961,6 +6961,8 @@ function printOrderPreview() {
 
 // Daily Orders
 let currentDailyOrders = [];
+let dailyOrdersAbortController = null;
+
 async function loadDailyOrders(status = 'new', btn = null) {
   // Update tabs style
   if (btn) {
@@ -6980,11 +6982,30 @@ async function loadDailyOrders(status = 'new', btn = null) {
     }
   }
 
-  // Fetch data with timestamp to prevent caching
-  const res = await fetchWithAuth(`/api/daily-orders?status=${status}&_t=${Date.now()}`);
-  if (!res.ok) return;
-  const list = await res.json();
-  currentDailyOrders = list;
+  const tbody = document.getElementById('daily-order-rows');
+  if (tbody) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8">加载中...</td></tr>';
+  }
+
+  if (dailyOrdersAbortController) {
+    dailyOrdersAbortController.abort();
+  }
+  dailyOrdersAbortController = new AbortController();
+
+  try {
+    // Fetch data with timestamp to prevent caching
+    const res = await fetchWithAuth(`/api/daily-orders?status=${status}&_t=${Date.now()}`, {
+      signal: dailyOrdersAbortController.signal
+    });
+    if (!res.ok) return;
+    const list = await res.json();
+    currentDailyOrders = list;
+  } catch (err) {
+    if (err.name === 'AbortError') return; // Ignore aborted requests
+    console.error('Failed to load daily orders:', err);
+    if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#ef4444">加载失败</td></tr>';
+    return;
+  }
   
   // Update badges
   if (status === 'new') {
@@ -7006,7 +7027,6 @@ async function loadDailyOrders(status = 'new', btn = null) {
     }
   }
 
-  const tbody = document.getElementById('daily-order-rows');
   if (!tbody) return;
   
   if (list.length === 0) {
@@ -7035,11 +7055,24 @@ async function loadDailyOrders(status = 'new', btn = null) {
       </td>
       <td>${o.status === 'shipped' && o.invoice_no ? o.invoice_no : '-'}</td>
       <td>
-        ${o.status==='new' ? `<button class="btn-sm" onclick="openAllocateModal(${o.id})">配货</button> <button class="btn-sm btn-secondary" style="margin-left:4px" onclick="openOrderPreview(${o.id})">预览</button>` : ''}
-        ${o.status==='allocated' ? `<button class="btn-sm" onclick="confirmShip(${o.id})">发货</button>` : ''}
+        ${o.status==='new' ? `<button class="btn-sm" onclick="openAllocateModal(${o.id})">配货</button> <button class="btn-sm btn-secondary" style="margin-left:4px" onclick="openOrderPreview(${o.id})">预览</button> <button class="btn-sm btn-red" style="margin-left:4px" onclick="cancelDailyOrder(${o.id})">退单</button>` : ''}
+        ${o.status==='allocated' ? `<button class="btn-sm" onclick="confirmShip(${o.id})">发货</button> <button class="btn-sm btn-secondary" style="margin-left:4px" onclick="openOrderPreview(${o.id})">预览</button> <button class="btn-sm btn-red" style="margin-left:4px" onclick="cancelDailyOrder(${o.id})">退单</button>` : ''}
       </td>
     </tr>
   `).join('');
+}
+
+async function cancelDailyOrder(id) {
+  if (!confirm('确定要退掉这个订单吗？退单后无法恢复。')) return;
+  const res = await fetchWithAuth(`/api/daily-orders/${id}`, {
+    method: 'DELETE'
+  });
+  if (res.ok) {
+    const currentTab = document.querySelector('#page-daily-orders .tabs .tab.active')?.dataset.tab || 'new';
+    loadDailyOrders(currentTab);
+  } else {
+    alert('退单失败，可能该订单已发货。');
+  }
 }
 
 function openDailyOrderModal() {
