@@ -1751,10 +1751,10 @@ app.put('/api/daily-orders/:id', authRequired, async (req, res) => {
 });
 app.delete('/api/daily-orders/:id', authRequired, async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  // Only allow deleting if not shipped
+  // Only allow deleting if not shipped or cancelled
   const ord = await query('select status from daily_orders where id=$1', [id]);
-  if (!ord.rows[0] || ord.rows[0].status === 'shipped') {
-    return res.status(400).json({ error: 'cannot_cancel_shipped' });
+  if (!ord.rows[0] || ord.rows[0].status === 'shipped' || ord.rows[0].status === 'cancelled') {
+    return res.status(400).json({ error: 'cannot_cancel_shipped_or_cancelled' });
   }
   await query("update daily_orders set status='cancelled' where id=$1", [id]);
   res.json({ ok: true });
