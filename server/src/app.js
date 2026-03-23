@@ -1907,12 +1907,15 @@ app.post('/api/inventory/finished', authRequired, async (req, res) => {
   
   for (const item of items) {
     const { productId, qty, expiry, lote } = item;
-    if (!productId || !qty) continue;
+    // ensure qty is valid
+    if (!productId || !qty || isNaN(Number(qty))) continue;
+    
+    const parsedQty = Number(qty);
     
     const p = await query('select stock from products where id=$1', [productId]);
     if (!p.rows[0]) continue;
     const currentStock = Number(p.rows[0]?.stock || 0);
-    let batchQty = Number(qty);
+    let batchQty = parsedQty;
     
     if (currentStock <= 0) {
       await query('update inventory_batches set quantity = 0 where product_id=$1', [productId]);
@@ -1932,10 +1935,10 @@ app.post('/api/inventory/finished', authRequired, async (req, res) => {
         [productId, batchQty, expiry || '', lote || '', Date.now()]);
     }
     
-    await query('update products set stock = stock + $1 where id=$2', [Number(qty), productId]);
+    await query('update products set stock = stock + $1 where id=$2', [parsedQty, productId]);
     
     await query('insert into inventory_logs(product_id, quantity, type, created_at, created_by) values($1,$2,$3,$4,$5)',
-      [productId, qty, 'in', Date.now(), req.user.name]);
+      [productId, parsedQty, 'in', Date.now(), req.user.name || 'system']);
   }
     
   res.json({ ok: true });
