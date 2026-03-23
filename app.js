@@ -6992,13 +6992,14 @@ async function loadDailyOrders(status = 'new', btn = null) {
   }
   dailyOrdersAbortController = new AbortController();
 
+  let list = [];
   try {
     // Fetch data with timestamp to prevent caching
     const res = await fetchWithAuth(`/api/daily-orders?status=${status}&_t=${Date.now()}`, {
       signal: dailyOrdersAbortController.signal
     });
     if (!res.ok) return;
-    const list = await res.json();
+    list = await res.json();
     currentDailyOrders = list;
   } catch (err) {
     if (err.name === 'AbortError') return; // Ignore aborted requests
