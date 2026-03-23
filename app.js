@@ -5758,6 +5758,8 @@ function openProdModal(x) {
   document.getElementById('prod-desc').value = x?.description||'';
   document.getElementById('prod-notes').value = x?.notes||'';
   
+  if (prodFile) prodFile.value = ''; // Always clear file input on open
+  
   if (x?.image) {
     prodPreview.src = x.image;
     prodPreview.style.display = 'block';
@@ -5765,7 +5767,6 @@ function openProdModal(x) {
   } else {
     prodPreview.style.display = 'none';
     prodFileName.textContent = '未选择文件';
-    prodFile.value = '';
   }
   
   // Clear validation styles
@@ -5827,6 +5828,28 @@ if (prodForm) {
 
     try {
       const id = document.getElementById('prod-id').value;
+      let imageUrl = document.getElementById('prod-image').value;
+      
+      const fileObj = prodFile.files[0];
+      if (fileObj) {
+        const fd = new FormData();
+        fd.append('file', fileObj);
+        try {
+          const token = getAuthToken();
+          const r = await fetch(API_BASE + '/api/upload', {
+            method: 'POST',
+            headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+            body: fd
+          });
+          if (r.ok) {
+            const d = await r.json();
+            imageUrl = d.url;
+          }
+        } catch(e) {
+          console.warn('product image upload failed', e);
+        }
+      }
+
       const data = {
         sku: document.getElementById('prod-sku').value,
         barcode: document.getElementById('prod-barcode').value,
@@ -5839,7 +5862,7 @@ if (prodForm) {
         price3: document.getElementById('prod-p3').value,
         price4: document.getElementById('prod-p4').value,
         stock: document.getElementById('prod-stock').value,
-        image: document.getElementById('prod-image').value,
+        image: imageUrl,
         description: document.getElementById('prod-desc').value,
         notes: document.getElementById('prod-notes').value
       };
@@ -7233,7 +7256,8 @@ async function saveDailyOrder() {
     });
   }
   closeDailyOrderModal();
-  loadDailyOrders(currentDailyOrdersTab);
+  const currentTab = document.querySelector('#page-daily-orders .tabs .tab.active')?.dataset.tab || 'new';
+  loadDailyOrders(currentTab);
 }
 
 async function openAllocateModal(id) {
