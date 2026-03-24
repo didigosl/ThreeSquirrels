@@ -401,10 +401,12 @@ async function simulateSplitStock(items) {
         splitItem.allocated_qty = take;
         splitItem.qty = take; 
         
-        let spec = (splitItem.description || '').replace(/(?:^|\s+)Lote:\S+/g, '').trim();
-        let loteStr = formatLote(b.lote);
-        if (loteStr) spec = `${spec} Lote:${loteStr}`.trim();
-        splitItem.description = spec;
+        if (!/lote/i.test(splitItem.description || '')) {
+          let spec = (splitItem.description || '').trim();
+          let loteStr = formatLote(b.lote);
+          if (loteStr) spec = `${spec} Lote:${loteStr}`.trim();
+          splitItem.description = spec;
+        }
         
         finalItems.push(splitItem);
         remainingAlloc -= take;
@@ -416,7 +418,9 @@ async function simulateSplitStock(items) {
          let splitItem = { ...item };
          splitItem.allocated_qty = remainingAlloc;
          splitItem.qty = remainingOrig;
-         splitItem.description = (splitItem.description || '').replace(/(?:^|\s+)Lote:\S+/g, '').trim();
+         if (!/lote/i.test(splitItem.description || '')) {
+            splitItem.description = (splitItem.description || '').trim();
+         }
          finalItems.push(splitItem);
       }
     } else {
@@ -464,10 +468,15 @@ async function deductAndSplitStock(items) {
         
         let splitItem = { ...item };
         splitItem.qty = take;
-        let spec = (splitItem.description || '').replace(/(?:^|\s+)Lote:\S+/g, '').trim();
-        let loteStr = formatLote(b.lote);
-        if (loteStr) spec = `${spec} Lote:${loteStr}`.trim();
-        splitItem.description = spec;
+        
+        // Only append system Lote if the user didn't already provide one in the description.
+        // This allows manual Lote overrides during invoice edits to be preserved perfectly.
+        if (!/lote/i.test(splitItem.description || '')) {
+          let spec = (splitItem.description || '').trim();
+          let loteStr = formatLote(b.lote);
+          if (loteStr) spec = `${spec} Lote:${loteStr}`.trim();
+          splitItem.description = spec;
+        }
         
         splitItem.deductions = [{
           batch_id: b.id,
@@ -483,7 +492,9 @@ async function deductAndSplitStock(items) {
       if (remaining > 0) {
          let splitItem = { ...item };
          splitItem.qty = remaining;
-         splitItem.description = (splitItem.description || '').replace(/(?:^|\s+)Lote:\S+/g, '').trim();
+         if (!/lote/i.test(splitItem.description || '')) {
+            splitItem.description = (splitItem.description || '').trim();
+         }
          splitItem.deductions = [];
          finalItems.push(splitItem);
       }
