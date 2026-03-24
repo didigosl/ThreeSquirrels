@@ -1241,8 +1241,8 @@ document.getElementById('entry-form').addEventListener('submit', async e => {
   const dateTime = `${date} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
   let fileUrl = '';
   if (fileObj) {
-    const extOk = /(\.jpe?g|\.pdf)$/i.test(fileObj.name);
-    if (!extOk) { alert('仅支持 JPG 或 PDF 文件'); return; }
+    const extOk = /(\.jpe?g|\.png|\.pdf)$/i.test(fileObj.name);
+    if (!extOk) { alert('单条记录仅支持 JPG/PNG 或 PDF 文件'); return; }
     const fd = new FormData();
     fd.append('file', fileObj);
     try {
