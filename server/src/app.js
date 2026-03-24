@@ -1321,6 +1321,32 @@ app.get('/api/analytics/sales-summary', authRequired, async (req, res) => {
 });
 
 // Products endpoints
+app.post('/api/products/batch-stock', authRequired, async (req, res) => {
+  const { names = [], ids = [] } = req.body;
+  const validNames = names.filter(n => n);
+  const validIds = ids.map(i => parseInt(i, 10)).filter(i => !isNaN(i));
+  
+  if (validNames.length === 0 && validIds.length === 0) return res.json([]);
+  
+  let sql = 'select id, name, name_cn, stock, image from products where 1=0';
+  const params = [];
+  
+  if (validNames.length > 0) {
+    const pNames = validNames.map((_, i) => '$' + (params.length + i + 1)).join(',');
+    sql += ` or name in (${pNames})`;
+    params.push(...validNames);
+  }
+  
+  if (validIds.length > 0) {
+    const pIds = validIds.map((_, i) => '$' + (params.length + i + 1)).join(',');
+    sql += ` or id in (${pIds})`;
+    params.push(...validIds);
+  }
+  
+  const r = await query(sql, params);
+  res.json(r.rows);
+});
+
 app.get('/api/products', authRequired, ensureAllow('sales_products','view'), async (req, res) => {
   const { q='', page='1', size='50' } = req.query;
   const p = [];

@@ -7481,11 +7481,17 @@ async function openAllocateModal(id) {
   m.style.display = 'flex';
   
   try {
-    const res = await fetchWithAuth('/api/products?size=5000');
+    const itemNames = items.map(i => i.name).filter(Boolean);
+    const itemIds = items.map(i => i.productId).filter(Boolean);
     let products = [];
-    if (res.ok) {
-      const data = await res.json();
-      products = data.list || [];
+    if (itemNames.length > 0 || itemIds.length > 0) {
+      const res = await fetchWithAuth('/api/products/batch-stock', {
+        method: 'POST',
+        body: JSON.stringify({ names: itemNames, ids: itemIds })
+      });
+      if (res.ok) {
+        products = await res.json();
+      }
     }
     
     tbody.innerHTML = items.map((item, idx) => {
