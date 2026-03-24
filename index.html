@@ -113,19 +113,34 @@
       .shipping-paper .s-contact { font-size: 32px; text-align: right; }
 
       @media print {
-        @page { size: A4 landscape; margin: 0; }
-        body * { visibility:hidden; }
-        html, body { width: 100%; height: 100%; margin: 0; padding: 0; }
+        @page { size: A4 portrait; margin: 0; }
+        body.printing-invoice, body.printing-shipping { background: #fff !important; }
+        body.printing-invoice, body.printing-invoice html,
+        body.printing-shipping, body.printing-shipping html { width: 100% !important; height: auto !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; display: block !important; }
         
-        /* Invoice Preview Print */
-        #invoice-preview-modal, #invoice-preview-modal * { visibility:visible; }
-        #invoice-preview-modal { position:absolute; left:0; top:0; width:100%; height:100%; background:#fff; padding:0; z-index:9999; }
-        .invoice-paper { box-shadow:none; margin:0; width:100%; max-width:none; padding:20px; min-height:auto; page-break-after: avoid; }
+        body.printing-invoice > *, body.printing-shipping > * { display: none !important; }
+        body.printing-invoice #invoice-preview-modal { display: block !important; position: static !important; width: 100% !important; height: auto !important; background: #fff !important; }
+        body.printing-shipping #shipping-preview-modal { display: block !important; position: static !important; width: 100% !important; height: auto !important; background: #fff !important; }
         
-        /* Shipping Label Print */
-        #shipping-preview-modal, #shipping-preview-modal * { visibility:visible; }
-        #shipping-preview-modal { position:absolute; left:0; top:0; width:100vw; height:100vh; background:#fff; padding:0; margin:0; z-index:9999; display:flex !important; align-items:center; justify-content:center; overflow:hidden; }
-        .shipping-paper { box-shadow:none; margin:0; padding:40px; width:297mm; height:210mm; max-width:100%; max-height:100%; border:none; outline:none; page-break-after: avoid; transform-origin: center center; }
+        body.printing-invoice .modal, body.printing-shipping .modal {
+          position: static !important;
+          max-height: none !important;
+          height: auto !important;
+          overflow: visible !important;
+          width: 100% !important;
+          max-width: none !important;
+          background: #fff !important;
+          border: none !important;
+          box-shadow: none !important;
+          margin: 0 !important;
+          transform: none !important;
+        }
+        
+        body.printing-invoice #invoice-preview-modal > div, 
+        body.printing-shipping #shipping-preview-modal > div { padding: 0 !important; }
+        
+        .invoice-paper { box-shadow:none; margin:0; width:100%; max-width:none; padding:15mm; min-height:auto; page-break-after: avoid; background:#fff !important; }
+        .shipping-paper { box-shadow:none; margin:0; padding:15mm; width:297mm; height:210mm; max-width:100%; max-height:100%; border:none; outline:none; page-break-after: avoid; transform-origin: center center; background:#fff !important; }
         
         .modal-header, .modal-actions { display:none !important; }
       }
@@ -2358,108 +2373,111 @@
             </div>
           </div>
         </div>
-        <div id="invoice-preview-modal" class="modal-overlay" style="display:none">
-          <div class="modal" style="width:900px; max-width:95vw; background:#525659; overflow-y:auto; max-height:90vh">
-            <div class="modal-header" style="background:#323639; color:white; border-bottom:1px solid #000">
-              <div class="modal-title">发票预览</div>
-              <div style="display:flex; gap:10px">
-                <button id="inv-prev-print" class="light-btn">打印 / 导出PDF</button>
-                <button id="inv-prev-close" class="btn-secondary" style="background:#323639; color:white; border:1px solid #5f6368">关闭</button>
-              </div>
-            </div>
-            <div style="padding:40px; display:flex; justify-content:center">
-              <div id="invoice-paper" class="invoice-paper" style="display:flex; flex-direction:column">
-                <div class="inv-meta-right">
-                  <h1>FACTURA</h1>
-                  <div style="font-weight:700"># <span id="prev-no"></span></div>
-                  <div class="inv-status" id="prev-status">POR PAGAR</div>
-                </div>
-
-                <div class="meta-grid">
-                  <div class="company-info" id="prev-company-info">
-                    <!-- Injected by JS -->
-                  </div>
-                  <div class="customer-info" id="prev-customer-info">
-                    <!-- Injected by JS -->
-                  </div>
-                </div>
-
-                <div class="dates-grid">
-                  Fecha de la factura: <span id="prev-date"></span><br>
-                  <span id="prev-sales" style="color:#000;"></span>
-                </div>
-                
-                <table>
-                  <thead>
-                    <tr>
-                      <th class="item-idx">#</th>
-                      <th>Artículo</th>
-                      <th width="80" style="text-align:right">Cantidad</th>
-                      <th width="100" style="text-align:right">Precio</th>
-                      <th width="100" style="text-align:right">Impuesto</th>
-                      <th width="100" style="text-align:right">Valor</th>
-                    </tr>
-                  </thead>
-                  <tbody id="prev-items"></tbody>
-                </table>
-                
-                <div class="totals-area">
-                  <table class="totals-table">
-                    <tr>
-                      <td class="total-label">Total</td>
-                      <td class="total-val" id="prev-subtotal">0.00</td>
-                    </tr>
-                    <tbody id="prev-tax-rows">
-                      <!-- Tax rows injected here -->
-                    </tbody>
-                    <tr class="grand-total">
-                      <td class="total-label">Total a pagar</td>
-                      <td class="total-val" id="prev-grand-total">0.00€</td>
-                    </tr>
-                    <tr class="grand-total">
-                      <td class="total-label">Valor a pagar</td>
-                      <td class="total-val" id="prev-grand-total-2">0.00€</td>
-                    </tr>
-                  </table>
-                </div>
-                
-                <div class="footer-area">
-                  <div class="notes-area">
-                    <div class="notes-label">Nota:</div>
-                    <div id="prev-notes" style="margin-bottom:8px"></div>
-                    <div id="prev-payment-info" class="payment-info">
-                      <!-- Payment info injected by JS -->
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Shipping Label Preview Modal -->
-        <div id="shipping-preview-modal" class="modal-overlay" style="display:none">
-          <div class="modal" style="width:1200px; max-width:98vw; background:#525659; overflow-y:auto; max-height:95vh">
-            <div class="modal-header" style="background:#323639; color:white; border-bottom:1px solid #000">
-              <div class="modal-title">打印收货地址</div>
-              <div style="display:flex; gap:10px">
-                <button id="ship-prev-print" class="light-btn">打印 / 导出PDF</button>
-                <button id="ship-prev-close" class="btn-secondary" style="background:#323639; color:white; border:1px solid #5f6368">关闭</button>
-              </div>
-            </div>
-            <div style="padding:40px; display:flex; justify-content:center; background:#525659">
-              <div id="shipping-paper" class="shipping-paper">
-                 <div id="ship-content" style="width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center">
-                    <!-- Injected Content -->
-                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
 
-      </aside>
+      </main>
     </div>
+
+    <!-- Modals moved outside layout for better printing -->
+    <div id="invoice-preview-modal" class="modal-overlay" style="display:none">
+      <div class="modal" style="width:900px; max-width:95vw; background:#525659; overflow-y:auto; max-height:90vh">
+        <div class="modal-header" style="background:#323639; color:white; border-bottom:1px solid #000">
+          <div class="modal-title">发票预览</div>
+          <div style="display:flex; gap:10px">
+            <button id="inv-prev-print" class="light-btn">打印 / 导出PDF</button>
+            <button id="inv-prev-close" class="btn-secondary" style="background:#323639; color:white; border:1px solid #5f6368">关闭</button>
+          </div>
+        </div>
+        <div style="padding:40px; display:flex; justify-content:center">
+          <div id="invoice-paper" class="invoice-paper" style="display:flex; flex-direction:column">
+            <div class="inv-meta-right">
+              <h1>FACTURA</h1>
+              <div style="font-weight:700"># <span id="prev-no"></span></div>
+              <div class="inv-status" id="prev-status">POR PAGAR</div>
+            </div>
+
+            <div class="meta-grid">
+              <div class="company-info" id="prev-company-info">
+                <!-- Injected by JS -->
+              </div>
+              <div class="customer-info" id="prev-customer-info">
+                <!-- Injected by JS -->
+              </div>
+            </div>
+
+            <div class="dates-grid">
+              Fecha de la factura: <span id="prev-date"></span><br>
+              <span id="prev-sales" style="color:#000;"></span>
+            </div>
+            
+            <table>
+              <thead>
+                <tr>
+                  <th class="item-idx">#</th>
+                  <th>Artículo</th>
+                  <th width="80" style="text-align:right">Cantidad</th>
+                  <th width="100" style="text-align:right">Precio</th>
+                  <th width="100" style="text-align:right">Impuesto</th>
+                  <th width="100" style="text-align:right">Valor</th>
+                </tr>
+              </thead>
+              <tbody id="prev-items"></tbody>
+            </table>
+            
+            <div class="totals-area">
+              <table class="totals-table">
+                <tr>
+                  <td class="total-label">Total</td>
+                  <td class="total-val" id="prev-subtotal">0.00</td>
+                </tr>
+                <tbody id="prev-tax-rows">
+                  <!-- Tax rows injected here -->
+                </tbody>
+                <tr class="grand-total">
+                  <td class="total-label">Total a pagar</td>
+                  <td class="total-val" id="prev-grand-total">0.00€</td>
+                </tr>
+                <tr class="grand-total">
+                  <td class="total-label">Valor a pagar</td>
+                  <td class="total-val" id="prev-grand-total-2">0.00€</td>
+                </tr>
+              </table>
+            </div>
+            
+            <div class="footer-area">
+              <div class="notes-area">
+                <div class="notes-label">Nota:</div>
+                <div id="prev-notes" style="margin-bottom:8px"></div>
+                <div id="prev-payment-info" class="payment-info">
+                  <!-- Payment info injected by JS -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shipping Label Preview Modal -->
+    <div id="shipping-preview-modal" class="modal-overlay" style="display:none">
+      <div class="modal" style="width:1200px; max-width:98vw; background:#525659; overflow-y:auto; max-height:95vh">
+        <div class="modal-header" style="background:#323639; color:white; border-bottom:1px solid #000">
+          <div class="modal-title">打印收货地址</div>
+          <div style="display:flex; gap:10px">
+            <button id="ship-prev-print" class="light-btn">打印 / 导出PDF</button>
+            <button id="ship-prev-close" class="btn-secondary" style="background:#323639; color:white; border:1px solid #5f6368">关闭</button>
+          </div>
+        </div>
+        <div style="padding:40px; display:flex; justify-content:center; background:#525659">
+          <div id="shipping-paper" class="shipping-paper">
+             <div id="ship-content" style="width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center">
+                <!-- Injected Content -->
+             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="app.js?v=20260323-test1"></script>
   </body>
 </html>

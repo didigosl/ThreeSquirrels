@@ -4997,7 +4997,24 @@ const invPrevClose = document.getElementById('inv-prev-close');
 const invPrevPrint = document.getElementById('inv-prev-print');
 
 if (invPrevClose) invPrevClose.addEventListener('click', () => invPrevModal.style.display = 'none');
-if (invPrevPrint) invPrevPrint.addEventListener('click', () => window.print());
+if (invPrevPrint) {
+  invPrevPrint.addEventListener('click', () => {
+    let invNo = document.getElementById('prev-no').textContent || 'Factura';
+    invNo = invNo.trim();
+    if (!invNo.startsWith('Factura')) {
+      invNo = 'Factura-' + invNo;
+    }
+    invNo = invNo.replace(/\s+/g, ''); // Removes spaces to match Factura-000249-26
+    const oldTitle = document.title;
+    document.title = invNo;
+    document.body.classList.add('printing-invoice');
+    setTimeout(() => {
+      window.print();
+      document.body.classList.remove('printing-invoice');
+      document.title = oldTitle;
+    }, 100);
+  });
+}
 
 window.previewInvoice = async function(id) {
   const inv = currentInvoices.find(x => String(x.id) === String(id));
@@ -6084,17 +6101,33 @@ if (shipPrevClose) {
 
 if (shipPrevPrint) {
   shipPrevPrint.addEventListener('click', async () => {
-    window.print();
+    let invNo = '';
     if (currentShippingInvId) {
       const inv = currentInvoices.find(x => String(x.id) === String(currentShippingInvId));
-      if (inv && !inv.shipping_printed) {
-         try {
-           await apiFetchJSON(`/api/invoices/${currentShippingInvId}/print-shipping`, { method:'PUT' });
-           inv.shipping_printed = true;
-           loadInvoices(); // Refresh list to show gray button
-         } catch {}
-      }
+      if (inv) invNo = inv.invoice_no;
     }
+    invNo = invNo || 'ShippingLabel';
+    invNo = invNo.trim().replace(/\s+/g, '');
+    
+    const oldTitle = document.title;
+    document.title = 'Etiqueta-' + invNo;
+    document.body.classList.add('printing-shipping');
+    setTimeout(async () => {
+      window.print();
+      document.body.classList.remove('printing-shipping');
+      document.title = oldTitle;
+      
+      if (currentShippingInvId) {
+      const inv = currentInvoices.find(x => String(x.id) === String(currentShippingInvId));
+        if (inv && !inv.shipping_printed) {
+           try {
+             await apiFetchJSON(`/api/invoices/${currentShippingInvId}/print-shipping`, { method:'PUT' });
+             inv.shipping_printed = true;
+             loadInvoices(); // Refresh list to show gray button
+           } catch {}
+        }
+      }
+    }, 100);
   });
 }
 
