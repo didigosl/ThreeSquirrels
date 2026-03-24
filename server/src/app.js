@@ -1259,7 +1259,7 @@ app.get('/api/analytics/ledger-summary', authRequired, ensureAllow('ledger','vie
       group by type
     `, [start, end]);
     const income = Number((r.rows.find(x => x.type === '收入')?.total) || 0);
-    const expense = Number((r.rows.find(x => x.type === '开支')?.total) || 0);
+    const expense = Number((r.rows.find(x => x.type === '开支' || x.type === '支出')?.total) || 0);
     out.push({ label, income, expense });
   }
   res.json(out);

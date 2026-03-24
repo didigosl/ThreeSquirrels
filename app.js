@@ -89,8 +89,12 @@ if (ledgerImportCommit) {
       const defaultMethod = entryMethod.value || '微信'; // Fallback if not selected
       
       for (let d of ledgerImportData) {
-        const type = d.amount >= 0 ? '收入' : '支出';
-        const cat = d.amount >= 0 ? '主营业务收入' : '其它业务支出'; // Default categories
+        const type = d.amount >= 0 ? '收入' : '开支';
+        let cat = d.subcat;
+        if (!cat) {
+          const parentCat = categoriesData.find(c => c.name === type);
+          cat = (parentCat && parentCat.children && parentCat.children.length > 0) ? parentCat.children[0] : (d.amount >= 0 ? '其它收入' : '其它开支');
+        }
         const absAmount = Math.abs(d.amount);
         const rowDate = d.date || defaultDate;
         const method = d.method || defaultMethod;
@@ -172,11 +176,12 @@ entryFile?.addEventListener('change', (e) => {
         for (let i=0; i<Math.min(10, rows.length); i++) {
           const row = rows[i];
           if (!row) continue;
-          let dateIdx=-1, docIdx=-1, partnerIdx=-1, notesIdx=-1, amtIdx=-1, methodIdx=-1;
+          let dateIdx=-1, docIdx=-1, subcatIdx=-1, partnerIdx=-1, notesIdx=-1, amtIdx=-1, methodIdx=-1;
           row.forEach((cell, idx) => {
             const txt = String(cell||'').replace(/\s+/g,'');
             if (txt.includes('日期')) dateIdx = idx;
             else if (txt.includes('单据') || txt.includes('凭证')) docIdx = idx;
+            else if (txt.includes('子类目')) subcatIdx = idx;
             else if (txt.includes('往来单位') || txt.includes('客户')) partnerIdx = idx;
             else if (txt.includes('备注')) notesIdx = idx;
             else if (txt.includes('金额')) amtIdx = idx;
@@ -184,7 +189,7 @@ entryFile?.addEventListener('change', (e) => {
           });
           if (amtIdx !== -1 && partnerIdx !== -1) {
             headerRowIdx = i;
-            colMap = { date:dateIdx, doc:docIdx, partner:partnerIdx, notes:notesIdx, amt:amtIdx, method:methodIdx };
+            colMap = { date:dateIdx, doc:docIdx, subcat:subcatIdx, partner:partnerIdx, notes:notesIdx, amt:amtIdx, method:methodIdx };
             break;
           }
         }
@@ -212,6 +217,7 @@ entryFile?.addEventListener('change', (e) => {
           
           let dateStr = colMap.date !== -1 ? parseLedgerDate(row[colMap.date]) : '';
           let docStr = colMap.doc !== -1 ? String(row[colMap.doc] || '').trim() : '';
+          let subcatStr = colMap.subcat !== -1 ? String(row[colMap.subcat] || '').trim() : '';
           let notesStr = colMap.notes !== -1 ? String(row[colMap.notes] || '').trim() : '';
           let methodStr = colMap.method !== -1 ? String(row[colMap.method] || '').trim() : '';
           
@@ -219,6 +225,18 @@ entryFile?.addEventListener('change', (e) => {
           let validMethod = true;
           if (methodStr && !accountsData.some(a => a.name === methodStr)) {
             validMethod = false;
+          }
+          
+          // Validate subcategory
+          let validSubcat = true;
+          if (subcatStr) {
+            const isIncome = amt >= 0;
+            const parentName = isIncome ? '收入' : '开支';
+            const catObj = categoriesData.find(c => c.name === parentName);
+            const validChildren = catObj ? (catObj.children || []) : [];
+            if (!validChildren.includes(subcatStr)) {
+              validSubcat = false;
+            }
           }
           
           // Advanced Partner Matching
@@ -277,20 +295,30 @@ entryFile?.addEventListener('change', (e) => {
           ledgerImportData.push({
             date: dateStr,
             doc: docStr,
+            subcat: subcatStr,
             partner: partner,
             notes: notesStr,
             amount: amt,
             method: methodStr,
             validMethod,
+            validSubcat,
             willCreate,
             createType
           });
         }
         
-        // Check for any invalid methods
+        // Check for any invalid methods or subcategories
         const invalidMethods = [...new Set(ledgerImportData.filter(d => !d.validMethod).map(d => d.method))];
         if (invalidMethods.length > 0) {
-          alert(`表格中包含未知的支付方式：\n${invalidMethods.join(', ')}\n\n请先在系统设置中添加该支付方式，或修改表格后重新上传。`);
+          alert(`账户不存在，表格无法上传：\n${invalidMethods.join(', ')}\n\n请先在系统设置中添加该账户名称，或修改表格后重新上传使其关联。`);
+          entryFile.value = '';
+          ledgerImportData = [];
+          return;
+        }
+        
+        const invalidSubcats = [...new Set(ledgerImportData.filter(d => !d.validSubcat).map(d => d.subcat))];
+        if (invalidSubcats.length > 0) {
+          alert(`子类目不匹配，表格无法上传：\n${invalidSubcats.join(', ')}\n\n请修改为系统分类管理中存在的子类目后再上传表格。`);
           entryFile.value = '';
           ledgerImportData = [];
           return;
