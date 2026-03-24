@@ -957,9 +957,14 @@ entryMethod?.addEventListener('keydown', (e) => {
 });
 let ledgerEditingId = null;
 let ledgerEditingFile = '';
+let ledgerEditingDate = '';
+let ledgerEditingDateTime = '';
+
 function setLedgerEdit(rec) {
   ledgerEditingId = rec.id || null;
   ledgerEditingFile = rec.file || '';
+  ledgerEditingDate = rec.date || '';
+  ledgerEditingDateTime = rec.dateTime || '';
   if (entryType) entryType.value = rec.type || '';
   setCategories();
   if (entryCategory) entryCategory.value = rec.category || '';
@@ -975,6 +980,8 @@ function setLedgerEdit(rec) {
 function clearLedgerEdit() {
   ledgerEditingId = null;
   ledgerEditingFile = '';
+  ledgerEditingDate = '';
+  ledgerEditingDateTime = '';
   if (entrySubmitBtn) entrySubmitBtn.textContent = '提交';
 }
 function render(data) {
@@ -1264,10 +1271,12 @@ document.getElementById('entry-form').addEventListener('submit', async e => {
   try {
     if (ledgerEditingId) {
       const finalFile = fileUrl || ledgerEditingFile;
+      const finalDate = ledgerEditingDate || date;
+      const finalDateTime = ledgerEditingDateTime || dateTime;
       await apiFetchJSON('/api/ledger/' + String(ledgerEditingId), {
         method:'PUT',
         headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ type, category, doc, client: clientVal, amount, method, file: finalFile, notes: entryNotes.value.trim(), date, dateTime, createdBy: (getAuthUser()?.name || '') })
+        body: JSON.stringify({ type, category, doc, client: clientVal, amount, method, file: finalFile, notes: entryNotes.value.trim(), date: finalDate, dateTime: finalDateTime, createdBy: (getAuthUser()?.name || '') })
       });
       clearLedgerEdit();
     } else {
