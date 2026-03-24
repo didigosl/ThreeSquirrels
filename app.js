@@ -221,11 +221,54 @@ entryFile?.addEventListener('change', (e) => {
             validMethod = false;
           }
           
-          // Check if partner exists
-          let exists = allContacts().some(c => c.name === partner);
+          // Advanced Partner Matching
+          const normalizePartner = (str) => {
+            if (!str) return '';
+            // Remove accents and keep only alphanumeric chars, uppercase
+            return String(str).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          };
+          
+          const normPartner = normalizePartner(partner);
+          const allContactsList = allContacts();
+          
+          // 1. Exact match
+          let match = allContactsList.find(c => c.name === partner);
+          
+          // 2. Normalized exact match (ignores case, spaces, symbols)
+          if (!match && normPartner) {
+            match = allContactsList.find(c => {
+              const nName = normalizePartner(c.name);
+              const nComp = normalizePartner(c.company);
+              return (nName && nName === normPartner) || (nComp && nComp === normPartner);
+            });
+          }
+          
+          // 3. High-similarity substring match (>= 90% length ratio)
+          if (!match && normPartner && normPartner.length > 5) {
+            match = allContactsList.find(c => {
+              const nName = normalizePartner(c.name);
+              const nComp = normalizePartner(c.company);
+              
+              const checkSim = (n1, n2) => {
+                if (!n1 || !n2) return false;
+                if (n1.includes(n2) || n2.includes(n1)) {
+                  const lenRatio = Math.min(n1.length, n2.length) / Math.max(n1.length, n2.length);
+                  return lenRatio >= 0.90; // High similarity required to prevent false positives
+                }
+                return false;
+              };
+              
+              return checkSim(nName, normPartner) || checkSim(nComp, normPartner);
+            });
+          }
+          
+          let exists = !!match;
           let willCreate = false;
           let createType = '';
-          if (!exists) {
+          
+          if (exists) {
+            partner = match.name; // Auto-correct the partner name to exactly match the DB!
+          } else {
             willCreate = true;
             createType = amt >= 0 ? '客户' : '其它往来单位';
             newPartnersSet.add(`${partner} (${createType})`);
