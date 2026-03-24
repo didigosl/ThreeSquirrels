@@ -4273,18 +4273,20 @@ async function renderHomeChart(mode='month') {
     const col = document.createElement('div');
     col.style.display='flex'; col.style.flexDirection='column'; col.style.alignItems='center'; col.style.gap='8px';
     const bars = document.createElement('div');
-    bars.style.display='flex'; bars.style.gap='0px'; bars.style.alignItems='flex-end';
+    bars.style.display='flex'; bars.style.gap='4px'; bars.style.alignItems='flex-end';
     const mkBar = (val,color) => {
       const b = document.createElement('div');
-      b.style.width='12px'; b.style.height=Math.round(h*val/maxVal)+'px';
+      const pixelHeight = val > 0 ? Math.max(2, Math.round(h * val / maxVal)) : 0;
+      b.style.width='14px'; b.style.height=pixelHeight+'px';
       b.style.background=color; b.style.border='1px solid #334155'; b.style.borderRadius='4px';
       const tag = document.createElement('div');
       tag.textContent = (val||0).toFixed(2);
-      tag.style.color='#cbd5e1'; tag.style.fontSize='12px'; tag.style.textAlign='center';
+      tag.style.color='#cbd5e1'; tag.style.fontSize='10px'; tag.style.textAlign='center'; tag.style.whiteSpace='nowrap';
       tag.style.marginBottom='4px';
       const wrap = document.createElement('div');
-      wrap.style.display='flex'; wrap.style.flexDirection='column'; wrap.style.alignItems='center'; wrap.style.margin='0'; wrap.style.padding='0';
-      wrap.appendChild(tag); wrap.appendChild(b);
+      wrap.style.display='flex'; wrap.style.flexDirection='column'; wrap.style.alignItems='center'; wrap.style.margin='0'; wrap.style.padding='0'; wrap.style.minWidth='35px';
+      if (val > 0) wrap.appendChild(tag); 
+      wrap.appendChild(b);
       return wrap;
     };
     bars.appendChild(mkBar(x.income,'#16a34a'));

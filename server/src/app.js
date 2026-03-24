@@ -1264,8 +1264,8 @@ app.get('/api/analytics/ledger-summary', authRequired, ensureAllow('ledger','vie
       where date >= $1 and date <= $2
       group by type
     `, [start, end]);
-    const income = Number((r.rows.find(x => x.type === '收入')?.total) || 0);
-    const expense = Number((r.rows.find(x => x.type === '开支' || x.type === '支出')?.total) || 0);
+    const income = r.rows.filter(x => x.type === '收入').reduce((sum, x) => sum + Number(x.total), 0);
+    const expense = r.rows.filter(x => x.type === '开支' || x.type === '支出').reduce((sum, x) => sum + Number(x.total), 0);
     out.push({ label, income, expense });
   }
   res.json(out);
