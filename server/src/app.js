@@ -1462,6 +1462,7 @@ app.post('/api/invoices', authRequired, ensureAllow('sales_order','view'), async
     if (isNaN(taxRate) || item.tax_rate === undefined || item.tax_rate === null || item.tax_rate === '') {
       taxRate = 0.10;
     }
+    if (taxRate >= 1) taxRate = taxRate / 100;
     const rowVal = qty * price;
     const rowTax = rowVal * taxRate;
     return sum + rowVal + rowTax;
@@ -1618,6 +1619,7 @@ app.put('/api/invoices/:id', authRequired, ensureAllow('sales_order','view'), as
     if (isNaN(taxRate) || item.tax_rate === undefined || item.tax_rate === null || item.tax_rate === '') {
       taxRate = 0.10;
     }
+    if (taxRate >= 1) taxRate = taxRate / 100;
     const rowVal = qty * price;
     const rowTax = rowVal * taxRate;
     return sum + rowVal + rowTax;
@@ -1870,6 +1872,7 @@ app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
       const shipQty = Number(item.allocated_qty !== undefined ? item.allocated_qty : (item.qty || 0));
       let taxRate = Number(item.tax_rate);
       if (isNaN(taxRate)) taxRate = 0.10;
+      if (taxRate >= 1) taxRate = taxRate / 100;
       if (!isIva) taxRate = 0;
       return { ...item, qty: shipQty, original_qty: item.qty, tax_rate: taxRate };
     });
