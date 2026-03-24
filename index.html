@@ -244,7 +244,7 @@
       input[type=number] {
         text-align: center;
       }
-      @media (max-width: 768px) {
+      @media screen and (max-width: 768px) {
         .layout { flex-direction: column; }
         .sidebar { position:fixed; top:0; left:-280px; width:280px; height:100%; z-index:1000; transition:left 0.3s; border-right:1px solid var(--line); box-shadow:4px 0 20px rgba(0,0,0,0.5); }
         .sidebar.open { left:0; }
