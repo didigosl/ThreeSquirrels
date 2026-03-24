@@ -5008,10 +5008,24 @@ if (invPrevPrint) {
     const oldTitle = document.title;
     document.title = invNo;
     document.body.classList.add('printing-invoice');
-    setTimeout(() => {
-      window.print();
+    
+    // Use a one-time event listener to restore the title after printing dialog closes
+    const afterPrint = () => {
       document.body.classList.remove('printing-invoice');
       document.title = oldTitle;
+      window.removeEventListener('afterprint', afterPrint);
+    };
+    window.addEventListener('afterprint', afterPrint);
+    
+    setTimeout(() => {
+      window.print();
+      // Fallback in case afterprint doesn't fire (some browsers)
+      setTimeout(() => {
+        if (document.title === invNo) {
+          document.body.classList.remove('printing-invoice');
+          document.title = oldTitle;
+        }
+      }, 2000);
     }, 100);
   });
 }
@@ -6112,10 +6126,22 @@ if (shipPrevPrint) {
     const oldTitle = document.title;
     document.title = 'Etiqueta-' + invNo;
     document.body.classList.add('printing-shipping');
-    setTimeout(async () => {
-      window.print();
+    
+    const afterPrint = () => {
       document.body.classList.remove('printing-shipping');
       document.title = oldTitle;
+      window.removeEventListener('afterprint', afterPrint);
+    };
+    window.addEventListener('afterprint', afterPrint);
+    
+    setTimeout(async () => {
+      window.print();
+      setTimeout(() => {
+        if (document.title === 'Etiqueta-' + invNo) {
+          document.body.classList.remove('printing-shipping');
+          document.title = oldTitle;
+        }
+      }, 2000);
       
       if (currentShippingInvId) {
       const inv = currentInvoices.find(x => String(x.id) === String(currentShippingInvId));

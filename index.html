@@ -133,16 +133,29 @@
           border: none !important;
           box-shadow: none !important;
           margin: 0 !important;
+          padding: 0 !important;
           transform: none !important;
         }
         
         body.printing-invoice #invoice-preview-modal > div, 
-        body.printing-shipping #shipping-preview-modal > div { padding: 0 !important; }
+        body.printing-shipping #shipping-preview-modal > div { padding: 0 !important; background: transparent !important; }
         
-        .invoice-paper { box-shadow:none; margin:0; width:100%; max-width:none; padding:15mm; min-height:auto; page-break-after: avoid; background:#fff !important; }
-        .shipping-paper { box-shadow:none; margin:0; padding:15mm; width:297mm; height:210mm; max-width:100%; max-height:100%; border:none; outline:none; page-break-after: avoid; transform-origin: center center; background:#fff !important; }
+        body.printing-invoice #invoice-preview-modal .modal > div:not(.modal-header):not(.modal-actions),
+        body.printing-shipping #shipping-preview-modal .modal > div:not(.modal-header):not(.modal-actions) {
+          padding: 0 !important;
+          background: transparent !important;
+          display: block !important;
+        }
         
-        .modal-header, .modal-actions { display:none !important; }
+        /* Remove padding and max-width from the paper itself to fit A4 */
+        .invoice-paper { box-shadow:none; margin:0; width:100%; max-width:none; padding:15mm; min-height:100vh; page-break-after: avoid; background:#fff !important; box-sizing: border-box; }
+        .shipping-paper { box-shadow:none; margin:0; padding:15mm; width:297mm; height:210mm; max-width:100%; max-height:100%; border:none; outline:none; page-break-after: avoid; transform-origin: center center; background:#fff !important; box-sizing: border-box; }
+        
+        /* Hide scrollbars completely in print */
+        ::-webkit-scrollbar { display: none !important; }
+        * { scrollbar-width: none !important; -ms-overflow-style: none !important; }
+
+        .modal-header, .modal-actions, .app-version { display:none !important; }
       }
       .invalid { border-color: var(--red) !important; color: var(--red) !important; animation: shake 0.18s ease-in-out 0s 2; }
       .invalid-label { color: var(--red) !important; animation: shake 0.18s ease-in-out 0s 2; }
@@ -307,7 +320,7 @@
         <div class="brand" style="padding:0; display:flex !important"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <div class="mobile-menu-btn" onclick="toggleSidebar()">☰</div>
       </div>
-      <div style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260323-test1</div>
+      <div class="app-version" style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260323-test2</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -2478,6 +2491,6 @@
       </div>
     </div>
 
-    <script src="app.js?v=20260323-test1"></script>
+    <script src="app.js?v=20260323-test2"></script>
   </body>
 </html>
