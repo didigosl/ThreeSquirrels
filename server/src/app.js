@@ -922,6 +922,12 @@ app.put('/api/ledger/:id/confirm', authRequired, ensureAllow('ledger','create'),
   await query('update ledger set confirmed=true where id=$1', [id]);
   res.json({ ok: true });
 });
+app.delete('/api/ledger/:id', authRequired, ensureAllow('ledger','edit'), async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  const r = await query('delete from ledger where id=$1 and confirmed=false returning id', [id]);
+  if (!r.rows[0]) return res.status(400).json({ error: 'not_deletable_or_not_found' });
+  res.json({ ok: true });
+});
 app.delete('/api/ledger', authRequired, ensureAdmin, async (req, res) => {
   const nets = await query(`select method, sum(case when type='收入' then amount when type in ('支出','开支') then -amount else 0 end) as net from ledger group by method`);
   for (const row of nets.rows) {

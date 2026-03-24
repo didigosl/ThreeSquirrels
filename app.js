@@ -1047,7 +1047,11 @@ function render(data) {
     if (canEdit) {
       const editBtn = document.createElement('a'); editBtn.href = '#'; editBtn.textContent = '修改'; editBtn.className = 'link-blue';
       const okBtn = document.createElement('a'); okBtn.href = '#'; okBtn.textContent = '确认'; okBtn.className = 'link-green';
-      tdOps.append(editBtn, document.createTextNode(' '), okBtn);
+      const delBtn = document.createElement('a'); delBtn.href = '#'; delBtn.textContent = '删除'; delBtn.className = 'link-red';
+      
+      const space = () => document.createTextNode(' ');
+      tdOps.append(editBtn, space(), okBtn, space(), delBtn);
+      
       editBtn.addEventListener('click', e => {
         e.preventDefault();
         setLedgerEdit(r);
@@ -1061,6 +1065,21 @@ function render(data) {
           loadPayablesFromServer();
           apiAccountsList().then(() => { refreshAccountOptions(); renderAccounts(); });
         } catch {}
+      });
+      delBtn.addEventListener('click', async e => {
+        e.preventDefault();
+        if (!confirm('确定要彻底删除这条记录吗？删除后相关的统计将被抹除且不可恢复。')) return;
+        try {
+          await apiFetchJSON('/api/ledger/' + String(r.id), { method: 'DELETE' });
+          loadLedgerFromServer();
+          if (document.getElementById('page-home')?.style.display === 'block') {
+            renderHomeChart(homePeriodSel?.value || 'month');
+            renderSalesChart(salesPeriodSel?.value || 'month');
+          }
+        } catch (err) {
+          console.error(err);
+          alert('删除失败');
+        }
       });
     }
     tr.appendChild(tdOps);
