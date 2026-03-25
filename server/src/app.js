@@ -999,10 +999,10 @@ app.put('/api/contacts/:id', authRequired, ensureAllow('contacts','edit'), async
   try {
     const r = await query(`
       update contacts set name=$1, contact=$2, phone=$3, city=$4, remark=$5, company=$6, code=$7, country=$8, address=$9, zip=$10, sales=$11, use_price=$12, is_iva=$13,
-      email=$14, province=$15, ship_address=$16, ship_zip=$17, ship_city=$18, ship_province=$19, ship_country=$20, ship_phone=$21, ship_contact=$22
-      where id=$23
+      email=$14, province=$15, ship_address=$16, ship_zip=$17, ship_city=$18, ship_province=$19, ship_country=$20, ship_phone=$21, ship_contact=$22, owner=$23
+      where id=$24
     `, [x.name||'', x.contact||'', x.phone||'', x.city||'', x.remark||'', x.company||'', x.code||'', x.country||'', x.address||'', x.zip||'', x.sales||'', x.use_price||'price1', isIva,
-        x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'',
+        x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'', owner,
         id]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'not_found' });
     res.json({ ok: true });

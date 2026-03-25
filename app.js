@@ -2469,15 +2469,18 @@ window.handleContactDrop = async function(event, targetType) {
     const contact = contactsData[data.currentType].find(c => c.id === data.id);
     if (!contact) return;
     
-    // Update the contact's type in the backend
-    // Re-using the edit API endpoint: PUT /api/contacts/:type/:id
-    // But since the type changes, we need to send a request to update the type.
-    // The backend uses 'customers', 'merchants', 'others' for the type in the URL, but the actual table is 'contacts' and type column is 'type'.
+    // Map targetType to owner string
+    const ownerMap = {
+      'customers': '客户',
+      'merchants': '商家',
+      'others': '其它'
+    };
+    const newOwner = ownerMap[targetType] || '客户';
     
-    const res = await fetchWithAuth(`/api/contacts/${data.currentType}/${data.id}`, {
+    const res = await fetchWithAuth(`/api/contacts/${data.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...contact, type: targetType })
+      body: JSON.stringify({ ...contact, owner: newOwner })
     });
     
     if (res.ok) {
@@ -2684,10 +2687,29 @@ async function renderContacts() {
     ops.innerHTML = '<a href="#" class="link-blue">编辑</a><a href="#" class="link-red">删除</a><a href="#" class="link-green">订单记录</a><a href="#" class="link-orange">金额记录</a>';
     
     // Removed: r.code (税号), r.contact (联系人), r.phone (电话)
-    const cells = [r.name, r.company || '', r.city, r.remark || '', r.sales || '-', partnerTotal(r.name), partnerArrears(r.name, r.owner || ''), r.created];
+    
+    // Format created date to YYYY-MM-DD
+    let createdDate = r.created || '';
+    if (createdDate.length > 10) {
+      createdDate = createdDate.substring(0, 10);
+    }
+    
+    const cells = [r.name, r.company || '', r.city, r.remark || '', r.sales || '-', partnerTotal(r.name), partnerArrears(r.name, r.owner || ''), createdDate];
     cells.forEach((v, idx) => {
       const td = document.createElement('td');
-      if (idx === 6) { // 欠款金额
+      if (idx === 0 || idx === 1) { // 店名 and 公司名称
+        const text = String(v || '');
+        if (text.length > 30) {
+          td.textContent = text.substring(0, 30) + '...';
+          td.title = text; // Show full text on hover
+        } else {
+          td.textContent = text;
+        }
+        td.style.maxWidth = '250px';
+        td.style.whiteSpace = 'nowrap';
+        td.style.overflow = 'hidden';
+        td.style.textOverflow = 'ellipsis';
+      } else if (idx === 6) { // 欠款金额
         const num = parseFloat(String(v));
         if (isFinite(num) && num <= 0) {
           td.textContent = '-';
@@ -2696,7 +2718,7 @@ async function renderContacts() {
           td.style.color = '#ef4444';
         }
       } else {
-        td.textContent = v;
+        td.textContent = String(v || '');
       }
       tr.appendChild(td);
     });
