@@ -320,7 +320,7 @@
         <div class="brand" style="padding:0; display:flex !important"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <div class="mobile-menu-btn" onclick="toggleSidebar()">☰</div>
       </div>
-      <div class="app-version" style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260323-test14</div>
+      <div class="app-version" style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260323-test15</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -520,6 +520,7 @@
           <div class="card search">
             <h3 style="margin:0">商品库存</h3>
             <div style="flex:1"></div>
+            <input type="text" id="fs-search" placeholder="搜索商品/货号..." oninput="loadFinishedStock(1)" style="width:200px">
             <button class="btn" onclick="openFinishedStockModal()">+ 添加商品库存</button>
           </div>
           <div class="card" style="margin-top:16px">
@@ -539,6 +540,7 @@
               </thead>
               <tbody id="finished-stock-rows"></tbody>
             </table>
+            <div id="fs-pager" style="display:none; justify-content:center; gap:12px; align-items:center; padding:16px 0 0 0; border-top:1px solid #334155; margin-top:16px"></div>
           </div>
         </div>
 
@@ -2494,6 +2496,6 @@
       </div>
     </div>
 
-    <script src="app.js?v=20260323-test14"></script>
+    <script src="app.js?v=20260323-test15"></script>
   </body>
 </html>

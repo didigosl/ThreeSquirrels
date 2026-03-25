@@ -4626,12 +4626,18 @@ const prodSelSearch = document.getElementById('prod-sel-search');
 const prodSelList = document.getElementById('prod-sel-list');
 const prodSelClose = document.getElementById('prod-sel-close');
 
-async function loadProductSelector() {
+let prodSelPage = 1;
+const prodSelPageSize = 50;
+let prodSelTotal = 0;
+
+async function loadProductSelector(page = 1) {
   if (!prodSelList) return;
+  prodSelPage = page;
   const q = (prodSelSearch?.value || '').trim();
-  const res = await fetchWithAuth(`/api/products?page=1&size=100&q=${encodeURIComponent(q)}`);
+  const res = await fetchWithAuth(`/api/products?page=${prodSelPage}&size=${prodSelPageSize}&q=${encodeURIComponent(q)}`);
   if (res.ok) {
     const data = await res.json();
+    prodSelTotal = data.total || 0;
     renderProductSelector(data.list || []);
   }
 }
@@ -4734,6 +4740,26 @@ function renderProductSelector(list) {
   prodSelList.style.display = 'block'; // Ensure it's not grid
   prodSelList.appendChild(table);
   
+  // Render Pager
+  const totalPages = Math.ceil(prodSelTotal / prodSelPageSize);
+  if (totalPages > 1) {
+    const pager = document.createElement('div');
+    pager.style.display = 'flex';
+    pager.style.justifyContent = 'center';
+    pager.style.gap = '12px';
+    pager.style.alignItems = 'center';
+    pager.style.padding = '12px 0';
+    pager.style.marginTop = '12px';
+    pager.style.borderTop = '1px solid #334155';
+    
+    pager.innerHTML = `
+      <button class="btn-secondary" style="padding:4px 12px" ${prodSelPage <= 1 ? 'disabled' : ''} onclick="loadProductSelector(${prodSelPage - 1})">上一页</button>
+      <span style="color:#cbd5e1; font-size:13px">第 ${prodSelPage} / ${totalPages} 页</span>
+      <button class="btn-secondary" style="padding:4px 12px" ${prodSelPage >= totalPages ? 'disabled' : ''} onclick="loadProductSelector(${prodSelPage + 1})">下一页</button>
+    `;
+    prodSelList.appendChild(pager);
+  }
+
   // Update select all checkbox state
   updateSelectAllCheckbox();
 }
@@ -6018,9 +6044,16 @@ if (prodForm) {
           if (r.ok) {
             const d = await r.json();
             imageUrl = d.url;
+          } else {
+            alert('图片上传失败，请重试');
+            if (btn) { btn.disabled = false; btn.textContent = '保存'; }
+            return;
           }
         } catch(e) {
           console.warn('product image upload failed', e);
+          alert('图片上传失败，请检查网络');
+          if (btn) { btn.disabled = false; btn.textContent = '保存'; }
+          return;
         }
       }
 
@@ -7622,12 +7655,28 @@ async function confirmShip(id) {
 }
 
 // Finished Stock
-async function loadFinishedStock() {
-  const res = await fetchWithAuth('/api/inventory/finished');
+let fsPage = 1;
+const fsPageSize = 50;
+let fsTotal = 0;
+
+async function loadFinishedStock(page = 1) {
+  fsPage = page;
+  const q = document.getElementById('fs-search')?.value?.trim() || '';
+  const res = await fetchWithAuth(`/api/inventory/finished?page=${fsPage}&size=${fsPageSize}&q=${encodeURIComponent(q)}`);
   if (!res.ok) return;
-  const list = await res.json();
+  const data = await res.json();
+  const list = data.list || [];
+  fsTotal = data.total || 0;
+  
   const tbody = document.getElementById('finished-stock-rows');
   if (!tbody) return;
+  
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#94a3b8">暂无数据</td></tr>';
+    renderFsPager();
+    return;
+  }
+  
   tbody.innerHTML = list.map((p, idx) => {
     let stockHtml = p.total_stock;
     let expiryHtml = '-';
@@ -7646,8 +7695,8 @@ async function loadFinishedStock() {
     }
     return `
     <tr>
-      <td>${idx + 1}</td>
-      <td style="padding:0; width:50px; height:50px">${p.image ? `<img src="${p.image}" class="thumb-img" style="width:100%; height:100%; object-fit:contain; display:block">` : ''}</td>
+      <td>${fsTotal - (fsPage - 1) * fsPageSize - idx}</td>
+      <td style="padding:0; width:50px; height:50px">${p.image ? `<img src="${p.image}" class="thumb-img" onclick="showFileViewer('${p.image}')" style="width:100%; height:100%; object-fit:contain; display:block">` : ''}</td>
       <td>${p.sku || ''}</td>
       <td>${p.name}</td>
       <td>${p.name_cn || ''}</td>
@@ -7660,6 +7709,24 @@ async function loadFinishedStock() {
     </tr>
     `;
   }).join('');
+  
+  renderFsPager();
+}
+
+function renderFsPager() {
+  const pager = document.getElementById('fs-pager');
+  if (!pager) return;
+  const totalPages = Math.ceil(fsTotal / fsPageSize);
+  if (totalPages <= 1) {
+    pager.style.display = 'none';
+    return;
+  }
+  pager.style.display = 'flex';
+  pager.innerHTML = `
+    <button class="btn-secondary" ${fsPage <= 1 ? 'disabled' : ''} onclick="loadFinishedStock(${fsPage - 1})">上一页</button>
+    <span style="font-size:14px; color:#cbd5e1">第 ${fsPage} / ${totalPages} 页</span>
+    <button class="btn-secondary" ${fsPage >= totalPages ? 'disabled' : ''} onclick="loadFinishedStock(${fsPage + 1})">下一页</button>
+  `;
 }
 async function loadStockHistory(id) {
   const tbody = document.getElementById('stock-history-rows');

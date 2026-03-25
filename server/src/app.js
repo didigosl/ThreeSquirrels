@@ -1936,13 +1936,12 @@ app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
 
 // Inventory (Finished)
 app.get('/api/inventory/finished', authRequired, async (req, res) => {
-  // Aggregate by product
-  // Show image, name, expiry (nearest?), total qty
-  // User asked for "List products sorted by qty desc... show expiry". If multiple batches, maybe show nearest expiry?
-  // Let's return list of products with their batches or flattened?
-  // User: "List shows product image, name, expiry time, stock qty".
-  // Let's join products and batches.
-  const r = await query(`
+  const { page='1', size='50', q='' } = req.query;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const pageSize = Math.max(1, Math.min(500, parseInt(size, 10) || 50));
+  
+  let countSql = 'select count(*)::int as c from products p';
+  let dataSql = `
     select p.id, p.sku, p.name, p.name_cn, p.image, p.stock as total_stock,
     (
       select json_agg(json_build_object('qty', quantity, 'expiry', expiration_date, 'lote', lote) order by expiration_date asc)
@@ -1950,9 +1949,24 @@ app.get('/api/inventory/finished', authRequired, async (req, res) => {
       where product_id=p.id and quantity>0
     ) as batches
     from products p
-    order by length(p.sku) asc, p.sku asc
-  `);
-  res.json(r.rows);
+  `;
+  
+  const pVals = [];
+  if (q && q.trim()) {
+    const cond = ' where (p.name ilike $1 or p.name_cn ilike $1 or p.sku ilike $1 or p.barcode ilike $1)';
+    countSql += cond;
+    dataSql += cond;
+    pVals.push('%' + q.trim() + '%');
+  }
+  
+  const countR = await query(countSql, pVals);
+  const total = countR.rows[0].c;
+
+  dataSql += ` order by length(p.sku) asc, p.sku asc limit $${pVals.length + 1} offset $${pVals.length + 2}`;
+  pVals.push(pageSize, (pageNum - 1) * pageSize);
+  
+  const r = await query(dataSql, pVals);
+  res.json({ list: r.rows, total });
 });
 app.post('/api/inventory/finished', authRequired, async (req, res) => {
   const items = req.body.items || [req.body]; // Support single or multiple
