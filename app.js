@@ -2564,7 +2564,7 @@ async function renderContacts() {
     }
   } else {
     // Just load current tab if no search key
-    await apiContactsList(contactsTab, '', contactsPage, contactsPageSize);
+    await apiContactsList(contactsTab, '', 1, 5000);
   }
 
   const fresh = contactsData[contactsTab] || [];
@@ -2735,7 +2735,7 @@ confirmOk?.addEventListener('click', async () => {
     } else {
       const ok = await apiContactsDeleteByName(ownerLabel || (pendingDeleteTab==='customers'?'客户':pendingDeleteTab==='merchants'?'商家':'其它'), name);
       if (ok) contactsData[pendingDeleteTab].splice(pendingDeleteIndex,1);
-      await apiContactsList(pendingDeleteTab, contactsSearch?.value || '', contactsPage, contactsPageSize);
+      await apiContactsList(pendingDeleteTab, contactsSearch?.value || '', 1, 5000);
       renderContacts();
       saveJSON('contactsData', contactsData);
     }
@@ -2957,7 +2957,7 @@ ctUploadConfirm?.addEventListener('click', async () => {
         
         alert(`上传完成！\n新增: ${successCount} 条\n更新: ${updateCount} 条`);
         ctUploadModal.style.display = 'none';
-        await apiContactsList(contactsTab, contactsSearch?.value || '', contactsPage, contactsPageSize);
+        await apiContactsList(contactsTab, contactsSearch?.value || '', 1, 5000);
         renderContacts();
         
       } catch (err) {
@@ -3087,7 +3087,7 @@ ctForm?.addEventListener('submit', async e => {
   }
   clearContactsForm();
   if (ctModal) ctModal.style.display = 'none';
-  await apiContactsList(contactsTab, contactsSearch?.value || '', contactsPage, contactsPageSize);
+  await apiContactsList(contactsTab, contactsSearch?.value || '', 1, 5000);
   renderContacts();
   saveJSON('contactsData', contactsData);
 });
@@ -3998,9 +3998,9 @@ async function loadPayablesFromServer() {
 }
 async function loadAllContacts() {
   await Promise.all([
-    apiContactsList('customers'),
-    apiContactsList('merchants'),
-    apiContactsList('others')
+    apiContactsList('customers', '', 1, 5000),
+    apiContactsList('merchants', '', 1, 5000),
+    apiContactsList('others', '', 1, 5000)
   ]);
 }
 async function apiContactsList(tab, q, page, size) {
@@ -5200,8 +5200,12 @@ window.previewInvoice = async function(id) {
   // Load Customer Info
   let customerInfoHtml = '';
   try {
-    const contacts = await apiFetchJSON('/api/contacts?type=customers');
-    const cust = contacts.find(c => c.name === inv.customer);
+    const allContacts = [
+      ...(contactsData.customers || []),
+      ...(contactsData.merchants || []),
+      ...(contactsData.others || [])
+    ];
+    const cust = allContacts.find(c => c.name === inv.customer);
     if (cust) {
       customerInfoHtml = `
         <div class="customer-label">Facturado a</div>
@@ -6371,6 +6375,11 @@ async function handleRoute() {
     try { await apiRolesList(); } catch(e) {}
   }
   
+  // Ensure contacts are loaded globally once
+  if (u && !contactsData.customers) {
+    try { await loadAllContacts(); } catch(e) {}
+  }
+  
   // Hide all pages first
   document.querySelectorAll('[id^="page-"]').forEach(el => el.style.display = 'none');
   const gp = document.getElementById('global-pager'); if (gp) gp.style.display = 'none';
@@ -6524,7 +6533,9 @@ async function handleRoute() {
     if (!ensureView('sales_invoice')) return;
     document.getElementById('page-sales-invoice').style.display = 'block';
     if (typeof invPage !== 'undefined') invPage = 1;
-    loadInvoices();
+    loadAllContacts().then(() => {
+      loadInvoices();
+    });
   }
   else if (hash === 'sales-products') {
     if (!ensureView('sales_products')) return;

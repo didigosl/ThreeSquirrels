@@ -965,7 +965,7 @@ app.get('/api/contacts', authRequired, ensureAllow('contacts','view'), async (re
     sql += ` and (name ilike $${p.length} or company ilike $${p.length} or code ilike $${p.length} or contact ilike $${p.length} or phone ilike $${p.length} or sales ilike $${p.length})`;
   }
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
-  const pageSize = Math.max(1, Math.min(500, parseInt(size, 10) || 100));
+  const pageSize = Math.max(1, Math.min(5000, parseInt(size, 10) || 100));
   sql += ' order by id desc';
   sql += ` limit ${pageSize} offset ${(pageNum-1)*pageSize}`;
   const r = await query(sql, p);
