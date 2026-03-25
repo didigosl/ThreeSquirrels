@@ -3530,16 +3530,40 @@ rolePermsFormPage?.addEventListener('submit', async e => {
   e.preventDefault();
   if (!editingPermRole) return;
   const newPerms = {};
-  Object.keys(permSchema).forEach(m => { newPerms[m] = {}; });
+  
+  permStructure.forEach(item => {
+    if (item.group && item.children) {
+      item.children.forEach(c => newPerms[c.mod] = {});
+    } else if (item.mod) {
+      newPerms[item.mod] = {};
+    }
+  });
+
   permsPageWrap.querySelectorAll('input[type=checkbox]').forEach(cb => {
     const mod = cb.dataset.mod; const act = cb.dataset.act;
     if (cb.checked) newPerms[mod][act] = true;
   });
   editingPermRole.perms = newPerms;
   await apiRoleUpdatePerms(editingPermRole.id, newPerms);
-  editingPermRole = null;
-  location.hash = '#role-accounts';
-  renderRoles();
+  
+  // Show success feedback
+  const saveBtn = document.getElementById('role-perms-save');
+  if (saveBtn) {
+    const origText = saveBtn.textContent;
+    saveBtn.textContent = '保存成功！';
+    saveBtn.style.background = '#16a34a';
+    setTimeout(() => {
+      saveBtn.textContent = origText;
+      saveBtn.style.background = '';
+      editingPermRole = null;
+      location.hash = '#role-accounts';
+      renderRoles();
+    }, 800);
+  } else {
+    editingPermRole = null;
+    location.hash = '#role-accounts';
+    renderRoles();
+  }
 });
 let rolePage = 1;
 async function apiRolesList() {
