@@ -7791,7 +7791,15 @@ function renderFsItems() {
     <tr>
       <td>${item.name}</td>
       <td><input type="number" class="fs-item-qty" data-idx="${idx}" value="${item.qty||''}" style="width:100%" placeholder="数量"></td>
-      <td><input type="date" class="fs-item-lote" data-idx="${idx}" value="${item.lote||''}" style="width:100%" onchange="updateFsExpiry(${idx}, this.value)"></td>
+      <td>
+        <div style="display:flex; align-items:center; gap:4px">
+          <input type="text" class="fs-item-lote" data-idx="${idx}" value="${item.lote||''}" style="width:100%; flex:1" placeholder="输入批次或选择日期" onchange="updateFsExpiry(${idx}, this.value)">
+          <div style="position:relative; width:24px; height:24px; display:flex; align-items:center; justify-content:center; cursor:pointer">
+            <span style="font-size:14px">📅</span>
+            <input type="date" style="position:absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer" onchange="const el=document.querySelector('.fs-item-lote[data-idx=\\'${idx}\\']'); el.value=this.value; updateFsExpiry(${idx}, this.value)">
+          </div>
+        </div>
+      </td>
       <td><input type="date" class="fs-item-expiry" data-idx="${idx}" value="${item.expiry||''}" style="width:100%"></td>
       <td style="text-align:center"><button class="btn-sm btn-red" onclick="removeFsItem(${idx})">删除</button></td>
     </tr>
@@ -7804,23 +7812,28 @@ function updateFsExpiry(idx, loteDateStr) {
     if (fsItems[el.dataset.idx]) fsItems[el.dataset.idx].qty = el.value;
   });
 
-  if (!loteDateStr) return;
-  const parts = loteDateStr.split('-');
-  if (parts.length !== 3) return;
-  
-  const d = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
-  if (isNaN(d.getTime())) return;
-  
-  // Add 6 months
-  d.setMonth(d.getMonth() + 6);
-  
-  const expYear = d.getFullYear();
-  const expMonth = String(d.getMonth() + 1).padStart(2, '0');
-  const expDay = String(d.getDate()).padStart(2, '0');
-  
   fsItems[idx].lote = loteDateStr;
-  fsItems[idx].expiry = `${expYear}-${expMonth}-${expDay}`;
-  renderFsItems();
+  if (!loteDateStr) return;
+  
+  const parts = loteDateStr.split('-');
+  if (parts.length === 3) {
+    const d = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+    if (!isNaN(d.getTime())) {
+      // Add 6 months
+      d.setMonth(d.getMonth() + 6);
+      
+      const expYear = d.getFullYear();
+      const expMonth = String(d.getMonth() + 1).padStart(2, '0');
+      const expDay = String(d.getDate()).padStart(2, '0');
+      
+      fsItems[idx].expiry = `${expYear}-${expMonth}-${expDay}`;
+      renderFsItems();
+      return;
+    }
+  }
+  
+  // If not a valid date, just save the lote string without updating expiry
+  // Don't call renderFsItems() here to avoid losing focus while typing free text
 }
 
 function removeFsItem(idx) {
