@@ -693,10 +693,10 @@ function allContacts() {
   return [...contactsData.customers, ...contactsData.merchants, ...contactsData.others];
 }
 function renderClientDropdown() {
-  const q = (clientSearch.value || '').trim();
+  const q = (clientSearch.value || '').trim().toLowerCase();
   const data = allContacts().filter(x => {
     if (!q) return true;
-    return [x.name,x.contact,x.phone,x.city,(x.remark||'')].some(v => (v||'').includes(q));
+    return [x.name, x.company, x.contact, x.phone, x.city, (x.remark||'')].some(v => String(v||'').toLowerCase().includes(q));
   });
   clientList.innerHTML = '';
   data.forEach(item => {
@@ -1469,10 +1469,10 @@ partnerAdd?.addEventListener('click', () => {
   if (!partners.includes(name)) partners.push(name);
 });
 function renderPayDropdown() {
-  const q = (paySearch?.value || payPartner.value || '').trim();
+  const q = (paySearch?.value || payPartner.value || '').trim().toLowerCase();
   const data = allContacts().filter(x => {
     if (!q) return true;
-    return [x.name,x.contact,x.phone,x.city,(x.remark||'')].some(v => (v||'').includes(q));
+    return [x.name, x.company, x.contact, x.phone, x.city, (x.remark||'')].some(v => String(v||'').toLowerCase().includes(q));
   });
   payList.innerHTML = '';
   data.forEach(item => {
@@ -4463,7 +4463,7 @@ function renderSoCustomerDropdown() {
     ...(contactsData.others||[])
   ].filter(x => {
     if (!q) return true;
-    return [x.name, x.contact, x.phone, x.city].some(v => (v||'').toLowerCase().includes(q));
+    return [x.name, x.company, x.contact, x.phone, x.city, (x.remark||'')].some(v => String(v||'').toLowerCase().includes(q));
   });
   
   soCustomerList.innerHTML = '';
@@ -7364,7 +7364,10 @@ function openDailyOrderModal() {
             return;
         }
 
-        const filtered = all.filter(c => c.name.toLowerCase().includes(filter.toLowerCase()));
+        const filtered = all.filter(c => {
+            const q = filter.toLowerCase();
+            return [c.name, c.company, c.contact, c.phone, c.city, (c.remark||'')].some(v => String(v||'').toLowerCase().includes(q));
+        });
         
         if (filtered.length === 0) {
             doCustomerList.innerHTML = '<div class="dd-item" style="justify-content:center; color:#64748b">无匹配结果</div>';
