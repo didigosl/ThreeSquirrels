@@ -320,7 +320,7 @@
         <div class="brand" style="padding:0; display:flex !important"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <div class="mobile-menu-btn" onclick="toggleSidebar()">☰</div>
       </div>
-      <div class="app-version" style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260323-test12</div>
+      <div class="app-version" style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260323-test13</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -625,10 +625,13 @@
             <div class="modal-body">
               <input type="hidden" id="complete-task-id">
               <div class="group">
-                <span class="label">图片 (可选)</span>
-                <input id="complete-task-image" type="file" accept="image/*" onchange="previewCompleteTaskImage(this)">
+                <span class="label">完成附件 (图片或文档)</span>
+                <input id="complete-task-image" type="file" accept="image/*,.pdf,.xls,.xlsx,.doc,.docx" onchange="previewCompleteTaskImage(this)">
                 <div id="complete-task-image-preview" style="margin-top:8px; display:none">
                   <img src="" style="max-width:100%; max-height:200px; border-radius:4px">
+                </div>
+                <div id="complete-task-file-preview" style="margin-top:8px; display:none; padding:8px; background:#334155; border-radius:4px; color:#cbd5e1; font-size:13px">
+                  📄 已选择文件
                 </div>
                 <input type="hidden" id="complete-task-image-base64">
               </div>
@@ -2491,6 +2494,6 @@
       </div>
     </div>
 
-    <script src="app.js?v=20260323-test12"></script>
+    <script src="app.js?v=20260323-test13"></script>
   </body>
 </html>

@@ -6755,9 +6755,15 @@ async function loadTasks(tab = 'new', btn = null, page = 1) {
       </div>`;
     }
     if (t.completion_image) {
-      descInfo += `<div style="margin-top:4px">
-        <img src="${t.completion_image}" style="width:48px; height:48px; object-fit:cover; border-radius:4px; cursor:zoom-in; border:1px solid #334155" onclick="showTaskImage(this.src)" title="点击放大">
-      </div>`;
+      if (t.completion_image.startsWith('data:image/')) {
+        descInfo += `<div style="margin-top:4px">
+          <img src="${t.completion_image}" style="width:48px; height:48px; object-fit:cover; border-radius:4px; cursor:zoom-in; border:1px solid #334155" onclick="showTaskImage(this.src)" title="点击放大">
+        </div>`;
+      } else {
+        descInfo += `<div style="margin-top:4px">
+          <a href="${t.completion_image}" download="任务附件" style="display:inline-block; padding:4px 8px; background:#334155; color:#cbd5e1; border-radius:4px; font-size:12px; text-decoration:none">📥 下载附件</a>
+        </div>`;
+      }
     }
 
     let assignInfo = t.assigned_to || '';
@@ -6917,7 +6923,11 @@ window.openTaskDetailsModal = function(id) {
             html += `<div style="margin-bottom:12px; margin-top:16px; border-top:1px dashed #334155; padding-top:12px"><strong>完成备注：</strong><br><div style="white-space:pre-wrap; margin-top:8px; color:#22c55e">${t.completion_desc}</div></div>`;
         }
         if (t.completion_image) {
-            html += `<div style="margin-bottom:8px"><strong>完成图片：</strong><br><img src="${t.completion_image}" style="max-width:100%; max-height:200px; border-radius:4px; margin-top:8px; cursor:zoom-in; border:1px solid #334155" onclick="showTaskImage(this.src)" title="点击放大"></div>`;
+            if (t.completion_image.startsWith('data:image/')) {
+                html += `<div style="margin-bottom:8px"><strong>完成附件：</strong><br><img src="${t.completion_image}" style="max-width:100%; max-height:200px; border-radius:4px; margin-top:8px; cursor:zoom-in; border:1px solid #334155" onclick="showTaskImage(this.src)" title="点击放大"></div>`;
+            } else {
+                html += `<div style="margin-bottom:8px"><strong>完成附件：</strong><br><a href="${t.completion_image}" download="任务附件" style="display:inline-block; margin-top:8px; padding:6px 12px; background:#334155; color:#cbd5e1; border-radius:4px; font-size:13px; text-decoration:none">📥 下载附件</a></div>`;
+            }
         }
         if (t.completed_at) {
             html += `<div style="margin-bottom:8px; color:#94a3b8"><strong>完成时间：</strong> ${new Date(Number(t.completed_at)).toLocaleString()}</div>`;
@@ -6980,6 +6990,8 @@ function openCompleteTaskModal(id) {
     document.getElementById('complete-task-id').value = id;
     document.getElementById('complete-task-image').value = '';
     document.getElementById('complete-task-image-preview').style.display = 'none';
+    const filePrev = document.getElementById('complete-task-file-preview');
+    if (filePrev) filePrev.style.display = 'none';
     document.getElementById('complete-task-image-base64').value = '';
     document.getElementById('complete-task-desc').value = '';
   }
@@ -6992,14 +7004,26 @@ function closeCompleteTaskModal() {
 
 window.previewCompleteTaskImage = function(input) {
   if (input.files && input.files[0]) {
+    const file = input.files[0];
     const reader = new FileReader();
     reader.onload = function(e) {
-      const prev = document.getElementById('complete-task-image-preview');
-      prev.querySelector('img').src = e.target.result;
-      prev.style.display = 'block';
+      const prevImg = document.getElementById('complete-task-image-preview');
+      const prevFile = document.getElementById('complete-task-file-preview');
+      
+      if (file.type.startsWith('image/')) {
+        prevImg.querySelector('img').src = e.target.result;
+        prevImg.style.display = 'block';
+        if (prevFile) prevFile.style.display = 'none';
+      } else {
+        prevImg.style.display = 'none';
+        if (prevFile) {
+          prevFile.innerHTML = `📄 已选择文件: ${file.name}`;
+          prevFile.style.display = 'block';
+        }
+      }
       document.getElementById('complete-task-image-base64').value = e.target.result;
     }
-    reader.readAsDataURL(input.files[0]);
+    reader.readAsDataURL(file);
   }
 }
 
