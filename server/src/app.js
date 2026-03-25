@@ -1243,9 +1243,17 @@ app.delete('/api/users/:id', authRequired, ensureAllow('user_accounts','edit'), 
 });
 
 app.get('/api/analytics/ledger-summary', authRequired, ensureAllow('ledger','view'), async (req, res) => {
-  const { period='month', range='12' } = req.query;
+  const { period='month', range='12', baseDate } = req.query;
   const n = Math.max(1, Math.min(365, parseInt(range, 10) || 12));
-  const now = new Date();
+  let now = new Date();
+  if (baseDate) {
+    if (period === 'year' && /^\d{4}$/.test(baseDate)) {
+      now = new Date(parseInt(baseDate), 11, 31);
+    } else if (period === 'month' && /^\d{4}-\d{2}$/.test(baseDate)) {
+      const parts = baseDate.split('-');
+      now = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, 15);
+    }
+  }
   const out = [];
   function fmtYMD(d) {
     const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${dd}`;
@@ -1283,9 +1291,17 @@ app.get('/api/analytics/ledger-summary', authRequired, ensureAllow('ledger','vie
 });
 
 app.get('/api/analytics/sales-summary', authRequired, async (req, res) => {
-  const { period='month', range='12' } = req.query;
+  const { period='month', range='12', baseDate } = req.query;
   const n = Math.max(1, Math.min(365, parseInt(range, 10) || 12));
-  const now = new Date();
+  let now = new Date();
+  if (baseDate) {
+    if (period === 'year' && /^\d{4}$/.test(baseDate)) {
+      now = new Date(parseInt(baseDate), 11, 31);
+    } else if (period === 'month' && /^\d{4}-\d{2}$/.test(baseDate)) {
+      const parts = baseDate.split('-');
+      now = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, 15);
+    }
+  }
   const out = [];
   function fmtYMD(d) {
     const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${dd}`;

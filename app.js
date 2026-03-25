@@ -4297,20 +4297,13 @@ async function renderHomeChart(mode='month') {
   let data = [];
   try {
     const range = mode==='day' ? 30 : 12;
-    data = await apiFetchJSON(`/api/analytics/ledger-summary?period=${mode}&range=${range}`);
+    let baseDate = '';
+    if (mode === 'month') baseDate = homeMonthPicker?.value || '';
+    if (mode === 'year') baseDate = homeYearPicker?.value || '';
+    
+    data = await apiFetchJSON(`/api/analytics/ledger-summary?period=${mode}&range=${range}&baseDate=${encodeURIComponent(baseDate)}`);
   } catch {
-    const bs = buckets(mode);
-    data = bs.map(b => {
-      let income = 0, expense = 0;
-      records.forEach(r => {
-        const t = tsOf(r);
-        if (t >= b.start && t <= b.end) {
-          if (r.type === '收入') income += Number(r.amount||0);
-          if (r.type === '开支' || r.type === '支出') expense += Number(r.amount||0);
-        }
-      });
-      return { label: b.key, income, expense };
-    });
+    return;
   }
   const maxVal = Math.max(1, ...data.map(x => Math.max(x.income, x.expense)));
   const h = 220;
@@ -4337,19 +4330,101 @@ async function renderHomeChart(mode='month') {
     };
     bars.appendChild(mkBar(x.income,'#16a34a'));
     bars.appendChild(mkBar(x.expense,'#f59e0b'));
+    const labelWrap = document.createElement('div');
+    labelWrap.style.display = 'flex'; labelWrap.style.flexDirection = 'column'; labelWrap.style.alignItems = 'center'; labelWrap.style.gap = '2px';
     const label = document.createElement('div'); label.textContent = x.label; label.style.color='#94a3b8'; label.style.fontSize='12px';
-    col.appendChild(bars); col.appendChild(label);
+    
+    const profitVal = (x.income || 0) - (x.expense || 0);
+    const profit = document.createElement('div');
+    profit.textContent = profitVal.toFixed(2);
+    profit.style.fontSize = '11px';
+    profit.style.fontWeight = 'bold';
+    profit.style.color = profitVal >= 0 ? '#16a34a' : '#ef4444'; // green if >= 0, red if negative
+    
+    labelWrap.appendChild(label);
+    labelWrap.appendChild(profit);
+    col.appendChild(bars); col.appendChild(labelWrap);
     homeChartRows.appendChild(col);
   });
 }
-homePeriodSel?.addEventListener('change', () => { const v=homePeriodSel.value||'month'; renderHomeChart(v); });
+const homeMonthPicker = document.getElementById('home-month-picker');
+const homeYearPicker = document.getElementById('home-year-picker');
+
+function updateHomePeriodUI() {
+  const v = homePeriodSel?.value || 'month';
+  if (v === 'month') {
+    if(homeMonthPicker) homeMonthPicker.style.display = 'block';
+    if(homeYearPicker) homeYearPicker.style.display = 'none';
+  } else if (v === 'year') {
+    if(homeMonthPicker) homeMonthPicker.style.display = 'none';
+    if(homeYearPicker) homeYearPicker.style.display = 'block';
+  } else {
+    if(homeMonthPicker) homeMonthPicker.style.display = 'none';
+    if(homeYearPicker) homeYearPicker.style.display = 'none';
+  }
+}
+
+// Initial setup
+setTimeout(() => updateHomePeriodUI(), 100);
+
+homePeriodSel?.addEventListener('change', () => { 
+  updateHomePeriodUI();
+  const v=homePeriodSel.value||'month'; 
+  renderHomeChart(v); 
+});
+
+homeMonthPicker?.addEventListener('change', () => {
+  if (homePeriodSel.value === 'month') renderHomeChart('month');
+});
+
+homeYearPicker?.addEventListener('change', () => {
+  if (homePeriodSel.value === 'year') renderHomeChart('year');
+});
+
+const salesMonthPicker = document.getElementById('sales-month-picker');
+const salesYearPicker = document.getElementById('sales-year-picker');
+
+function updateSalesPeriodUI() {
+  const v = salesPeriodSel?.value || 'month';
+  if (v === 'month') {
+    if(salesMonthPicker) salesMonthPicker.style.display = 'block';
+    if(salesYearPicker) salesYearPicker.style.display = 'none';
+  } else if (v === 'year') {
+    if(salesMonthPicker) salesMonthPicker.style.display = 'none';
+    if(salesYearPicker) salesYearPicker.style.display = 'block';
+  } else {
+    if(salesMonthPicker) salesMonthPicker.style.display = 'none';
+    if(salesYearPicker) salesYearPicker.style.display = 'none';
+  }
+}
+
+// Initial setup
+setTimeout(() => updateSalesPeriodUI(), 100);
+
+salesPeriodSel?.addEventListener('change', () => { 
+  updateSalesPeriodUI();
+  const v=salesPeriodSel.value||'month'; 
+  renderSalesChart(v); 
+});
+
+salesMonthPicker?.addEventListener('change', () => {
+  if (salesPeriodSel.value === 'month') renderSalesChart('month');
+});
+
+salesYearPicker?.addEventListener('change', () => {
+  if (salesPeriodSel.value === 'year') renderSalesChart('year');
+});
 
 async function renderSalesChart(mode='month') {
   if (!salesChartSvg) return;
   let data = [];
   try {
     const range = mode==='day' ? 30 : 12;
-    data = await apiFetchJSON(`/api/analytics/sales-summary?period=${mode}&range=${range}`);
+    let baseDate = '';
+    if (mode === 'month') baseDate = salesMonthPicker?.value || '';
+    if (mode === 'year') baseDate = salesYearPicker?.value || '';
+    
+    data = await apiFetchJSON(`/api/analytics/sales-summary?period=${mode}&range=${range}&baseDate=${encodeURIComponent(baseDate)}`);
   } catch {
     return;
   }
@@ -4417,7 +4492,7 @@ async function renderSalesChart(mode='month') {
     svg.appendChild(xText);
   });
 }
-salesPeriodSel?.addEventListener('change', () => { const v=salesPeriodSel.value||'month'; renderSalesChart(v); });
+
 
 // Sales Order UI Logic
 const soCustomer = document.getElementById('so-customer');
