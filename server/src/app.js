@@ -885,17 +885,24 @@ app.get('/api/ledger', authRequired, ensureAllow('ledger','view'), async (req, r
   res.json(r.rows);
 });
 async function applyLedgerEffects(x) {
+  const method = (x.method || '').trim();
   if (x.doc && x.type) {
     if (x.type === '收入') {
       await query(`update payables set paid = least(coalesce(paid,0) + $1, amount), settled = (least(coalesce(paid,0) + $1, amount) >= amount),
         history = coalesce(history,'[]'::jsonb) || jsonb_build_array(jsonb_build_object('date',$2::text,'user',$3::text,'kind',$4::text,'amount',$1::numeric,'partner',partner,'doc',doc,'notes',$5::text,'method',$6::text))
-        where doc=$7 and type='应收账款'`, [Number(x.amount||0), x.date_time||x.date||'', x.created_by||'', '收款', x.notes||'', x.method||'', x.doc]);
-      if (x.method) await query(`update accounts set balance = coalesce(balance,0) + $1 where name=$2`, [Number(x.amount||0), x.method||'']);
+        where doc=$7 and type='应收账款'`, [Number(x.amount||0), x.date_time||x.date||'', x.created_by||'', '收款', x.notes||'', method, x.doc]);
     } else if (x.type === '支出' || x.type === '开支') {
       await query(`update payables set paid = least(coalesce(paid,0) + $1, amount), settled = (least(coalesce(paid,0) + $1, amount) >= amount),
         history = coalesce(history,'[]'::jsonb) || jsonb_build_array(jsonb_build_object('date',$2::text,'user',$3::text,'kind',$4::text,'amount',$1::numeric,'partner',partner,'doc',doc,'notes',$5::text,'method',$6::text))
-        where doc=$7 and type='应付账款'`, [Number(x.amount||0), x.date_time||x.date||'', x.created_by||'', '付款', x.notes||'', x.method||'', x.doc]);
-      if (x.method) await query(`update accounts set balance = coalesce(balance,0) - $1 where name=$2`, [Number(x.amount||0), x.method||'']);
+        where doc=$7 and type='应付账款'`, [Number(x.amount||0), x.date_time||x.date||'', x.created_by||'', '付款', x.notes||'', method, x.doc]);
+    }
+  }
+  
+  if (method && x.type) {
+    if (x.type === '收入') {
+      await query(`update accounts set balance = coalesce(balance,0) + $1 where trim(name) = $2`, [Number(x.amount||0), method]);
+    } else if (x.type === '支出' || x.type === '开支') {
+      await query(`update accounts set balance = coalesce(balance,0) - $1 where trim(name) = $2`, [Number(x.amount||0), method]);
     }
   }
 }
