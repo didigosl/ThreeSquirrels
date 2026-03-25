@@ -465,6 +465,22 @@ function openLedgerOwnerFilter() {
   addItem('商家', '商家');
   addItem('其它往来单位', '其它');
 }
+
+window.downloadLedgerTemplate = function() {
+  if (typeof XLSX === 'undefined') {
+    alert('Excel 库未加载，请刷新页面后重试');
+    return;
+  }
+  const ws_data = [
+    ["日期", "单据凭证号", "子类目", "往来单位", "备注", "金额", "支付方式"],
+    ["", "", "", "", "", "", "银行账户 BBVA"]
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(ws_data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "批量导入模板");
+  XLSX.writeFile(wb, "批量导入模板.xlsx");
+};
+
 ldType?.addEventListener('click', (e) => { e.stopPropagation(); openLedgerTypeFilter(); });
 ldCat?.addEventListener('click', (e) => { e.stopPropagation(); openLedgerCatFilter(); });
 ldOwner?.addEventListener('click', (e) => { e.stopPropagation(); openLedgerOwnerFilter(); });
