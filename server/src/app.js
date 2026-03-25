@@ -2025,30 +2025,38 @@ app.get('/api/inventory/finished/:id/logs', authRequired, async (req, res) => {
   const ins = await query('select * from inventory_logs where product_id=$1 and type=\'in\' order by created_at desc', [id]);
   
   // 2. Get Sales (Out) from invoices
-  const outs = await query(`
-    select i.created_at, i.created_by, i.invoice_no, (item->>'qty')::numeric as qty
-    from invoices i, jsonb_array_elements(i.items) as item
-    where (item->>'productId')::int = $1
-    order by i.created_at desc
-  `, [id]);
-  
-  const logs = [
-    ...ins.rows.map(x => ({
-      type: 'in',
-      date: Number(x.created_at),
-      qty: Number(x.quantity),
-      user: x.created_by
-    })),
-    ...outs.rows.map(x => ({
-      type: 'out',
-      date: Number(x.created_at),
-      qty: Number(x.qty),
-      user: x.created_by,
-      ref: x.invoice_no
-    }))
-  ].sort((a,b) => b.date - a.date);
-  
-  res.json(logs);
+  try {
+    const outs = await query(`
+      select i.created_at, i.created_by, i.invoice_no, (item->>'qty')::numeric as qty
+      from invoices i, jsonb_array_elements(i.items) as item
+      where item->>'productId' is not null 
+        and item->>'productId' != '' 
+        and item->>'productId' ~ '^[0-9]+$'
+        and (item->>'productId')::int = $1
+      order by i.created_at desc
+    `, [id]);
+    
+    const logs = [
+      ...ins.rows.map(x => ({
+        type: 'in',
+        date: Number(x.created_at),
+        qty: Number(x.quantity),
+        user: x.created_by
+      })),
+      ...outs.rows.map(x => ({
+        type: 'out',
+        date: Number(x.created_at),
+        qty: Number(x.qty),
+        user: x.created_by,
+        ref: x.invoice_no
+      }))
+    ].sort((a,b) => b.date - a.date);
+    
+    res.json(logs);
+  } catch (e) {
+    console.error("Error in logs:", e);
+    res.json([]);
+  }
 });
 
 // Inventory (Raw)
