@@ -1084,7 +1084,7 @@ function render(data) {
         try {
           await apiFetchJSON('/api/ledger/' + String(r.id) + '/confirm', { method:'PUT' });
           clearLedgerEdit();
-          loadLedgerFromServer();
+          loadLedgerFromServer(true);
           loadPayablesFromServer();
           apiAccountsList().then(() => { refreshAccountOptions(); renderAccounts(); });
         } catch {}
@@ -1094,7 +1094,7 @@ function render(data) {
         if (!confirm('确定要彻底删除这条记录吗？删除后相关的统计将被抹除且不可恢复。')) return;
         try {
           await apiFetchJSON('/api/ledger/' + String(r.id), { method: 'DELETE' });
-          loadLedgerFromServer();
+          loadLedgerFromServer(true);
           if (document.getElementById('page-home')?.style.display === 'block') {
             renderHomeChart(homePeriodSel?.value || 'month');
             renderSalesChart(salesPeriodSel?.value || 'month');
@@ -1118,7 +1118,7 @@ function getFilters() {
   const e = filterEnd.value ? new Date(filterEnd.value) : null;
   return { t, key, s, e };
 }
-function applyFilters() {
+function applyFilters(preserveScroll = false) {
   const { t, key, s, e } = getFilters();
   const outAll = records.filter(r => {
     if (t !== 'all' && r.type !== t) return false;
@@ -1149,8 +1149,18 @@ function applyFilters() {
   if (ledgerPage > totalPages) ledgerPage = totalPages;
   const startIdx = (ledgerPage - 1) * ledgerPageSize;
   const out = outAll.slice(startIdx, startIdx + ledgerPageSize);
+  
+  const currentScroll = ledgerTableWrap ? ledgerTableWrap.scrollTop : 0;
+  
   render(out);
-  if (ledgerTableWrap) ledgerTableWrap.scrollTop = 0;
+  
+  if (ledgerTableWrap) {
+    if (preserveScroll) {
+      ledgerTableWrap.scrollTop = currentScroll;
+    } else {
+      ledgerTableWrap.scrollTop = 0;
+    }
+  }
   updateLedgerHeaderCover();
   const gp = document.getElementById('global-pager'); if (gp) gp.style.display = 'flex';
   if (ledgerPager) {
@@ -1303,7 +1313,7 @@ document.getElementById('entry-form').addEventListener('submit', async e => {
       });
     }
   } catch {}
-  loadLedgerFromServer();
+  loadLedgerFromServer(true);
   document.getElementById('entry-doc').value = '';
   entryClient.value = '';
   entryAmount.value = '';
@@ -1311,8 +1321,8 @@ document.getElementById('entry-form').addEventListener('submit', async e => {
   entryFile.value = '';
   entryNotes.value = '';
   [document.getElementById('entry-doc'), entryClient, entryAmount, entryMethod].forEach(el => el?.classList.remove('invalid'));
-  ledgerPage = 1;
-  applyFilters();
+  // ledgerPage = 1; // Removed to preserve current page after edit/save
+  // applyFilters(); // Removed because loadLedgerFromServer(true) already calls applyFilters(true)
   saveJSON('records', records.map(r => {
     const { fileUrl, ...rest } = r;
     return rest;
@@ -4058,7 +4068,7 @@ async function apiFetchJSON(path, opts) {
   if (!r.ok) throw new Error('network_error');
   return await r.json();
 }
-async function loadLedgerFromServer() {
+async function loadLedgerFromServer(preserveScroll = false) {
   try {
     const list = await apiFetchJSON('/api/ledger');
     if (Array.isArray(list)) {
@@ -4086,7 +4096,7 @@ async function loadLedgerFromServer() {
         };
       }));
       saveJSON('records', records);
-      applyFilters();
+      applyFilters(preserveScroll);
       const hm = document.getElementById('page-home');
       if (hm && hm.style.display === 'block') {
       renderHomeChart(homePeriodSel?.value || 'month');
