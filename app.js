@@ -2456,6 +2456,52 @@ const partnerOrdersRows = document.getElementById('partner-orders-rows');
 const partnerOrdersHead = document.getElementById('partner-orders-head');
 let contactsPage = 1;
 const contactsPageSize = 100;
+window.handleContactDrop = async function(event, targetType) {
+  event.preventDefault();
+  try {
+    const dataStr = event.dataTransfer.getData('text/plain');
+    if (!dataStr) return;
+    const data = JSON.parse(dataStr);
+    
+    if (data.currentType === targetType) return; // No change needed
+    
+    // Find the contact in the current list
+    const contact = contactsData[data.currentType].find(c => c.id === data.id);
+    if (!contact) return;
+    
+    // Update the contact's type in the backend
+    // Re-using the edit API endpoint: PUT /api/contacts/:type/:id
+    // But since the type changes, we need to send a request to update the type.
+    // The backend uses 'customers', 'merchants', 'others' for the type in the URL, but the actual table is 'contacts' and type column is 'type'.
+    
+    const res = await fetchWithAuth(`/api/contacts/${data.currentType}/${data.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...contact, type: targetType })
+    });
+    
+    if (res.ok) {
+      // Show brief success feedback
+      const tabBtn = document.querySelector(`#page-contacts .tabs .tab[data-tab="${targetType}"]`);
+      if (tabBtn) {
+        const origText = tabBtn.textContent;
+        tabBtn.textContent = '移动成功';
+        setTimeout(() => tabBtn.textContent = origText, 1000);
+      }
+      
+      // Refresh the contacts data
+      await loadAllContacts();
+      if (contactsTab === data.currentType) {
+        renderContacts();
+      }
+    } else {
+      alert('移动失败，请重试');
+    }
+  } catch (e) {
+    console.error('Drop error:', e);
+  }
+};
+
 let pendingDeleteIndex = null;
 let pendingDeleteTab = null;
 function partnerTotal(name) {
@@ -2636,10 +2682,12 @@ async function renderContacts() {
     const ops = document.createElement('td');
     ops.className = 'actions';
     ops.innerHTML = '<a href="#" class="link-blue">编辑</a><a href="#" class="link-red">删除</a><a href="#" class="link-green">订单记录</a><a href="#" class="link-orange">金额记录</a>';
-    const cells = [r.name, r.company || '', r.code || '', r.contact, r.phone, r.city, r.remark || '', r.sales || '-', partnerTotal(r.name), partnerArrears(r.name, r.owner || ''), r.created];
+    
+    // Removed: r.code (税号), r.contact (联系人), r.phone (电话)
+    const cells = [r.name, r.company || '', r.city, r.remark || '', r.sales || '-', partnerTotal(r.name), partnerArrears(r.name, r.owner || ''), r.created];
     cells.forEach((v, idx) => {
       const td = document.createElement('td');
-      if (idx === 9) {
+      if (idx === 6) { // 欠款金额
         const num = parseFloat(String(v));
         if (isFinite(num) && num <= 0) {
           td.textContent = '-';
@@ -2653,6 +2701,19 @@ async function renderContacts() {
       tr.appendChild(td);
     });
     tr.appendChild(ops);
+    
+    // Add drag and drop functionality
+    tr.draggable = true;
+    tr.style.cursor = 'grab';
+    tr.addEventListener('dragstart', (e) => {
+      tr.style.opacity = '0.5';
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', JSON.stringify({ id: r.id, currentType: contactsTab }));
+    });
+    tr.addEventListener('dragend', (e) => {
+      tr.style.opacity = '1';
+    });
+    
     contactsRows.appendChild(tr);
     const del = ops.querySelector('.link-red');
     del.addEventListener('click', e => {

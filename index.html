@@ -320,7 +320,7 @@
         <div class="brand" style="padding:0; display:flex !important"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <div class="mobile-menu-btn" onclick="toggleSidebar()">☰</div>
       </div>
-      <div class="app-version" style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260323-test19</div>
+      <div class="app-version" style="position:fixed; bottom:4px; right:4px; font-size:10px; color:#334155; pointer-events:none; z-index:9999">v20260323-test20</div>
       <aside class="sidebar">
         <div class="brand"><span class="logo"></span><span>三只松鼠财务管理</span></div>
         <nav class="nav">
@@ -1437,9 +1437,18 @@
           <div class="card">
             <div class="bar" style="display:flex; align-items:center; justify-content:space-between">
               <div class="tabs">
-                <button class="tab active" data-tab="customers">客户列表</button>
-                <button class="tab" data-tab="merchants">商家列表</button>
-                <button class="tab" data-tab="others">其它往来单位</button>
+                <style>
+                  #page-contacts .tabs .tab.drag-over {
+                    background: var(--blue) !important;
+                    color: #fff !important;
+                    border-color: var(--blue) !important;
+                    transform: scale(1.05);
+                    transition: all 0.2s ease;
+                  }
+                </style>
+                <button class="tab active" data-tab="customers" ondragover="event.preventDefault(); this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="this.classList.remove('drag-over'); handleContactDrop(event, 'customers')">客户列表</button>
+                <button class="tab" data-tab="merchants" ondragover="event.preventDefault(); this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="this.classList.remove('drag-over'); handleContactDrop(event, 'merchants')">商家列表</button>
+                <button class="tab" data-tab="others" ondragover="event.preventDefault(); this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="this.classList.remove('drag-over'); handleContactDrop(event, 'others')">其它往来单位</button>
               </div>
               <div style="display:flex; align-items:center; gap:12px">
                 <input id="contacts-search" type="text" placeholder="搜索..." style="width:280px" autocomplete="new-password" name="search_contacts_random" readonly onfocus="this.removeAttribute('readonly');">
@@ -1455,9 +1464,6 @@
                       <th>序号</th>
                       <th>店名</th>
                       <th>公司名称</th>
-                      <th>税号</th>
-                      <th>联系人</th>
-                      <th>电话</th>
                       <th>城市</th>
                       <th>备注</th>
                       <th>业务员</th>
@@ -2503,6 +2509,6 @@
       </div>
     </div>
 
-    <script src="app.js?v=20260323-test19"></script>
+    <script src="app.js?v=20260323-test20"></script>
   </body>
 </html>
