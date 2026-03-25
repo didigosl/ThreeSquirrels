@@ -2538,9 +2538,35 @@ function openPartnerOrders(name) {
   document.getElementById('partner-orders-close')?.addEventListener('click', () => { modal.style.display = 'none'; });
 }
 async function renderContacts() {
-  const list = contactsData[contactsTab] || [];
   const key = (contactsSearch?.value || '').trim();
-  await apiContactsList(contactsTab, key, contactsPage, contactsPageSize);
+  
+  if (key) {
+    // Search across all tabs
+    await Promise.all([
+      apiContactsList('customers', key, 1, 1000),
+      apiContactsList('merchants', key, 1, 1000),
+      apiContactsList('others', key, 1, 1000)
+    ]);
+    
+    // Auto-switch tab if current tab has no results but others do
+    const currList = contactsData[contactsTab] || [];
+    if (currList.length === 0) {
+      const tabs = ['customers', 'merchants', 'others'];
+      for (const t of tabs) {
+        if (contactsData[t] && contactsData[t].length > 0) {
+          contactsTab = t;
+          document.querySelectorAll('#page-contacts .tabs .tab').forEach(x => {
+            x.classList.toggle('active', x.getAttribute('data-tab') === t);
+          });
+          break;
+        }
+      }
+    }
+  } else {
+    // Just load current tab if no search key
+    await apiContactsList(contactsTab, '', contactsPage, contactsPageSize);
+  }
+
   const fresh = contactsData[contactsTab] || [];
   const filtered = fresh.filter(x => {
     if (!key) return true;
@@ -2566,6 +2592,17 @@ async function renderContacts() {
     if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
   }
   contactsRows.innerHTML = '';
+  
+  if (data.length === 0) {
+    const emptyTr = document.createElement('tr');
+    emptyTr.className = 'empty';
+    const emptyTd = document.createElement('td');
+    emptyTd.colSpan = 13;
+    emptyTd.textContent = key ? '往来单位中没有搜索结果' : '暂无数据';
+    emptyTr.appendChild(emptyTd);
+    contactsRows.appendChild(emptyTr);
+  }
+  
   for (let i = 0; i < data.length; i++) {
     const r = data[i];
     const tr = document.createElement('tr');
@@ -2666,7 +2703,7 @@ async function renderContacts() {
   if (infoEl) {
     const todayStr = (() => { const d = new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const dd=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${dd}`; })();
     const toTs = x => { const t = Date.parse(x.created || ''); return Number.isFinite(t) ? t : 0; };
-    const listAll = list || [];
+    const listAll = fresh || [];
     const totalCount = listAll.length;
     const todayCount = listAll.filter(x => {
       const t = toTs(x); if (!t) return false;
