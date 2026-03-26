@@ -1659,7 +1659,36 @@ function trustLabelDisplay(rec) {
   const dValRaw = rec.trustDays;
   if (dValRaw == null || isNaN(dValRaw)) return { label: '', overdue: false };
   if (dValRaw === 0) return { label: '立即', overdue: false };
-  return { label: `${dValRaw}天`, overdue: false };
+  
+  // Calculate remaining days
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  
+  // Try to parse the creation date or record date
+  let createdDate;
+  if (rec.date) {
+    createdDate = new Date(rec.date);
+  } else if (rec.createdAt) {
+    createdDate = new Date(rec.createdAt);
+  } else {
+    return { label: `${dValRaw}天`, overdue: false }; // Fallback
+  }
+  
+  createdDate.setHours(0, 0, 0, 0);
+  
+  // Time diff in milliseconds
+  const diffTime = now.getTime() - createdDate.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  
+  const remainingDays = dValRaw - diffDays;
+  
+  if (remainingDays < 0) {
+    return { label: `逾期 ${Math.abs(remainingDays)} 天`, overdue: true };
+  } else if (remainingDays === 0) {
+    return { label: '今天到期', overdue: false, isToday: true };
+  } else {
+    return { label: `剩 ${remainingDays} 天`, overdue: false };
+  }
 }
 function summarizeNotes(text, perLine, maxLines) {
   const s = String(text || '');
@@ -1818,7 +1847,25 @@ function renderPayables() {
     }
     tr.appendChild(tdInvAmt);
     const tdAr = document.createElement('td'); tdAr.textContent = arrears.toFixed(2); tr.appendChild(tdAr);
-    const tdTrust = document.createElement('td'); tdTrust.textContent = trustLabel; if (isOverdue) tdTrust.classList.add('overdue'); tr.appendChild(tdTrust);
+    
+    const trustInfo = trustLabelDisplay(r);
+    const tdTrust = document.createElement('td'); 
+    tdTrust.textContent = trustInfo.label; 
+    if (trustInfo.overdue) {
+      tdTrust.style.color = '#ef4444'; // Red for overdue
+      tdTrust.style.fontWeight = 'bold';
+    } else if (trustInfo.isToday) {
+      tdTrust.style.color = '#f59e0b'; // Orange for today
+      tdTrust.style.fontWeight = 'bold';
+    } else {
+      tdTrust.style.color = '#10b981'; // Green for days left
+    }
+    if (trustInfo.label === '-' || trustInfo.label === '' || trustInfo.label === '立即') {
+      tdTrust.style.color = ''; // Reset color for default states
+      tdTrust.style.fontWeight = 'normal';
+    }
+    tr.appendChild(tdTrust);
+    
     const tdNotes = document.createElement('td');
     tdNotes.textContent = summarizeNotes(r.notes, 10, 2);
     tdNotes.style.whiteSpace = 'pre-wrap';
