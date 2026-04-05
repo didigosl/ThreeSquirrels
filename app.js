@@ -4069,10 +4069,6 @@ salesOrdersClose?.addEventListener('click', () => { salesOrdersModal.style.displ
 salesArrearsClose?.addEventListener('click', () => { salesArrearsModal.style.display = 'none'; });
 const logoutBtn = document.getElementById('logout-btn');
 const authUserTag = document.getElementById('auth-user-tag');
-const loginForm = document.getElementById('login-form');
-const loginUser = document.getElementById('login-user');
-const loginPass = document.getElementById('login-pass');
-const loginMsg = document.getElementById('login-msg');
 function getAuthUser() {
   try { return JSON.parse(localStorage.getItem('authUser') || 'null'); } catch { return null; }
 }
@@ -4111,7 +4107,7 @@ async function apiFetchJSON(path, opts) {
   const headers = Object.assign({}, (opts && opts.headers) || {});
   if (token) headers['Authorization'] = 'Bearer ' + token;
   const r = await fetch(API_BASE + path, { ...(opts||{}), headers });
-  if (r.status === 401) { location.hash = '#login'; throw new Error('unauthorized'); }
+  if (r.status === 401) { location.href = './login.html'; throw new Error('unauthorized'); }
   if (!r.ok) throw new Error('network_error');
   return await r.json();
 }
@@ -4372,79 +4368,6 @@ cpOk?.addEventListener('click', async () => {
     alert('修改密码成功');
   } catch (err) {
     alert('修改失败，请检查网络');
-  }
-});
-loginForm?.addEventListener('submit', async e => {
-  e.preventDefault();
-  const name = (loginUser.value || '').trim();
-  const password = loginPass.value || '';
-  try {
-    const r = await apiFetchJSON('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, password }) });
-    if (r && r.token && r.user) {
-      localStorage.setItem('authToken', r.token);
-      setAuthUser({ name: r.user.name, role: r.user.role || '' });
-      loginMsg.style.display = 'none';
-      
-      // Determine default route based on permissions
-      // Load roles if not loaded, but since we just logged in we might not have rolesData yet.
-      // So we just rely on `can` which falls back to role name logic.
-      // We will define a list of modules in sidebar order to check.
-      const modulesInOrder = [
-        { mod: 'home', hash: 'home' },
-        { mod: 'tasks', hash: 'tasks' },
-        { mod: 'daily_orders', hash: 'daily-orders' },
-        { mod: 'finished_stock', hash: 'finished-stock' },
-        { mod: 'raw_stock', hash: 'raw-stock' },
-        { mod: 'sales_order', hash: 'sales-order' },
-        { mod: 'sales_invoice', hash: 'sales-invoice' },
-        { mod: 'sales_products', hash: 'sales-products' },
-        { mod: 'ledger', hash: 'ledger' },
-        { mod: 'payables', hash: 'payables' },
-        { mod: 'contacts', hash: 'contacts' },
-        { mod: 'categories', hash: 'categories' },
-        { mod: 'accounts', hash: 'accounts' },
-        { mod: 'sales_accounts', hash: 'sales-accounts' },
-        { mod: 'company_info', hash: 'company-info' },
-        { mod: 'user_accounts', hash: 'user-accounts' },
-        { mod: 'role_accounts', hash: 'role-accounts' },
-        { mod: 'system', hash: 'system' }
-      ];
-      
-      let defaultHash = 'home';
-      // Use explicit check to handle the hardcoded 'aaaaaa' case
-      const roleName = r.user.role || (r.user.name === 'aaaaaa' ? '超级管理员' : '');
-      
-      // If superadmin, always home
-      if (roleName !== '超级管理员') {
-          try {
-              const permRes = await fetchWithAuth('/api/roles/me');
-              if (permRes.ok) {
-                  const permData = await permRes.json();
-                  const perms = permData.perms || {};
-                  
-                  defaultHash = ''; // default to empty until we find one
-                  for (let m of modulesInOrder) {
-                      if (perms[m.mod] && perms[m.mod].view) {
-                          defaultHash = m.hash;
-                          break;
-                      }
-                  }
-                  if (!defaultHash) defaultHash = 'empty'; // or something if no perms
-              }
-          } catch(err) {
-              console.warn(err);
-          }
-      }
-      
-      setAuthUI(); // Hide login form first
-      if (location.hash === '#' + defaultHash) {
-          handleRoute();
-      } else {
-          location.hash = '#' + defaultHash;
-      }
-    } else { loginMsg.style.display = 'inline-block'; }
-  } catch {
-    loginMsg.style.display = 'inline-block';
   }
 });
 function tsOf(rec) {
@@ -6655,6 +6578,10 @@ window.addEventListener('DOMContentLoaded', handleRoute);
 
 async function handleRoute() {
   const hash = location.hash.slice(1) || 'home';
+  if (!getAuthToken() || hash === 'login') {
+    location.href = './login.html';
+    return;
+  }
   const u = getAuthUser(); 
   const roleName = (u?.role) || getUserRoleName(u?.name || '');
   
@@ -6925,9 +6852,6 @@ async function handleRoute() {
     const id = hash.split('=')[1];
     document.getElementById('page-stock-history').style.display = 'block';
     loadStockHistory(id);
-  }
-  else if (hash === 'login') {
-    document.getElementById('page-login').style.display = 'block';
   }
   else {
     const t = document.getElementById('page-' + hash);
