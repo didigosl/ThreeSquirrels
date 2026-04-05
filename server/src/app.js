@@ -931,6 +931,17 @@ app.put('/api/ledger/:id', authRequired, ensureAllow('ledger','edit'), async (re
   if (!r.rows[0]) return res.status(400).json({ error:'not_editable' });
   res.json({ ok: true });
 });
+app.put('/api/ledger/:id/file', authRequired, ensureAllow('ledger','edit'), async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  const { file = '' } = req.body || {};
+  const r = await query(`
+    update ledger set file=$1
+    where id=$2
+    returning id
+  `, [file || '', id]);
+  if (!r.rows[0]) return res.status(404).json({ error:'not_found' });
+  res.json({ ok: true });
+});
 app.put('/api/ledger/:id/confirm', authRequired, ensureAllow('ledger','create'), async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
   const r0 = await query('select * from ledger where id=$1 and confirmed=false', [id]);
@@ -1351,7 +1362,7 @@ app.post('/api/products/batch-stock', authRequired, async (req, res) => {
   
   if (validNames.length === 0 && validIds.length === 0) return res.json([]);
   
-  let sql = 'select id, name, name_cn, stock, image from products where 1=0';
+  let sql = 'select id, name, name_cn, stock, image, spec, description, tax_rate, price1, price2, price3, price4, sku from products where 1=0';
   const params = [];
   
   if (validNames.length > 0) {

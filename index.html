@@ -656,7 +656,10 @@
             <div class="modal-body">
               <input type="hidden" id="do-id">
               <div class="group">
-                <span class="label">往来单位 (客户)</span>
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:6px">
+                  <span class="label">往来单位 (客户)</span>
+                  <span id="do-customer-price" class="label" style="color:#60a5fa"></span>
+                </div>
                 <div class="select">
                   <input type="text" id="do-customer" placeholder="搜索或选择客户..." autocomplete="off">
                   <div id="do-customer-dd" class="dropdown" style="display:none">
@@ -666,6 +669,7 @@
                     <div class="dd-list" id="do-customer-list"></div>
                   </div>
                 </div>
+                <div id="do-customer-remark" style="margin-top:8px; text-align:center; color:#ef4444; font-size:15px; font-weight:700; min-height:22px"></div>
               </div>
               <div class="group"><span class="label">备注信息</span><textarea id="do-notes" style="height:60px" placeholder="订单备注..."></textarea></div>
               <div style="border-top:1px solid var(--line); margin:16px 0; padding-top:16px">

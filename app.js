@@ -1000,6 +1000,62 @@ function clearLedgerEdit() {
   ledgerEditingDateTime = '';
   if (entrySubmitBtn) entrySubmitBtn.textContent = '提交';
 }
+async function uploadLedgerAttachment(fileObj) {
+  if (!fileObj) throw new Error('missing_file');
+  const extOk = /(\.jpe?g|\.png|\.pdf)$/i.test(fileObj.name || '');
+  if (!extOk) throw new Error('bad_type');
+  const fd = new FormData();
+  fd.append('file', fileObj);
+  const token = getAuthToken();
+  const r = await fetch(API_BASE + '/api/upload', {
+    method: 'POST',
+    headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+    body: fd
+  });
+  if (!r.ok) throw new Error('upload_failed');
+  const d = await r.json();
+  return d.url || '';
+}
+async function saveLedgerAttachmentForRow(rec, fileObj) {
+  const fileUrl = await uploadLedgerAttachment(fileObj);
+  if (!fileUrl) throw new Error('upload_failed');
+  if (!rec?.id) throw new Error('not_found');
+  const res = await fetchWithAuth('/api/ledger/' + String(rec.id) + '/file', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file: fileUrl })
+  });
+  if (!res.ok && res.status !== 404) {
+    if (res.status === 400) throw new Error('not_editable');
+    if (res.status === 404) throw new Error('not_found');
+    throw new Error('save_failed');
+  }
+  if (!res.ok && res.status === 404) {
+    const fallback = await fetchWithAuth('/api/ledger/' + String(rec.id), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: rec.type || '',
+        category: rec.category || '',
+        doc: rec.doc || '',
+        client: rec.client || '',
+        amount: Number(rec.amount || 0),
+        method: rec.method || '',
+        file: fileUrl,
+        notes: rec.notes || '',
+        date: rec.date || '',
+        dateTime: rec.dateTime || '',
+        createdBy: rec.createdBy || ''
+      })
+    });
+    if (!fallback.ok) {
+      if (fallback.status === 400) throw new Error('not_editable');
+      if (fallback.status === 404) throw new Error('not_found');
+      throw new Error('save_failed');
+    }
+  }
+  await loadLedgerFromServer(true);
+}
 function render(data) {
   rows.innerHTML = '';
   if (!data.length) {
@@ -1030,6 +1086,7 @@ function render(data) {
     tr.appendChild(makeTd(amt));
     tr.appendChild(makeTd(r.method || ''));
     const tdFile = document.createElement('td');
+    tdFile.style.minWidth = '72px';
     if (r.fileUrl) {
       if ((r.fileType || '').includes('pdf') || /\.pdf$/i.test(r.fileName||'')) {
         const span = document.createElement('span');
@@ -1058,6 +1115,85 @@ function render(data) {
         });
         tdFile.appendChild(img);
       }
+    } else if (!r.file) {
+      const filePicker = document.createElement('input');
+      filePicker.type = 'file';
+      filePicker.accept = '.jpg,.jpeg,.png,.pdf';
+      filePicker.style.display = 'none';
+      const idleHtml = '<div style="font-size:13px; line-height:1">📎</div><div style="margin-top:2px; font-weight:700; font-size:11px">上传</div>';
+      const busyHtml = '<div style="font-size:13px; line-height:1">⏳</div><div style="margin-top:2px; font-weight:700; font-size:11px">上传中</div>';
+      const dropZone = document.createElement('div');
+      dropZone.innerHTML = idleHtml;
+      dropZone.title = '拖拽或点击上传 JPG / PNG / PDF';
+      dropZone.style.width = '52px';
+      dropZone.style.minWidth = '52px';
+      dropZone.style.padding = '4px 3px';
+      dropZone.style.minHeight = '38px';
+      dropZone.style.border = '2px dashed #60a5fa';
+      dropZone.style.borderRadius = '8px';
+      dropZone.style.display = 'flex';
+      dropZone.style.flexDirection = 'column';
+      dropZone.style.alignItems = 'center';
+      dropZone.style.justifyContent = 'center';
+      dropZone.style.textAlign = 'center';
+      dropZone.style.color = '#cbd5e1';
+      dropZone.style.cursor = 'pointer';
+      dropZone.style.fontSize = '11px';
+      dropZone.style.lineHeight = '1.15';
+      dropZone.style.background = 'rgba(59,130,246,0.08)';
+      dropZone.style.boxShadow = 'inset 0 0 0 1px rgba(96,165,250,0.15)';
+      dropZone.style.transition = 'all 0.15s ease';
+      dropZone.addEventListener('dragover', e => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#38bdf8';
+        dropZone.style.color = '#ffffff';
+        dropZone.style.background = 'rgba(59,130,246,0.18)';
+        dropZone.style.transform = 'scale(1.02)';
+        dropZone.style.boxShadow = '0 0 0 2px rgba(56,189,248,0.16)';
+      });
+      dropZone.addEventListener('dragleave', () => {
+        dropZone.style.borderColor = '#60a5fa';
+        dropZone.style.color = '#cbd5e1';
+        dropZone.style.background = 'rgba(59,130,246,0.08)';
+        dropZone.style.transform = 'none';
+        dropZone.style.boxShadow = 'inset 0 0 0 1px rgba(96,165,250,0.15)';
+      });
+      dropZone.addEventListener('click', () => filePicker.click());
+      filePicker.addEventListener('change', async () => {
+        const fileObj = filePicker.files?.[0];
+        if (!fileObj) return;
+        dropZone.innerHTML = busyHtml;
+        try {
+          await saveLedgerAttachmentForRow(r, fileObj);
+        } catch (err) {
+          if (err?.message === 'bad_type') alert('仅支持 JPG、PNG 或 PDF 文件');
+          else if (err?.message === 'not_editable') alert('当前本地测试环境下，这条记录需要上线后才能补传附件');
+          else alert('上传失败，请重试');
+          dropZone.innerHTML = idleHtml;
+        }
+        filePicker.value = '';
+      });
+      dropZone.addEventListener('drop', async e => {
+        e.preventDefault();
+        dropZone.style.borderColor = '#60a5fa';
+        dropZone.style.color = '#cbd5e1';
+        dropZone.style.background = 'rgba(59,130,246,0.08)';
+        dropZone.style.transform = 'none';
+        dropZone.style.boxShadow = 'inset 0 0 0 1px rgba(96,165,250,0.15)';
+        const fileObj = e.dataTransfer?.files?.[0];
+        if (!fileObj) return;
+        dropZone.innerHTML = busyHtml;
+        try {
+          await saveLedgerAttachmentForRow(r, fileObj);
+        } catch (err) {
+          if (err?.message === 'bad_type') alert('仅支持 JPG、PNG 或 PDF 文件');
+          else if (err?.message === 'not_editable') alert('当前本地测试环境下，这条记录需要上线后才能补传附件');
+          else alert('上传失败，请重试');
+          dropZone.innerHTML = idleHtml;
+        }
+      });
+      tdFile.appendChild(filePicker);
+      tdFile.appendChild(dropZone);
     } else {
       tdFile.textContent = r.file ? r.file : '-';
     }
@@ -1268,28 +1404,15 @@ document.getElementById('entry-form').addEventListener('submit', async e => {
   }
   const amount = parseFloat(amountStr || '0');
   const fileObj = entryFile.files[0] || null;
-  const file = fileObj ? fileObj.name : '';
   const now = new Date();
   const date = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   const dateTime = `${date} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
   let fileUrl = '';
   if (fileObj) {
-    const extOk = /(\.jpe?g|\.png|\.pdf)$/i.test(fileObj.name);
-    if (!extOk) { alert('单条记录仅支持 JPG/PNG 或 PDF 文件'); return; }
-    const fd = new FormData();
-    fd.append('file', fileObj);
     try {
-      const token = getAuthToken();
-      const r = await fetch(API_BASE + '/api/upload', {
-        method: 'POST',
-        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
-        body: fd
-      });
-      if (r.ok) {
-        const d = await r.json();
-        fileUrl = d.url;
-      }
+      fileUrl = await uploadLedgerAttachment(fileObj);
     } catch(e) {
+      if (e?.message === 'bad_type') { alert('单条记录仅支持 JPG/PNG 或 PDF 文件'); return; }
       console.warn('upload failed', e);
     }
   }
@@ -7287,6 +7410,21 @@ function openOrderNotesModal(id) {
   }
 }
 
+function getAllDailyOrderContacts() {
+  return [
+    ...(contactsData.customers || []),
+    ...(contactsData.merchants || []),
+    ...(contactsData.others || [])
+  ];
+}
+function getDailyOrderCustomerInfo(name) {
+  return getAllDailyOrderContacts().find(c => c.name === name) || null;
+}
+function getDailyOrderPriceLabel(priceKey) {
+  const map = { price1: '价格1', price2: '价格2', price3: '价格3', price4: '价格4' };
+  return map[priceKey || 'price1'] || String(priceKey || '价格1');
+}
+
 function openOrderDetailsModal(id) {
   const o = currentDailyOrders.find(x => x.id === id);
   if (!o) return;
@@ -7492,7 +7630,12 @@ async function loadDailyOrders(status = 'new', btn = null) {
         ${o.status==='new'?'新订单':(o.status==='allocated'?'已配货':(o.status==='cancelled'?'已退单':'已发货'))}
       </span></td>
       <td>
-        ${o.notes ? `<div style="color:#10b981; font-size:13px; cursor:pointer; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; word-break:break-all; max-width:160px; line-height:1.4" onclick="openOrderNotesModal(${o.id})" title="点击查看完整备注">${o.notes}</div>` : '<span style="color:#64748b">-</span>'}
+        ${(() => {
+          const customer = getDailyOrderCustomerInfo(o.customer || '');
+          const customerRemark = customer?.remark ? `<div style="color:#ef4444; font-size:14px; font-weight:700; line-height:1.45; word-break:break-all; max-width:180px">${customer.remark}</div>` : '';
+          const orderNotes = o.notes ? `<div style="color:#10b981; font-size:13px; cursor:pointer; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; word-break:break-all; max-width:180px; line-height:1.4; margin-top:${customer?.remark ? '6px' : '0'}" onclick="openOrderNotesModal(${o.id})" title="点击查看完整备注">${o.notes}</div>` : '';
+          return customerRemark || orderNotes ? customerRemark + orderNotes : '<span style="color:#64748b">-</span>';
+        })()}
       </td>
       <td>
         <div style="font-size:13px">创建: ${o.created_by || '-'}</div>
@@ -7537,9 +7680,31 @@ function openDailyOrderModal() {
     const doCustomerDd = document.getElementById('do-customer-dd');
     const doCustomerSearch = document.getElementById('do-customer-search');
     const doCustomerList = document.getElementById('do-customer-list');
+    const doCustomerRemark = document.getElementById('do-customer-remark');
+    const doCustomerPrice = document.getElementById('do-customer-price');
+
+    const updateDoCustomerMeta = () => {
+      const customer = getDailyOrderCustomerInfo((doCustomer?.value || '').trim());
+      if (doCustomerRemark) doCustomerRemark.textContent = customer?.remark || '';
+      if (doCustomerPrice) doCustomerPrice.textContent = customer ? `客户价格：${getDailyOrderPriceLabel(customer?.use_price || 'price1')}` : '客户价格：';
+      const usePrice = customer?.use_price || 'price1';
+      document.querySelectorAll('#do-items-container .do-item-row').forEach(row => {
+        const priceInput = row.querySelector('.do-item-price');
+        if (!priceInput) return;
+        const priceMap = {
+          price1: row.querySelector('.do-item-price1')?.value,
+          price2: row.querySelector('.do-item-price2')?.value,
+          price3: row.querySelector('.do-item-price3')?.value,
+          price4: row.querySelector('.do-item-price4')?.value
+        };
+        const nextPrice = priceMap[usePrice];
+        if (nextPrice !== undefined && nextPrice !== null && nextPrice !== '') priceInput.value = Number(nextPrice || 0);
+      });
+    };
 
     if (doCustomer) {
         doCustomer.value = ''; // Reset
+        doCustomer.oninput = () => updateDoCustomerMeta();
         doCustomer.onfocus = () => {
             doCustomerDd.style.display = 'block';
             doCustomerSearch.focus();
@@ -7564,11 +7729,7 @@ function openDailyOrderModal() {
     }
 
     function renderDoCustomerList(filter = '') {
-        const all = [
-            ...(contactsData.customers || []),
-            ...(contactsData.merchants || []),
-            ...(contactsData.others || [])
-        ];
+        const all = getAllDailyOrderContacts();
         
         // Ensure we don't have duplicates or empty list if data isn't ready
         if (all.length === 0) {
@@ -7597,6 +7758,7 @@ function openDailyOrderModal() {
     window.selectDoCustomer = function(name) {
         doCustomer.value = name;
         doCustomerDd.style.display = 'none';
+        updateDoCustomerMeta();
     };
 
     // Ensure contacts are loaded
@@ -7621,27 +7783,40 @@ function openDailyOrderModal() {
     }
     
     document.getElementById('do-notes').value = '';
+    if (doCustomerRemark) doCustomerRemark.textContent = '';
+    if (doCustomerPrice) doCustomerPrice.textContent = '客户价格：';
   }
 }
 
-function editDailyOrder(id) {
+async function editDailyOrder(id) {
   const o = currentDailyOrders.find(x => x.id === id);
   if (!o) return;
   openDailyOrderModal();
   document.getElementById('daily-order-modal-title').textContent = '修改订单';
   document.getElementById('do-id').value = o.id;
-  
-  // Need to set customer value slightly delayed to ensure the dropdown logic doesn't override it immediately
-  setTimeout(() => {
-    document.getElementById('do-customer').value = o.customer || '';
-  }, 50);
+  document.getElementById('do-customer').value = o.customer || '';
   
   document.getElementById('do-notes').value = o.notes || '';
   
   const items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
   const tbody = document.getElementById('do-items-container');
   tbody.innerHTML = '';
+  let products = [];
+  const itemNames = items.map(i => i.name).filter(Boolean);
+  const itemIds = items.map(i => i.productId).filter(Boolean);
+  if (itemNames.length > 0 || itemIds.length > 0) {
+    try {
+      const res = await fetchWithAuth('/api/products/batch-stock', {
+        method: 'POST',
+        body: JSON.stringify({ names: itemNames, ids: itemIds })
+      });
+      if (res.ok) products = await res.json();
+    } catch {}
+  }
   items.forEach(prod => {
+    const fullProd = products.find(p => p.id == prod.productId || p.name === prod.name) || {};
+    const usePrice = (getDailyOrderCustomerInfo(o.customer || '')?.use_price) || 'price1';
+    const priceValue = fullProd[usePrice] !== undefined && fullProd[usePrice] !== null && fullProd[usePrice] !== '' ? fullProd[usePrice] : (prod.price || prod.price1 || 0);
     const tr = document.createElement('tr');
     tr.className = 'do-item-row';
     tr.innerHTML = `
@@ -7660,14 +7835,20 @@ function editDailyOrder(id) {
         <input type="hidden" class="do-item-tax" value="${prod.tax_rate !== undefined && prod.tax_rate !== null && prod.tax_rate !== '' ? prod.tax_rate : 0.10}">
         <input type="hidden" class="do-item-pid" value="${prod.productId || prod.id || ''}">
         <input type="hidden" class="do-item-sku" value="${prod.sku || ''}">
+        <input type="hidden" class="do-item-price1" value="${fullProd.price1 !== undefined ? fullProd.price1 : (prod.price1 || prod.price || 0)}">
+        <input type="hidden" class="do-item-price2" value="${fullProd.price2 !== undefined ? fullProd.price2 : ''}">
+        <input type="hidden" class="do-item-price3" value="${fullProd.price3 !== undefined ? fullProd.price3 : ''}">
+        <input type="hidden" class="do-item-price4" value="${fullProd.price4 !== undefined ? fullProd.price4 : ''}">
       </td>
       <td><div style="color:#94a3b8; font-size:13px">${prod.cn_name || prod.name_cn || ''}</div></td>
       <td><input type="number" class="do-item-qty" value="${prod.qty || 1}" min="1" style="width:80px"></td>
-      <td><input type="number" class="do-item-price" value="${prod.price || prod.price1 || 0}" step="0.01" style="width:80px"></td>
+      <td><input type="number" class="do-item-price" value="${priceValue}" step="0.01" style="width:80px"></td>
       <td><button class="btn-red btn-icon" onclick="this.closest('tr').remove()" style="width:32px; height:32px">×</button></td>
     `;
     tbody.appendChild(tr);
   });
+  const doCustomer = document.getElementById('do-customer');
+  if (doCustomer) doCustomer.dispatchEvent(new Event('input'));
 }
 
 function closeDailyOrderModal() {
@@ -7691,6 +7872,10 @@ function openDoProdSelector() {
 
 function addDoItemRow(prod) {
   const tbody = document.getElementById('do-items-container');
+  const doCustomer = document.getElementById('do-customer');
+  const currentCustomer = getDailyOrderCustomerInfo((doCustomer?.value || '').trim());
+  const usePrice = currentCustomer?.use_price || 'price1';
+  const displayPrice = prod[usePrice] !== undefined && prod[usePrice] !== null && prod[usePrice] !== '' ? Number(prod[usePrice] || 0) : Number(prod.price1 || 0);
   const tr = document.createElement('tr');
   tr.className = 'do-item-row';
   tr.innerHTML = `
@@ -7709,10 +7894,14 @@ function addDoItemRow(prod) {
       <input type="hidden" class="do-item-tax" value="${prod.tax_rate !== undefined && prod.tax_rate !== null && prod.tax_rate !== '' ? prod.tax_rate : 0.10}">
       <input type="hidden" class="do-item-pid" value="${prod.id || ''}">
       <input type="hidden" class="do-item-sku" value="${prod.sku || ''}">
+      <input type="hidden" class="do-item-price1" value="${prod.price1 || 0}">
+      <input type="hidden" class="do-item-price2" value="${prod.price2 || 0}">
+      <input type="hidden" class="do-item-price3" value="${prod.price3 || 0}">
+      <input type="hidden" class="do-item-price4" value="${prod.price4 || 0}">
     </td>
     <td><div style="color:#94a3b8; font-size:13px">${prod.name_cn||''}</div></td>
     <td><input type="number" class="do-item-qty" value="1" min="1" style="width:80px"></td>
-    <td><input type="number" class="do-item-price" value="${prod.price1||0}" step="0.01" style="width:80px"></td>
+    <td><input type="number" class="do-item-price" value="${displayPrice}" step="0.01" style="width:80px"></td>
     <td><button class="btn-red btn-icon" onclick="this.closest('tr').remove()" style="width:32px; height:32px">×</button></td>
   `;
   tbody.appendChild(tr);
