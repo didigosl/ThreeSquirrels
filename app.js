@@ -8174,6 +8174,7 @@ function switchFinishedStockTab(tab, btn) {
   if (fsCurrentTab === 'stock') loadFinishedStock(1);
   else loadFinishedStockRecords(1);
 }
+window.switchFinishedStockTab = switchFinishedStockTab;
 
 async function loadFinishedStock(page = 1) {
   fsPage = page;
@@ -8370,6 +8371,7 @@ function startFinishedStockAdd() {
   renderFsItems();
   openFsProdSelector();
 }
+window.startFinishedStockAdd = startFinishedStockAdd;
 
 function renderFsItems() {
   const tbody = document.getElementById('fs-items-tbody');
