@@ -28,7 +28,10 @@
       .chip.active { border-color: var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,0.12); }
       .selected { margin-top:8px; font-size:13px; color: var(--muted); }
       .selected b { color:#0f172a; }
-      .btn { width:100%; padding:12px 14px; border:none; border-radius:10px; background: var(--blue); color:#fff; font-weight:600; cursor:pointer; }
+      .btn { width:100%; padding:12px 14px; border:none; border-radius:10px; background: var(--blue); color:#fff; font-weight:600; cursor:pointer; transition: transform .08s ease, filter .12s ease, opacity .12s ease; }
+      .btn:hover { filter: brightness(1.03); }
+      .btn:active { transform: scale(0.98); filter: brightness(0.95); }
+      .btn:disabled { opacity:.72; cursor:not-allowed; }
       .tip { margin-top:10px; font-size:13px; color: var(--muted); }
       .error { margin-top:8px; padding:8px 10px; border:1px solid #fecaca; background:#fff1f2; color:#ef4444; border-radius:8px; display:none; }
       .footer { margin-top:20px; color:#93c5fd; text-align:center; font-size:12px; }
@@ -71,6 +74,7 @@
       const err = document.getElementById('login-error');
       const def = document.getElementById('login-default');
       const sel = document.getElementById('login-selected');
+      const submitBtn = document.getElementById('login-submit');
       const API_BASE = '';
       function setAuthUser(user) { if (user) localStorage.setItem('authUser', JSON.stringify(user)); else localStorage.removeItem('authUser'); }
       function setSelected(name) {
@@ -78,23 +82,8 @@
         if (sel) sel.textContent = selectedName || '未选择';
       }
       let selectedName = '';
-      
-      async function fillUsers(){
-        let users = [];
-        try {
-          const res = await fetch(API_BASE + '/api/auth/users');
-          if (res.ok) {
-            const data = await res.json();
-            users = data.map(u => u.name);
-          }
-        } catch (e) { console.error(e); }
-        
-        // If fetch fails or empty, fallback to hardcoded
-        if (!users.length) {
-          users = ['aaaaaa','shuangqun','caiwu'];
-        }
-        
-        const uniq = Array.from(new Set(users));
+      function renderUsers(users) {
+        const uniq = Array.from(new Set((users || []).filter(Boolean)));
         chips.innerHTML = '';
         uniq.forEach(n => {
           const c = document.createElement('button');
@@ -105,7 +94,6 @@
             setSelected(n);
             [...chips.querySelectorAll('.chip')].forEach(x => x.classList.toggle('active', x===c));
             err.style.display = 'none';
-            // Only clear password if we are switching to a user different from the remembered one
             const rem = JSON.parse(localStorage.getItem('rememberedUser')||'{}');
             if (rem.name !== n) {
               p.value = '';
@@ -117,8 +105,6 @@
           });
           chips.appendChild(c);
         });
-
-        // Check remembered user
         const rem = JSON.parse(localStorage.getItem('rememberedUser')||'{}');
         if (rem.name && uniq.includes(rem.name)) {
           setSelected(rem.name);
@@ -126,14 +112,29 @@
           if (btn) btn.classList.add('active');
           p.value = rem.password || '';
           def.checked = true;
-        } else {
-          // Default select first one if no memory
-          if (uniq.length > 0) {
-            setSelected(uniq[0]);
-            const btn = [...chips.querySelectorAll('.chip')].find(x => x.textContent===uniq[0]);
-            if (btn) btn.classList.add('active');
-          }
+        } else if (uniq.length > 0) {
+          setSelected(uniq[0]);
+          const btn = [...chips.querySelectorAll('.chip')].find(x => x.textContent===uniq[0]);
+          if (btn) btn.classList.add('active');
         }
+      }
+      
+      async function fillUsers(){
+        const fallbackUsers = ['aaaaaa','shuangqun','caiwu','yiwu'];
+        renderUsers(fallbackUsers);
+        let users = [];
+        try {
+          const ctl = new AbortController();
+          const timer = setTimeout(() => ctl.abort(), 2500);
+          const res = await fetch(API_BASE + '/api/auth/users', { signal: ctl.signal });
+          clearTimeout(timer);
+          if (res.ok) {
+            const data = await res.json();
+            users = data.map(u => u.name);
+          }
+        } catch (e) { console.warn('load users fallback', e); }
+        
+        if (users.length) renderUsers(users);
       }
       
       fillUsers();
@@ -144,14 +145,30 @@
         const pass = p.value || '';
         if (!name) { err.textContent = '请先选择账号'; err.style.display = 'block'; return; }
         let authData = null;
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = '登录中...';
+        }
         try {
-          const r = await fetch(API_BASE + '/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, password: pass }) });
+          const ctl = new AbortController();
+          const timer = setTimeout(() => ctl.abort(), 8000);
+          const r = await fetch(API_BASE + '/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, password: pass }), signal: ctl.signal });
+          clearTimeout(timer);
           if (!r.ok) { err.textContent = `账号或密码错误（当前账号：${name}）`; err.style.display = 'block'; return; }
           authData = await r.json();
           if (!authData || !authData.token || !authData.user) { err.textContent = `账号或密码错误（当前账号：${name}）`; err.style.display = 'block'; return; }
           localStorage.setItem('authToken', authData.token);
           err.style.display = 'none';
-        } catch { err.textContent = `账号或密码错误（当前账号：${name}）`; err.style.display = 'block'; return; }
+        } catch {
+          err.textContent = `登录超时或失败（当前账号：${name}）`;
+          err.style.display = 'block';
+          return;
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '登录';
+          }
+        }
         
         if (def.checked && name) {
           localStorage.setItem('rememberedUser', JSON.stringify({ name, password: pass }));

@@ -2,10 +2,12 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { URL } = require('url');
 
 const rootDir = __dirname;
-const targetHost = 'threesquirrels.didigo.es';
 const port = 8000;
+const targetUrl = new URL(process.env.TS_PROXY_TARGET || 'http://8.220.74.149:18080');
+const requestLib = targetUrl.protocol === 'https:' ? https : http;
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -28,7 +30,7 @@ function send404(res) {
 }
 
 function serveFile(filePath, res) {
-  fs.readFile(filePath, (err, data) => {
+  fs.stat(filePath, (err, stats) => {
     if (err) {
       send404(res);
       return;
@@ -36,25 +38,26 @@ function serveFile(filePath, res) {
     const ext = path.extname(filePath).toLowerCase();
     res.writeHead(200, {
       'Content-Type': mimeTypes[ext] || 'application/octet-stream',
-      'Cache-Control': 'no-store'
+      'Content-Length': stats.size,
+      'Cache-Control': filePath.includes(`${path.sep}uploads${path.sep}`) ? 'public, max-age=86400' : 'no-store'
     });
-    res.end(data);
+    fs.createReadStream(filePath).pipe(res);
   });
 }
 
 function proxyRequest(req, res) {
   const options = {
-    hostname: targetHost,
-    port: 443,
+    hostname: targetUrl.hostname,
+    port: targetUrl.port || (targetUrl.protocol === 'https:' ? 443 : 80),
     path: req.url,
     method: req.method,
     headers: {
       ...req.headers,
-      host: targetHost
+      host: targetUrl.host
     }
   };
 
-  const proxyReq = https.request(options, proxyRes => {
+  const proxyReq = requestLib.request(options, proxyRes => {
     res.writeHead(proxyRes.statusCode || 500, proxyRes.headers);
     proxyRes.pipe(res);
   });
@@ -70,7 +73,21 @@ function proxyRequest(req, res) {
 http.createServer((req, res) => {
   const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
 
-  if (urlPath.startsWith('/api/') || urlPath.startsWith('/uploads/')) {
+  if (urlPath.startsWith('/uploads/')) {
+    const uploadPath = path.join(rootDir, urlPath.replace(/^\/+/, ''));
+    if (uploadPath.startsWith(path.join(rootDir, 'uploads'))) {
+      fs.stat(uploadPath, (err, stats) => {
+        if (!err && stats.isFile()) {
+          serveFile(uploadPath, res);
+          return;
+        }
+        proxyRequest(req, res);
+      });
+      return;
+    }
+  }
+
+  if (urlPath.startsWith('/api/')) {
     proxyRequest(req, res);
     return;
   }
@@ -98,4 +115,5 @@ http.createServer((req, res) => {
   });
 }).listen(port, () => {
   console.log(`Local dev server running at http://localhost:${port}/`);
+  console.log(`Proxy target: ${targetUrl.origin}`);
 });

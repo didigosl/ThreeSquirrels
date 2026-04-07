@@ -1,0 +1,54 @@
+services:
+  ts-stage-db:
+    image: postgres:16
+    container_name: ts-stage-db
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: komeya_stage
+    volumes:
+      - ts-stage-dbdata:/var/lib/postgresql/data
+      - ./server/migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      - ts-stage-web
+
+  ts-stage-server:
+    container_name: ts-stage-server
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: ts-stage-db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: komeya_stage
+      JWT_SECRET: stage_secret_only
+      UPLOAD_DIR: /app/uploads-stage
+    depends_on:
+      - ts-stage-db
+    volumes:
+      - ./server/src:/app/src
+      - ./uploads-stage:/app/uploads-stage
+    networks:
+      - ts-stage-web
+
+  ts-stage-nginx:
+    container_name: ts-stage-nginx
+    image: nginx:1.25
+    volumes:
+      - ./server/nginx.staging.conf:/etc/nginx/nginx.conf:ro
+      - ./:/usr/share/nginx/html:ro
+      - ./uploads-stage:/usr/share/nginx/html/uploads:ro
+    ports:
+      - "18080:80"
+    depends_on:
+      - ts-stage-server
+    networks:
+      - ts-stage-web
+
+volumes:
+  ts-stage-dbdata:
+
+networks:
+  ts-stage-web:
+    driver: bridge

@@ -1446,7 +1446,13 @@ app.get('/api/invoices', authRequired, ensureAllow('sales_invoice','view'), asyn
   const p = [];
   let sql = `
     select i.*, 
-    (select coalesce(sum(paid),0) from payables where doc=i.invoice_no and type='应收账款') as paid_amount
+    (select coalesce(sum(paid),0) from payables where doc=i.invoice_no and type='应收账款') as paid_amount,
+    (select c.company from contacts c where trim(c.name)=trim(i.customer) or trim(c.company)=trim(i.customer) order by case when trim(c.name)=trim(i.customer) then 0 else 1 end, c.id desc limit 1) as company_name,
+    (select c.code from contacts c where trim(c.name)=trim(i.customer) or trim(c.company)=trim(i.customer) order by case when trim(c.name)=trim(i.customer) then 0 else 1 end, c.id desc limit 1) as customer_code,
+    (select c.address from contacts c where trim(c.name)=trim(i.customer) or trim(c.company)=trim(i.customer) order by case when trim(c.name)=trim(i.customer) then 0 else 1 end, c.id desc limit 1) as customer_address,
+    (select c.zip from contacts c where trim(c.name)=trim(i.customer) or trim(c.company)=trim(i.customer) order by case when trim(c.name)=trim(i.customer) then 0 else 1 end, c.id desc limit 1) as customer_zip,
+    (select c.city from contacts c where trim(c.name)=trim(i.customer) or trim(c.company)=trim(i.customer) order by case when trim(c.name)=trim(i.customer) then 0 else 1 end, c.id desc limit 1) as customer_city,
+    (select c.country from contacts c where trim(c.name)=trim(i.customer) or trim(c.company)=trim(i.customer) order by case when trim(c.name)=trim(i.customer) then 0 else 1 end, c.id desc limit 1) as customer_country
     from invoices i
   `;
   const conds = [];
@@ -1946,6 +1952,7 @@ app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
     }, 0);
 
     const now = Date.now();
+    const invoiceDate = new Date().toISOString().slice(0, 10);
 
     // Deduct Stock and Split Items
     const finalItems = await deductAndSplitStock(invoiceItems);
@@ -1954,13 +1961,13 @@ app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
     const inv = await query(`
       insert into invoices(invoice_no, customer, date, items, total_amount, sales, created_at, created_by, notes)
       values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id
-    `, [invoiceNo, ord.customer, ord.date, JSON.stringify(finalItems), total, ord.sales, now, 'system', ord.notes||'']);
+    `, [invoiceNo, ord.customer, invoiceDate, JSON.stringify(finalItems), total, ord.sales, now, req.user.name || '', ord.notes||'']);
     
     // Create Payable
     await query(`
       insert into payables(type, partner, doc, amount, paid, settled, trust_days, invoice_no, invoice_date, invoice_amount, sales, date, created_at, batch_at, source)
       values($1,$2,$3,$4,0,false,30,$5,$6,$7,$8,$9,$10,$11,'sales_order')
-    `, ['应收账款', ord.customer, invoiceNo, total, invoiceNo, ord.date, total, ord.sales, ord.date, now, now]);
+    `, ['应收账款', ord.customer, invoiceNo, total, invoiceNo, invoiceDate, total, ord.sales, invoiceDate, now, now]);
     
     await query('update daily_orders set invoice_id=$1 where id=$2', [inv.rows[0].id, id]);
   }
@@ -2024,6 +2031,7 @@ app.post('/api/inventory/finished', authRequired, async (req, res) => {
     }
     const currentStock = Number(p.rows[0]?.stock || 0);
     let batchQty = parsedQty;
+    const entryNow = Date.now();
     
     if (currentStock <= 0) {
       await query('update inventory_batches set quantity = 0 where product_id=$1', [productId]);
@@ -2040,55 +2048,141 @@ app.post('/api/inventory/finished', authRequired, async (req, res) => {
     
     if (batchQty > 0) {
       await query('insert into inventory_batches(product_id, quantity, expiration_date, lote, created_at) values($1,$2,$3,$4,$5)',
-        [productId, batchQty, expiry || '', lote || '', Date.now()]);
+        [productId, batchQty, expiry || '', lote || '', entryNow]);
     }
     
     await query('update products set stock = stock + $1 where id=$2', [parsedQty, productId]);
     
-    await query('insert into inventory_logs(product_id, quantity, type, created_at, created_by) values($1,$2,$3,$4,$5)',
-      [productId, parsedQty, 'in', Date.now(), req.user.name || 'system']);
+    await query('insert into inventory_logs(product_id, quantity, type, created_at, created_by, notes) values($1,$2,$3,$4,$5,$6)',
+      [productId, parsedQty, 'in', entryNow, req.user.name || 'system', lote || '']);
   }
     
   res.json({ ok: true });
 });
 
+async function getFinishedInventoryRecords({ productId = null, page = 1, size = 100 }) {
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const pageSize = Math.max(1, Math.min(500, parseInt(size, 10) || 100));
+  const params = [];
+  const productFilter = productId ? ` and p.id = $1` : '';
+  const inFilter = productId ? ` and l.product_id = $1` : '';
+  const outFilter = productId ? ` and (item->>'productId')::int = $1` : '';
+  params.push(pageSize, (pageNum - 1) * pageSize);
+  const limitIdx = productId ? 2 : 1;
+  const offsetIdx = productId ? 3 : 2;
+  if (productId) params.unshift(Number(productId));
+  const r = await query(`
+    with records as (
+      select
+        l.created_at,
+        p.sku,
+        p.name,
+        p.name_cn,
+        ''::text as invoice_no,
+        ''::text as customer,
+        l.quantity::numeric as qty,
+        'in'::text as type,
+        l.created_by as user,
+        coalesce(nullif(l.notes, ''), b.lote, '') as lote
+      from inventory_logs l
+      join products p on p.id = l.product_id
+      left join lateral (
+        select lote
+        from inventory_batches
+        where product_id = l.product_id and abs(created_at - l.created_at) <= 10000
+        order by abs(created_at - l.created_at) asc, id desc
+        limit 1
+      ) b on true
+      where l.type='in'${inFilter}
+      union all
+      select
+        i.created_at,
+        p.sku,
+        p.name,
+        p.name_cn,
+        i.invoice_no,
+        i.customer,
+        -1 * (item->>'qty')::numeric as qty,
+        'out'::text as type,
+        coalesce(nullif(d.shipped_by, ''), nullif(i.created_by, ''), 'system') as user,
+        coalesce(
+          (
+            select string_agg(
+              case
+                when jsonb_typeof(ded) = 'object' then
+                  case
+                    when coalesce(ded->>'lote', '') = '' then '-'
+                    else right(split_part(ded->>'lote', '-', 3), 2) || split_part(ded->>'lote', '-', 2)
+                  end
+                else '-'
+              end,
+              ','
+            )
+            from jsonb_array_elements(coalesce(item->'deductions', '[]'::jsonb)) ded
+          ),
+          case
+            when item->>'description' ~* 'Lote:\\s*([^ ]+)' then regexp_replace(item->>'description', '.*Lote:\\s*([^ ]+).*', '\\1', 'i')
+            else ''
+          end
+        ) as lote
+      from invoices i
+      left join daily_orders d on d.invoice_id = i.id
+      cross join lateral jsonb_array_elements(i.items) as item
+      left join products p on p.id = (item->>'productId')::int
+      where item->>'productId' is not null
+        and item->>'productId' != ''
+        and item->>'productId' ~ '^[0-9]+$'${outFilter}
+    )
+    select *, count(*) over()::int as total_count
+    from records
+    order by created_at desc, sku asc
+    limit $${limitIdx} offset $${offsetIdx}
+  `, params);
+  return {
+    list: r.rows.map(x => ({
+      date: Number(x.created_at),
+      sku: x.sku || '',
+      name: x.name || '',
+      name_cn: x.name_cn || '',
+      invoice_no: x.invoice_no || '',
+      customer: x.customer || '',
+      qty: Number(x.qty || 0),
+      type: x.type,
+      user: x.user || '',
+      lote: x.lote || ''
+    })),
+    total: r.rows[0]?.total_count || 0
+  };
+}
+
+app.get('/api/inventory/finished/logs', authRequired, async (req, res) => {
+  try {
+    const data = await getFinishedInventoryRecords({
+      page: req.query.page,
+      size: req.query.size
+    });
+    res.json(data);
+  } catch (e) {
+    console.error('Error in finished inventory records:', e);
+    res.json({ list: [], total: 0 });
+  }
+});
+
 app.get('/api/inventory/finished/:id/logs', authRequired, async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  
-  // 1. Get Additions (In)
-  const ins = await query('select * from inventory_logs where product_id=$1 and type=\'in\' order by created_at desc', [id]);
-  
-  // 2. Get Sales (Out) from invoices
   try {
-    const outs = await query(`
-      select i.created_at, i.created_by, i.invoice_no, (item->>'qty')::numeric as qty
-      from invoices i, jsonb_array_elements(i.items) as item
-      where item->>'productId' is not null 
-        and item->>'productId' != '' 
-        and item->>'productId' ~ '^[0-9]+$'
-        and (item->>'productId')::int = $1
-      order by i.created_at desc
-    `, [id]);
-    
-    const logs = [
-      ...ins.rows.map(x => ({
-        type: 'in',
-        date: Number(x.created_at),
-        qty: Number(x.quantity),
-        user: x.created_by
-      })),
-      ...outs.rows.map(x => ({
-        type: 'out',
-        date: Number(x.created_at),
-        qty: Number(x.qty),
-        user: x.created_by,
-        ref: x.invoice_no
-      }))
-    ].sort((a,b) => b.date - a.date);
-    
-    res.json(logs);
+    const data = await getFinishedInventoryRecords({ productId: id, page: 1, size: 1000 });
+    res.json(data.list.map(x => ({
+      type: x.type,
+      date: x.date,
+      qty: Math.abs(Number(x.qty || 0)),
+      user: x.user,
+      invoice_no: x.invoice_no,
+      customer: x.customer,
+      lote: x.lote
+    })));
   } catch (e) {
-    console.error("Error in logs:", e);
+    console.error('Error in logs:', e);
     res.json([]);
   }
 });

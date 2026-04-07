@@ -32,6 +32,7 @@ const contactsData = {
     { name:'单位C', contact:'孙三', phone:'13700000003', city:'苏州', remark:'', owner:'其它', created:'2026/01/03 09:10:00' }
   ]
 };
+let contactsLoaded = false;
 const entryType = document.getElementById('entry-type');
 const entryCategory = document.getElementById('entry-category');
 const entryClient = document.getElementById('entry-client');
@@ -4301,6 +4302,18 @@ async function loadAllContacts() {
     apiContactsList('merchants', '', 1, 5000),
     apiContactsList('others', '', 1, 5000)
   ]);
+  contactsLoaded = true;
+}
+function hasPlaceholderContacts() {
+  return !!(
+    contactsData.customers?.some(x => x.name === '客户A') ||
+    contactsData.merchants?.some(x => x.name === '商家A') ||
+    contactsData.others?.some(x => x.name === '单位A')
+  );
+}
+async function ensureRealContactsLoaded() {
+  if (contactsLoaded && !hasPlaceholderContacts()) return;
+  await loadAllContacts();
 }
 async function apiContactsList(tab, q, page, size) {
   try {
@@ -4317,6 +4330,7 @@ async function apiContactsList(tab, q, page, size) {
       ship_province: x.ship_province, ship_country: x.ship_country,
       ship_phone: x.ship_phone, ship_contact: x.ship_contact
     }));
+    contactsLoaded = true;
   } catch {}
 }
 async function apiContactsCreate(obj) {
@@ -4931,6 +4945,27 @@ let prodSelPage = 1;
 const prodSelPageSize = 50;
 let prodSelTotal = 0;
 
+function getActiveProductSelectorCustomer() {
+  if (editModal && editModal.style.display === 'flex' && currentEditCustomer) return currentEditCustomer;
+  if (currentSoCustomer) return currentSoCustomer;
+  if (!currentSoCustomer && soCustomer?.value) {
+    const all = [
+      ...(contactsData.customers||[]),
+      ...(contactsData.merchants||[]),
+      ...(contactsData.others||[])
+    ];
+    currentSoCustomer = all.find(c => c.name === soCustomer.value);
+    return currentSoCustomer || null;
+  }
+  return null;
+}
+
+function getProductPriceByCustomer(prod, customer) {
+  const tier = customer?.use_price || 'price1';
+  if (prod && prod[tier] !== undefined && prod[tier] !== null && prod[tier] !== '') return Number(prod[tier] || 0);
+  return Number(prod?.price1 || prod?.price || 0);
+}
+
 async function loadProductSelector(page = 1) {
   if (!prodSelList) return;
   prodSelPage = page;
@@ -4959,17 +4994,8 @@ function renderProductSelector(list) {
   
   // Determine customer tier
   let usePrice = 'price1';
-  if (!currentSoCustomer && soCustomer.value) {
-     const all = [
-      ...(contactsData.customers||[]),
-      ...(contactsData.merchants||[]),
-      ...(contactsData.others||[])
-    ];
-    currentSoCustomer = all.find(c => c.name === soCustomer.value);
-  }
-  if (currentSoCustomer && currentSoCustomer.use_price) {
-    usePrice = currentSoCustomer.use_price;
-  }
+  const activeCustomer = getActiveProductSelectorCustomer();
+  if (activeCustomer && activeCustomer.use_price) usePrice = activeCustomer.use_price;
 
   // Create Table Structure
   const table = document.createElement('table');
@@ -5133,6 +5159,7 @@ window.confirmProductSelection = function() {
       window.onProdSelect(p, true); // true indicates it's part of a batch
     });
     prodSelModal.style.display = 'none';
+    if (typeof window.onProdSelectDone === 'function') window.onProdSelectDone(selectedArray);
   } else {
     // Default fallback for Sales Invoice
     selectedArray.forEach(p => {
@@ -5312,9 +5339,77 @@ if (soSave) {
   const invPageSize = 100;
   let currentInvoices = [];
 
+  function normalizeInvoiceCustomerText(text) {
+    return String(text || '')
+      .toLowerCase()
+      .replace(/（[^）]*）/g, '')
+      .replace(/\([^)]*\)/g, '')
+      .replace(/[\s\-.,，。/()（）]/g, '');
+  }
+  function hasCompleteInvoiceCustomerInfo(contact) {
+    if (!contact) return false;
+    return !!(
+      contact.company ||
+      contact.code ||
+      contact.address ||
+      contact.zip ||
+      contact.city ||
+      contact.country ||
+      contact.ship_address ||
+      contact.ship_zip ||
+      contact.ship_city ||
+      contact.ship_country
+    );
+  }
+  function findInvoiceCustomerContact(customerName) {
+    const target = String(customerName || '').trim();
+    const targetKey = normalizeInvoiceCustomerText(target);
+    const allContacts = [
+      ...(contactsData.customers || []),
+      ...(contactsData.merchants || []),
+      ...(contactsData.others || [])
+    ];
+    return allContacts.find(c => {
+      const name = String(c.name || '').trim();
+      const company = String(c.company || '').trim();
+      const nameKey = normalizeInvoiceCustomerText(name);
+      const companyKey = normalizeInvoiceCustomerText(company);
+      return name === target || company === target || (!!targetKey && (nameKey === targetKey || companyKey === targetKey));
+    }) || null;
+  }
+  async function getInvoiceCustomerContact(customerName) {
+    let contact = findInvoiceCustomerContact(customerName);
+    if (hasCompleteInvoiceCustomerInfo(contact)) return contact;
+    const q = String(customerName || '').trim();
+    if (!q) return contact;
+    for (const tab of ['customers', 'merchants', 'others']) {
+      try {
+        const list = await apiFetchJSON('/api/contacts?' + new URLSearchParams({ tab, q, page: '1', size: '50' }).toString());
+        const arr = Array.isArray(list) ? list : [];
+        if (arr.length) {
+          const mapped = arr.map(x => ({
+            id: x.id,
+            name:x.name, contact:x.contact, phone:x.phone, city:x.city, remark:x.remark, owner:x.owner, created:x.created,
+            company:x.company, code:x.code, country:x.country, address:x.address, zip:x.zip, sales:x.sales,
+            use_price: x.use_price, is_iva: x.is_iva,
+            email: x.email, province: x.province,
+            ship_address: x.ship_address, ship_zip: x.ship_zip, ship_city: x.ship_city,
+            ship_province: x.ship_province, ship_country: x.ship_country,
+            ship_phone: x.ship_phone, ship_contact: x.ship_contact
+          }));
+          contactsData[tab] = mapped;
+          contact = findInvoiceCustomerContact(customerName) || contact;
+          if (hasCompleteInvoiceCustomerInfo(contact)) return contact;
+        }
+      } catch {}
+    }
+    return contact;
+  }
+
   async function loadInvoices() {
     if (!invRows) return;
     const q = (invSearch?.value||'').trim();
+    try { await ensureRealContactsLoaded(); } catch {}
     const res = await fetchWithAuth(`/api/invoices?page=${invPage}&size=${invPageSize}&q=${encodeURIComponent(q)}`);
     if (res.ok) {
       const data = await res.json();
@@ -5353,14 +5448,10 @@ if (soSave) {
         const displayDate = x.date || x.invoice_date || '-';
         
         // Find company name
-        let companyName = '-';
-        const all = [
-          ...(contactsData.customers||[]),
-          ...(contactsData.merchants||[]),
-          ...(contactsData.others||[])
-        ];
-        const cust = all.find(c => c.name === displayCustomer);
-        if (cust && cust.company) companyName = cust.company;
+        let companyName = x.company_name || '-';
+        const cust = findInvoiceCustomerContact(displayCustomer);
+        if ((!companyName || companyName === '-') && cust?.company) companyName = cust.company;
+        if ((!companyName || companyName === '-') && displayCustomer && displayCustomer !== '-') companyName = displayCustomer;
         
         const isPaid = (paid >= total && total > 0);
         const editBtn = isPaid 
@@ -5498,6 +5589,7 @@ if (invPrevPrint) {
 window.previewInvoice = async function(id) {
   const inv = currentInvoices.find(x => String(x.id) === String(id));
   if (!inv) return;
+  try { await ensureRealContactsLoaded(); } catch {}
 
   // Load Company Info for Header
   try {
@@ -5527,21 +5619,32 @@ window.previewInvoice = async function(id) {
   // Load Customer Info
   let customerInfoHtml = '';
   try {
-    const allContacts = [
-      ...(contactsData.customers || []),
-      ...(contactsData.merchants || []),
-      ...(contactsData.others || [])
-    ];
-    const cust = allContacts.find(c => c.name === inv.customer);
+    const cust = await getInvoiceCustomerContact(inv.customer);
+    const companyName = inv.company_name || cust?.company || cust?.name || inv.customer || '';
+    const customerCode = inv.customer_code || cust?.code || '';
+    const customerAddress = inv.customer_address || cust?.address || cust?.ship_address || '';
+    const customerZip = inv.customer_zip || cust?.zip || cust?.ship_zip || '';
+    const customerCity = inv.customer_city || cust?.city || cust?.ship_city || '';
+    const customerCountry = inv.customer_country || cust?.country || cust?.ship_country || '';
     if (cust) {
       customerInfoHtml = `
         <div class="customer-label">Facturado a</div>
-        <div style="font-weight:700">${cust.company || cust.name || ''}</div>
-        ${cust.code ? `<div>${cust.code}</div>` : ''}
-        ${cust.address ? `<div>${cust.address}</div>` : ''}
-        ${cust.zip ? `<div>${cust.zip}</div>` : ''}
-        ${cust.city ? `<div>${cust.city}</div>` : ''}
-        ${cust.country ? `<div>${cust.country}</div>` : ''}
+        <div style="font-weight:700">${companyName}</div>
+        ${customerCode ? `<div>${customerCode}</div>` : ''}
+        ${customerAddress ? `<div>${customerAddress}</div>` : ''}
+        ${customerZip ? `<div>${customerZip}</div>` : ''}
+        ${customerCity ? `<div>${customerCity}</div>` : ''}
+        ${customerCountry ? `<div>${customerCountry}</div>` : ''}
+      `;
+    } else if (companyName) {
+      customerInfoHtml = `
+        <div class="customer-label">Facturado a</div>
+        <div style="font-weight:700">${companyName}</div>
+        ${customerCode ? `<div>${customerCode}</div>` : ''}
+        ${customerAddress ? `<div>${customerAddress}</div>` : ''}
+        ${customerZip ? `<div>${customerZip}</div>` : ''}
+        ${customerCity ? `<div>${customerCity}</div>` : ''}
+        ${customerCountry ? `<div>${customerCountry}</div>` : ''}
       `;
     } else {
        customerInfoHtml = `
@@ -5886,7 +5989,7 @@ function addEditItem(p = {}) {
   tr.dataset.sku = p.sku || '';
   
   const qty = Number(p.qty) || 0;
-  const price = Number(p.price) || 0;
+  const price = p.price !== undefined && p.price !== null && p.price !== '' ? Number(p.price) : getProductPriceByCustomer(p, currentEditCustomer);
   const taxAmt = qty * price * taxRate;
   const total = qty * price; // Excl tax in row total display usually, or incl? 
   // In sales order table: "金额" column usually is total without tax or with? 
@@ -5925,7 +6028,22 @@ function addEditItem(p = {}) {
 
 if (editAddItem) {
   editAddItem.addEventListener('click', () => {
-    addEditItem({ name:'', description:'', qty:1, price:0 });
+    if (!editCustomer.value.trim()) {
+      alert('请先选择客户');
+      return;
+    }
+    window.onProdSelect = (p) => {
+      addEditItem({
+        ...p,
+        qty: 1,
+        price: getProductPriceByCustomer(p, currentEditCustomer),
+        description: p.spec || p.description || ''
+      });
+    };
+    window.selectedProducts.clear();
+    prodSelModal.style.display = 'flex';
+    prodSelSearch.value = '';
+    loadProductSelector();
   });
 }
 
@@ -6963,7 +7081,7 @@ async function handleRoute() {
   else if (hash === 'finished-stock') {
     if (!ensureView('finished_stock')) return;
     document.getElementById('page-finished-stock').style.display = 'block';
-    loadFinishedStock();
+    switchFinishedStockTab('stock');
   }
   else if (hash === 'raw-stock') {
     if (!ensureView('raw_stock')) return;
@@ -8026,6 +8144,36 @@ async function confirmShip(id) {
 let fsPage = 1;
 const fsPageSize = 50;
 let fsTotal = 0;
+let fsCurrentTab = 'stock';
+let fsRecordPage = 1;
+const fsRecordPageSize = 100;
+let fsRecordTotal = 0;
+
+function renderLoteLines(loteValue = '') {
+  const raw = String(loteValue || '').trim();
+  if (!raw) return '-';
+  const parts = raw.split(',').map(x => x.trim()).filter(Boolean);
+  if (parts.length === 0) return '-';
+  return `<div style="display:flex; flex-direction:column; gap:4px">` + parts.map(x => `<div>${x}</div>`).join('') + `</div>`;
+}
+
+function switchFinishedStockTab(tab, btn) {
+  fsCurrentTab = tab === 'records' ? 'records' : 'stock';
+  const stockPanel = document.getElementById('fs-stock-panel');
+  const recordPanel = document.getElementById('fs-records-panel');
+  const stockToolbar = document.getElementById('fs-stock-toolbar');
+  if (stockPanel) stockPanel.style.display = fsCurrentTab === 'stock' ? 'block' : 'none';
+  if (recordPanel) recordPanel.style.display = fsCurrentTab === 'records' ? 'block' : 'none';
+  if (stockToolbar) stockToolbar.style.display = fsCurrentTab === 'stock' ? 'flex' : 'none';
+  document.querySelectorAll('#page-finished-stock .tab').forEach(el => el.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  else {
+    const activeBtn = document.getElementById(fsCurrentTab === 'stock' ? 'fs-tab-stock' : 'fs-tab-records');
+    if (activeBtn) activeBtn.classList.add('active');
+  }
+  if (fsCurrentTab === 'stock') loadFinishedStock(1);
+  else loadFinishedStockRecords(1);
+}
 
 async function loadFinishedStock(page = 1) {
   fsPage = page;
@@ -8046,13 +8194,20 @@ async function loadFinishedStock(page = 1) {
   }
   
   tbody.innerHTML = list.map((p, idx) => {
-    let stockHtml = p.total_stock;
+    const totalStock = Number(p.total_stock || 0);
+    let stockHtml = totalStock;
     let expiryHtml = '-';
     let loteHtml = '-';
     if (p.batches && p.batches.length > 0) {
-      stockHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + p.batches.map(b => `<div>${b.qty}</div>`).join('') + `</div>`;
-      expiryHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + p.batches.map(b => `<div>${b.expiry}</div>`).join('') + `</div>`;
-      loteHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + p.batches.map(b => {
+      const batchQtySum = p.batches.reduce((sum, b) => sum + Number(b.qty || 0), 0);
+      const remainderQty = totalStock - batchQtySum;
+      const displayBatches = [...p.batches];
+      if (remainderQty !== 0) {
+        displayBatches.push({ qty: remainderQty, expiry: '-', lote: '' });
+      }
+      stockHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => `<div>${b.qty}</div>`).join('') + `</div>`;
+      expiryHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => `<div>${b.expiry || '-'}</div>`).join('') + `</div>`;
+      loteHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => {
         let l = b.lote || '-';
         if (l !== '-') {
           const parts = l.split('-');
@@ -8064,7 +8219,7 @@ async function loadFinishedStock(page = 1) {
     return `
     <tr>
       <td>${fsTotal - (fsPage - 1) * fsPageSize - idx}</td>
-      <td style="padding:0; width:50px; height:50px">${p.image ? `<img src="${p.image}" class="thumb-img" onclick="showFileViewer('${p.image}')" style="width:100%; height:100%; object-fit:contain; display:block">` : ''}</td>
+      <td style="padding:8px; width:60px; height:60px; text-align:center">${p.image ? `<img src="${p.image}" class="thumb-img" onclick="showFileViewer('${p.image}')" style="width:44px; height:44px; object-fit:contain; display:inline-block; vertical-align:middle">` : ''}</td>
       <td>${p.sku || ''}</td>
       <td>${p.name}</td>
       <td>${p.name_cn || ''}</td>
@@ -8079,6 +8234,49 @@ async function loadFinishedStock(page = 1) {
   }).join('');
   
   renderFsPager();
+}
+
+async function loadFinishedStockRecords(page = 1) {
+  fsRecordPage = page;
+  const tbody = document.getElementById('finished-stock-record-rows');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="10" class="empty">加载中...</td></tr>';
+  try {
+    const res = await fetchWithAuth(`/api/inventory/finished/logs?page=${fsRecordPage}&size=${fsRecordPageSize}`);
+    if (!res.ok) throw new Error('Failed to load finished stock records');
+    const data = await res.json();
+    const list = data.list || [];
+    fsRecordTotal = data.total || 0;
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="10" class="empty">暂无记录</td></tr>';
+      renderFsRecordPager();
+      return;
+    }
+    tbody.innerHTML = list.map((row, idx) => {
+      const d = new Date(Number(row.date || 0));
+      const dateStr = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const qty = Number(row.qty || 0);
+      const qtyColor = qty >= 0 ? '#10b981' : '#f97316';
+      return `
+        <tr>
+          <td>${fsRecordTotal - (fsRecordPage - 1) * fsRecordPageSize - idx}</td>
+          <td>${row.sku || ''}</td>
+          <td>${row.name || ''}</td>
+          <td>${row.name_cn || ''}</td>
+          <td>${dateStr}</td>
+          <td>${row.invoice_no || '-'}</td>
+          <td>${row.customer || '-'}</td>
+          <td style="text-align:right; color:${qtyColor}; font-weight:600">${qty > 0 ? '+' : ''}${qty}</td>
+          <td>${renderLoteLines(row.lote)}</td>
+          <td>${row.user || '-'}</td>
+        </tr>
+      `;
+    }).join('');
+    renderFsRecordPager();
+  } catch (e) {
+    console.error(e);
+    tbody.innerHTML = '<tr><td colspan="10" class="empty" style="color:#ef4444">加载失败</td></tr>';
+  }
 }
 
 function renderFsPager() {
@@ -8096,10 +8294,26 @@ function renderFsPager() {
     <button class="btn-secondary" ${fsPage >= totalPages ? 'disabled' : ''} onclick="loadFinishedStock(${fsPage + 1})">下一页</button>
   `;
 }
+
+function renderFsRecordPager() {
+  const pager = document.getElementById('fs-record-pager');
+  if (!pager) return;
+  const totalPages = Math.ceil(fsRecordTotal / fsRecordPageSize);
+  if (totalPages <= 1) {
+    pager.style.display = 'none';
+    return;
+  }
+  pager.style.display = 'flex';
+  pager.innerHTML = `
+    <button class="btn-secondary" ${fsRecordPage <= 1 ? 'disabled' : ''} onclick="loadFinishedStockRecords(${fsRecordPage - 1})">上一页</button>
+    <span style="font-size:14px; color:#cbd5e1">第 ${fsRecordPage} / ${totalPages} 页</span>
+    <button class="btn-secondary" ${fsRecordPage >= totalPages ? 'disabled' : ''} onclick="loadFinishedStockRecords(${fsRecordPage + 1})">下一页</button>
+  `;
+}
 async function loadStockHistory(id) {
   const tbody = document.getElementById('stock-history-rows');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8">加载中...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8">加载中...</td></tr>';
   
   try {
     const res = await fetchWithAuth(`/api/inventory/finished/${id}/logs`);
@@ -8107,7 +8321,7 @@ async function loadStockHistory(id) {
     const logs = await res.json();
     
     if (logs.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8">暂无记录</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8">暂无记录</td></tr>';
       return;
     }
     
@@ -8118,11 +8332,17 @@ async function loadStockHistory(id) {
       const d = new Date(log.date);
       const dateStr = `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
       const user = log.user || '-';
+      const invoiceNo = log.invoice_no || '-';
+      const customer = log.customer || '-';
+      const lote = log.lote || '-';
       
       return `
         <tr style="color:${color}">
           <td>${logs.length - i}</td>
           <td>${dateStr}</td>
+          <td>${invoiceNo}</td>
+          <td>${customer}</td>
+          <td>${lote}</td>
           <td>${isIn ? '+' : '-'}${log.qty}</td>
           <td>${typeLabel}</td>
           <td>${user}</td>
@@ -8132,18 +8352,23 @@ async function loadStockHistory(id) {
     
   } catch (e) {
     console.error(e);
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#ef4444">加载失败</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:#ef4444">加载失败</td></tr>';
   }
 }
 let fsItems = [];
 
-function openFinishedStockModal() {
+function openFinishedStockModal(resetItems = true) {
   const m = document.getElementById('fs-add-modal');
   if (m) {
     m.style.display = 'flex';
-    fsItems = [];
+    if (resetItems) fsItems = [];
     renderFsItems();
   }
+}
+function startFinishedStockAdd() {
+  fsItems = [];
+  renderFsItems();
+  openFsProdSelector();
 }
 
 function renderFsItems() {
@@ -8213,7 +8438,9 @@ function openFsProdSelector() {
   const m = document.getElementById('prod-selector-modal');
   if (m) {
     window.selectedProducts.clear();
+    window.onProdSelectDone = null;
     m.style.display = 'flex';
+    prodSelSearch.value = '';
     loadProductSelector(1);
     window.onProdSelect = function(prod, isBatch) {
       if (!fsItems.some(i => i.productId === prod.id)) {
@@ -8238,7 +8465,13 @@ function openFsProdSelector() {
         });
         renderFsItems();
       }
-      if (!isBatch) m.style.display = 'none';
+      if (!isBatch) {
+        m.style.display = 'none';
+        openFinishedStockModal(false);
+      }
+    };
+    window.onProdSelectDone = function() {
+      openFinishedStockModal(false);
     };
   }
 }
