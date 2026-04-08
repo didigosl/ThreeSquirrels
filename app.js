@@ -3969,15 +3969,18 @@ function renderUserAccounts() {
     btn.addEventListener('click', async () => { u.enabled = !u.enabled; await apiUserUpdate(u.id, { role: u.role, enabled: u.enabled }); renderUserAccounts(); saveJSON('userAccounts', userAccounts); });
     sw.appendChild(btn); tdStatus.appendChild(sw); tr.appendChild(tdStatus);
     const tdOps = document.createElement('td');
-    const reset = document.createElement('a'); reset.href='#'; reset.textContent='重置密码'; reset.className='link-blue';
-    reset.addEventListener('click', e => {
-      e.preventDefault();
-      pendingResetUser = u;
-      const np = u.name === 'aaaaaa' ? '999000' : '111111';
-      resetMsg.textContent = `已经将帐号 ${u.name} 密码重置，重置后密码为“${np}”`;
-      resetModal.style.display = 'flex';
-    });
-    tdOps.appendChild(reset);
+    if (u.name === 'aaaaaa') {
+      tdOps.textContent = '请使用修改密码';
+    } else {
+      const reset = document.createElement('a'); reset.href='#'; reset.textContent='重置密码'; reset.className='link-blue';
+      reset.addEventListener('click', e => {
+        e.preventDefault();
+        pendingResetUser = u;
+        resetMsg.textContent = `已经将帐号 ${u.name} 密码重置，重置后密码为“111111”`;
+        resetModal.style.display = 'flex';
+      });
+      tdOps.appendChild(reset);
+    }
     if (u.id !== 1) {
       const del = document.createElement('a'); del.href='#'; del.textContent='删除'; del.className='link-red'; del.style.marginLeft='8px';
       del.addEventListener('click', async e => {
@@ -4465,8 +4468,7 @@ resetCancel?.addEventListener('click', () => {
 });
 resetOk?.addEventListener('click', async () => {
   if (pendingResetUser) {
-    const np = pendingResetUser.name === 'aaaaaa' ? '999000' : '111111';
-    await apiUserResetPassword(pendingResetUser.id, np);
+    await apiUserResetPassword(pendingResetUser.id, '111111');
     await apiUsersList();
     apiUsersList().then(() => renderUserAccounts());
   }

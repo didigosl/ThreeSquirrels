@@ -560,6 +560,21 @@ function verifyJwt(token) {
     return payload;
   } catch { return null; }
 }
+const SUPERADMIN_NAME = 'aaaaaa';
+const DEFAULT_USER_PASSWORD = '111111';
+const SUPERADMIN_BOOTSTRAP_PASSWORD = process.env.SUPERADMIN_BOOTSTRAP_PASSWORD || SUPERADMIN_NAME;
+
+function getStoredPasswords(user) {
+  const vals = [user?.password, user?.password_hash]
+    .map(x => String(x || '').trim())
+    .filter(Boolean);
+  return Array.from(new Set(vals));
+}
+
+async function syncUserPasswordFields(userId, password) {
+  await query('update users set password=$1, password_hash=$1 where id=$2', [String(password || ''), Number(userId || 0)]);
+}
+
 async function ensureDefaults() {
   const now = new Date().toISOString().slice(0,19).replace('T',' ');
   
@@ -579,13 +594,13 @@ async function ensureDefaults() {
     }
   }
 
-  const u = await query('select count(*)::int as c from users where name=$1', ['aaaaaa']);
+  const u = await query('select count(*)::int as c from users where name=$1', [SUPERADMIN_NAME]);
   if (u.rows[0].c === 0) {
     console.log('Inserting missing user: aaaaaa');
-    await query('insert into users(name, role, created, enabled, password) values($1,$2,$3,true,$4)', ['aaaaaa','超级管理员', now, '999000']);
+    await query('insert into users(name, role, created, enabled, password) values($1,$2,$3,true,$4)', [SUPERADMIN_NAME,'超级管理员', now, SUPERADMIN_BOOTSTRAP_PASSWORD]);
   }
-  await query("update users set enabled=true where name=$1 and enabled is null", ['aaaaaa']);
-  await query("update users set password_hash=password where name=$1 and (password_hash is null or password_hash='')", ['aaaaaa']);
+  await query("update users set enabled=true where name=$1 and enabled is null", [SUPERADMIN_NAME]);
+  await query("update users set password_hash=password where name=$1 and (password_hash is null or password_hash='')", [SUPERADMIN_NAME]);
   
   // Seed default users if missing
   const u2 = await query('select count(*)::int as c from users where name=$1', ['shuangqun']);
@@ -708,8 +723,12 @@ app.post('/api/auth/login', async (req, res) => {
   const { name='', password='' } = req.body || {};
   const r = await query('select name, role, enabled, password, password_hash from users where name=$1', [name]);
   const u = r.rows[0];
-  const stored = (u?.password && String(u.password)) || (u?.password_hash && String(u.password_hash)) || '';
-  if (!u || !u.enabled || stored !== String(password||'')) return res.status(401).json({ error:'bad_credentials' });
+  const inputPassword = String(password || '');
+  const storedPasswords = getStoredPasswords(u);
+  if (!u || !u.enabled || !storedPasswords.includes(inputPassword)) return res.status(401).json({ error:'bad_credentials' });
+  if (storedPasswords.length > 1 || String(u?.password || '') !== inputPassword || String(u?.password_hash || '') !== inputPassword) {
+    await syncUserPasswordFields(u.id, inputPassword);
+  }
   const token = signJwt({ name: u.name, role: u.role||'' }, 24*3600);
   res.json({ token, user: { name: u.name, role: u.role||'' } });
 });
@@ -720,9 +739,8 @@ app.post('/api/users/change-password', authRequired, async (req, res) => {
   const r = await query('select id, password, password_hash from users where name=$1', [name]);
   const u = r.rows[0];
   if (!u) return res.status(404).json({ error:'not_found' });
-  const stored = (u?.password && String(u.password)) || (u?.password_hash && String(u.password_hash)) || '';
-  if (stored !== String(oldPassword)) return res.status(401).json({ error:'bad_credentials' });
-  await query('update users set password=$1, password_hash=$1 where id=$2', [String(newPassword), Number(u.id||0)]);
+  if (!getStoredPasswords(u).includes(String(oldPassword))) return res.status(401).json({ error:'bad_credentials' });
+  await syncUserPasswordFields(u.id, newPassword);
   res.json({ ok: true });
 });
 app.get('/api/auth/me', authRequired, async (req, res) => {
@@ -1248,8 +1266,12 @@ app.put('/api/users/:id', authRequired, ensureAllow('user_accounts','enable_user
 });
 app.post('/api/users/:id/reset-password', authRequired, ensureAllow('user_accounts','reset_password'), async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
-  const { password = '111111' } = req.body || {};
-  await query('update users set password=$1, password_hash=$1 where id=$2', [password, id]);
+  const r = await query('select id, name from users where id=$1', [id]);
+  const u = r.rows[0];
+  if (!u) return res.status(404).json({ error:'not_found' });
+  if (u.name === SUPERADMIN_NAME) return res.status(403).json({ error:'protected_account' });
+  const { password = DEFAULT_USER_PASSWORD } = req.body || {};
+  await syncUserPasswordFields(u.id, password);
   res.json({ ok: true });
 });
 

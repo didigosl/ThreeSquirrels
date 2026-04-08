@@ -154,7 +154,16 @@
           const timer = setTimeout(() => ctl.abort(), 8000);
           const r = await fetch(API_BASE + '/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, password: pass }), signal: ctl.signal });
           clearTimeout(timer);
-          if (!r.ok) { err.textContent = `账号或密码错误（当前账号：${name}）`; err.style.display = 'block'; return; }
+          if (!r.ok) {
+            const rem = JSON.parse(localStorage.getItem('rememberedUser')||'{}');
+            if (rem.name === name) {
+              localStorage.removeItem('rememberedUser');
+              def.checked = false;
+            }
+            err.textContent = `账号或密码错误（当前账号：${name}）`;
+            err.style.display = 'block';
+            return;
+          }
           authData = await r.json();
           if (!authData || !authData.token || !authData.user) { err.textContent = `账号或密码错误（当前账号：${name}）`; err.style.display = 'block'; return; }
           localStorage.setItem('authToken', authData.token);
