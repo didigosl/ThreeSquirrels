@@ -3070,6 +3070,7 @@ function fillContactsForm(r) {
   document.getElementById('ct-ship-country').value = r.ship_country || '';
   document.getElementById('ct-ship-phone').value = r.ship_phone || '';
   document.getElementById('ct-ship-contact').value = r.ship_contact || '';
+  document.getElementById('ct-invoice-nota').value = r.invoice_nota || '';
   const ctShipSame = document.getElementById('ct-ship-same');
   if (ctShipSame) {
     const sAddr = r.ship_address || '';
@@ -3111,7 +3112,7 @@ function clearContactsForm() {
   tempContactNotes = [];
   editingNoteId = null;
   document.getElementById('ct-id').value = '';
-  ['ct-name','ct-company','ct-code','ct-contact','ct-phone','ct-country','ct-address','ct-zip','ct-city','ct-remark','ct-email','ct-province','ct-ship-address','ct-ship-zip','ct-ship-city','ct-ship-province','ct-ship-country','ct-ship-phone','ct-ship-contact'].forEach(id => {
+  ['ct-name','ct-company','ct-code','ct-contact','ct-phone','ct-country','ct-address','ct-zip','ct-city','ct-remark','ct-email','ct-province','ct-ship-address','ct-ship-zip','ct-ship-city','ct-ship-province','ct-ship-country','ct-ship-phone','ct-ship-contact','ct-invoice-nota'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
@@ -3283,6 +3284,7 @@ ctForm?.addEventListener('submit', async e => {
   const zip = document.getElementById('ct-zip').value.trim();
   const city = document.getElementById('ct-city').value.trim();
   const remark = document.getElementById('ct-remark').value.trim();
+  const invoice_nota = (document.getElementById('ct-invoice-nota')?.value || '').trim();
   const email = (document.getElementById('ct-email')?.value || '').trim();
   const province = (document.getElementById('ct-province')?.value || '').trim();
   const ship_address = (document.getElementById('ct-ship-address')?.value || '').trim();
@@ -3320,50 +3322,58 @@ ctForm?.addEventListener('submit', async e => {
 
   if (!isValid) return;
 
-  if (editingIndex !== null) {
-    const target = contactsData[editingTab][editingIndex];
-    target.name = name;
-    target.company = company;
-    target.code = code;
-    target.contact = contact;
-    target.phone = phone;
-    target.country = country;
-    target.address = address;
-    target.zip = zip;
-    target.city = city;
-    target.remark = remark;
-    target.sales = sales || '';
-    target.use_price = use_price;
-    target.is_iva = is_iva;
-    target.email = email;
-    target.province = province;
-    target.ship_address = ship_address;
-    target.ship_zip = ship_zip;
-    target.ship_city = ship_city;
-    target.ship_province = ship_province;
-    target.ship_country = ship_country;
-    target.ship_phone = ship_phone;
-    target.ship_contact = ship_contact;
-    editingIndex = null;
-    editingTab = null;
-    ctSubmitBtn.textContent = '保存';
-    const id = document.getElementById('ct-id').value;
-    await apiContactsUpdateById(id, { name, company, code, contact, phone, city, remark, owner: contactsTab==='customers'?'客户':contactsTab==='merchants'?'商家':'其它', country, address, zip, sales: sales||'', use_price, is_iva, email, province, ship_address, ship_zip, ship_city, ship_province, ship_country, ship_phone, ship_contact });
-  } else {
-    const now = new Date();
-    const created = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-    contactsData[contactsTab].push({ name, contact, phone, city, remark, owner: contactsTab==='customers'?'客户':contactsTab==='merchants'?'商家':'其它', created, company, code, country, address, zip, sales: sales || '', use_price, is_iva, email, province, ship_address, ship_zip, ship_city, ship_province, ship_country, ship_phone, ship_contact });
-    const newId = await apiContactsCreate({ name, contact, phone, city, remark, owner: contactsTab==='customers'?'客户':contactsTab==='merchants'?'商家':'其它', created, company, code, country, address, zip, sales: sales || '', use_price, is_iva, email, province, ship_address, ship_zip, ship_city, ship_province, ship_country, ship_phone, ship_contact });
-
-    if (newId && tempContactNotes.length > 0) {
-      for (const n of tempContactNotes) {
-        await apiFetchJSON(`/api/contacts/${newId}/notes`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ note: n.note })
-        });
+  try {
+    if (editingIndex !== null) {
+      const target = contactsData[editingTab]?.[editingIndex];
+      const id = document.getElementById('ct-id').value;
+      await apiContactsUpdateById(id, { name, company, code, contact, phone, city, remark, invoice_nota, owner: contactsTab==='customers'?'客户':contactsTab==='merchants'?'商家':'其它', country, address, zip, sales: sales||'', use_price, is_iva, email, province, ship_address, ship_zip, ship_city, ship_province, ship_country, ship_phone, ship_contact });
+      if (target) {
+        target.name = name;
+        target.company = company;
+        target.code = code;
+        target.contact = contact;
+        target.phone = phone;
+        target.country = country;
+        target.address = address;
+        target.zip = zip;
+        target.city = city;
+        target.remark = remark;
+        target.invoice_nota = invoice_nota;
+        target.sales = sales || '';
+        target.use_price = use_price;
+        target.is_iva = is_iva;
+        target.email = email;
+        target.province = province;
+        target.ship_address = ship_address;
+        target.ship_zip = ship_zip;
+        target.ship_city = ship_city;
+        target.ship_province = ship_province;
+        target.ship_country = ship_country;
+        target.ship_phone = ship_phone;
+        target.ship_contact = ship_contact;
+      }
+      editingIndex = null;
+      editingTab = null;
+      ctSubmitBtn.textContent = '保存';
+    } else {
+      const now = new Date();
+      const created = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+      const newContact = { name, contact, phone, city, remark, invoice_nota, owner: contactsTab==='customers'?'客户':contactsTab==='merchants'?'商家':'其它', created, company, code, country, address, zip, sales: sales || '', use_price, is_iva, email, province, ship_address, ship_zip, ship_city, ship_province, ship_country, ship_phone, ship_contact };
+      const newId = await apiContactsCreate(newContact);
+      contactsData[contactsTab].push(newContact);
+      if (newId && tempContactNotes.length > 0) {
+        for (const n of tempContactNotes) {
+          await apiFetchJSON(`/api/contacts/${newId}/notes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ note: n.note })
+          });
+        }
       }
     }
+  } catch {
+    alert('保存失败，请刷新后重试');
+    return;
   }
   clearContactsForm();
   if (ctModal) ctModal.style.display = 'none';
@@ -4328,6 +4338,7 @@ async function apiContactsList(tab, q, page, size) {
       name:x.name, contact:x.contact, phone:x.phone, city:x.city, remark:x.remark, owner:x.owner, created:x.created,
       company:x.company, code:x.code, country:x.country, address:x.address, zip:x.zip, sales:x.sales,
       use_price: x.use_price, is_iva: x.is_iva,
+      invoice_nota: x.invoice_nota,
       email: x.email, province: x.province,
       ship_address: x.ship_address, ship_zip: x.ship_zip, ship_city: x.ship_city,
       ship_province: x.ship_province, ship_country: x.ship_country,
@@ -4337,15 +4348,11 @@ async function apiContactsList(tab, q, page, size) {
   } catch {}
 }
 async function apiContactsCreate(obj) {
-  try {
-    const r = await apiFetchJSON('/api/contacts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(obj) });
-    return r.id;
-  } catch { return null; }
+  const r = await apiFetchJSON('/api/contacts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(obj) });
+  return r.id;
 }
 async function apiContactsUpdateById(id, obj) {
-  try {
-    await apiFetchJSON('/api/contacts/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(obj) });
-  } catch {}
+  await apiFetchJSON('/api/contacts/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(obj) });
 }
 async function apiContactsDeleteByName(owner, name) {
   try {
@@ -5374,9 +5381,11 @@ if (soSave) {
     return allContacts.find(c => {
       const name = String(c.name || '').trim();
       const company = String(c.company || '').trim();
+      const code = String(c.code || '').trim();
       const nameKey = normalizeInvoiceCustomerText(name);
       const companyKey = normalizeInvoiceCustomerText(company);
-      return name === target || company === target || (!!targetKey && (nameKey === targetKey || companyKey === targetKey));
+      const codeKey = normalizeInvoiceCustomerText(code);
+      return name === target || company === target || code === target || (!!targetKey && (nameKey === targetKey || companyKey === targetKey || codeKey === targetKey));
     }) || null;
   }
   async function getInvoiceCustomerContact(customerName) {
@@ -5394,6 +5403,7 @@ if (soSave) {
             name:x.name, contact:x.contact, phone:x.phone, city:x.city, remark:x.remark, owner:x.owner, created:x.created,
             company:x.company, code:x.code, country:x.country, address:x.address, zip:x.zip, sales:x.sales,
             use_price: x.use_price, is_iva: x.is_iva,
+            invoice_nota: x.invoice_nota,
             email: x.email, province: x.province,
             ship_address: x.ship_address, ship_zip: x.ship_zip, ship_city: x.ship_city,
             ship_province: x.ship_province, ship_country: x.ship_country,
@@ -5588,10 +5598,55 @@ if (invPrevPrint) {
   });
 }
 
+function normalizeInvoicePreviewText(text) {
+  return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
+function splitInvoiceDescriptionAndLote(text) {
+  const desc = normalizeInvoicePreviewText(text);
+  const match = desc.match(/^(.*?)(?:\s+)?Lote[:：]\s*([^\s]+)\s*$/i);
+  if (!match) return { baseDesc: desc, lote: '' };
+  return {
+    baseDesc: normalizeInvoicePreviewText(match[1]),
+    lote: normalizeInvoicePreviewText(match[2])
+  };
+}
+
+function mergeInvoicePreviewItems(items) {
+  const merged = [];
+  const map = new Map();
+  (Array.isArray(items) ? items : []).forEach(item => {
+    const name = normalizeInvoicePreviewText(item?.name);
+    const { baseDesc, lote } = splitInvoiceDescriptionAndLote(item?.description);
+    let taxRate = Number(item?.tax_rate);
+    if (isNaN(taxRate) || item?.tax_rate === undefined || item?.tax_rate === null || item?.tax_rate === '') taxRate = 0.10;
+    if (taxRate >= 1) taxRate = taxRate / 100;
+    const price = Number(item?.price || 0);
+    const key = [name, baseDesc, lote, price.toFixed(6), taxRate.toFixed(6)].join('||');
+    if (!map.has(key)) {
+      const mergedItem = {
+        ...item,
+        name,
+        description: [baseDesc, lote ? `Lote:${lote}` : ''].filter(Boolean).join(' '),
+        qty: Number(item?.qty || 0),
+        price,
+        tax_rate: taxRate
+      };
+      map.set(key, mergedItem);
+      merged.push(mergedItem);
+      return;
+    }
+    const target = map.get(key);
+    target.qty = Number(target.qty || 0) + Number(item?.qty || 0);
+  });
+  return merged;
+}
+
 window.previewInvoice = async function(id) {
   const inv = currentInvoices.find(x => String(x.id) === String(id));
   if (!inv) return;
   try { await ensureRealContactsLoaded(); } catch {}
+  let invoiceCustomer = null;
 
   // Load Company Info for Header
   try {
@@ -5622,6 +5677,7 @@ window.previewInvoice = async function(id) {
   let customerInfoHtml = '';
   try {
     const cust = await getInvoiceCustomerContact(inv.customer);
+    invoiceCustomer = cust;
     const companyName = inv.company_name || cust?.company || cust?.name || inv.customer || '';
     const customerCode = inv.customer_code || cust?.code || '';
     const customerAddress = inv.customer_address || cust?.address || cust?.ship_address || '';
@@ -5699,11 +5755,12 @@ window.previewInvoice = async function(id) {
   const prevSalesEl = document.getElementById('prev-sales');
   if (prevSalesEl) prevSalesEl.textContent = inv.sales || '';
 
-  document.getElementById('prev-notes').textContent = inv.notes||'';
+  document.getElementById('prev-notes').textContent = invoiceCustomer?.invoice_nota || inv.notes || '';
   
   const tbody = document.getElementById('prev-items');
   tbody.innerHTML = '';
-  const items = Array.isArray(inv.items) ? inv.items : (typeof inv.items === 'string' ? JSON.parse(inv.items) : []);
+  const rawItems = Array.isArray(inv.items) ? inv.items : (typeof inv.items === 'string' ? JSON.parse(inv.items) : []);
+  const items = mergeInvoicePreviewItems(rawItems);
   
   let subtotal = 0;
   let taxDetails = {}; // key: tax rate, value: tax amount
@@ -5716,14 +5773,7 @@ window.previewInvoice = async function(id) {
     // Let's assume item has tax_rate property. If not, maybe default 0 or check if user set it?
     // For now, let's look for tax_rate in item.
     let taxRate = Number(item.tax_rate);
-    // Modified: If taxRate is not a number or 0, we check if it was explicitly set to 0.
-    // If it's undefined/null/NaN, default to 0.10 (10%) based on user feedback "这个产品的税率是 10%".
-    // But we should ideally read from product.
-    // For now, let's assume if tax_rate is missing, it is 0.10 (10%).
-    if (isNaN(taxRate) || item.tax_rate === undefined || item.tax_rate === null || item.tax_rate === '') {
-      taxRate = 0.10;
-    }
-    // Fix: if taxRate is percentage integer (e.g. 10, 21), convert to decimal
+    if (isNaN(taxRate) || item.tax_rate === undefined || item.tax_rate === null || item.tax_rate === '') taxRate = 0.10;
     if (taxRate >= 1) taxRate = taxRate / 100;
     
     // If taxRate is 0, we don't show tax for this line? 
@@ -6702,6 +6752,245 @@ const shipContent = document.getElementById('ship-content');
 const shipPrevPrint = document.getElementById('ship-prev-print');
 const shipPrevClose = document.getElementById('ship-prev-close');
 let currentShippingInvId = null;
+let shippingPrintPageStyle = null;
+let shippingPrintFrame = null;
+
+function setShippingPrintPage(enabled) {
+  if (enabled) {
+    if (shippingPrintPageStyle) return;
+    shippingPrintPageStyle = document.createElement('style');
+    shippingPrintPageStyle.id = 'shipping-print-page-style';
+    shippingPrintPageStyle.textContent = '@media print { @page { size: A4 landscape; margin: 0; } html, body { width: 297mm !important; height: 210mm !important; } }';
+    document.head.appendChild(shippingPrintPageStyle);
+    return;
+  }
+  if (shippingPrintPageStyle) {
+    shippingPrintPageStyle.remove();
+    shippingPrintPageStyle = null;
+  }
+}
+
+function fitShippingText(element, maxFontSize, minFontSize, maxLines) {
+  if (!element) return;
+  element.style.fontSize = `${maxFontSize}px`;
+  const fits = fontSize => {
+    const lineHeight = parseFloat(getComputedStyle(element).lineHeight) || fontSize * 1.1;
+    const maxHeight = lineHeight * maxLines + 2;
+    return element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= maxHeight;
+  };
+  for (let size = maxFontSize; size >= minFontSize; size -= 1) {
+    element.style.fontSize = `${size}px`;
+    if (fits(size)) return;
+  }
+  element.style.fontSize = `${minFontSize}px`;
+}
+
+function fitShippingLabel() {
+  const paper = document.getElementById('shipping-paper');
+  if (!paper || !shipContent) return;
+  const addressEl = shipContent.querySelector('.s-address');
+  const cityEl = shipContent.querySelector('.s-city');
+  const metaEls = Array.from(shipContent.querySelectorAll('.s-meta'));
+  const phoneEl = shipContent.querySelector('.s-phone');
+  const contactEl = shipContent.querySelector('.s-contact');
+  fitShippingText(addressEl, 72, 36, 4);
+  fitShippingText(cityEl, 58, 34, 2);
+  metaEls.forEach(el => fitShippingText(el, 40, 24, 2));
+  fitShippingText(phoneEl, 58, 28, 2);
+  fitShippingText(contactEl, 30, 18, 3);
+}
+
+function buildShippingPrintHtml(invNo) {
+  const contentHtml = shipContent ? shipContent.innerHTML : '';
+  const safeTitle = `Etiqueta-${invNo}`.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${safeTitle}</title>
+  <style>
+    @page { size: 297mm 210mm; margin: 0; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 297mm;
+      height: 210mm;
+      overflow: hidden;
+      background: #fff;
+      color: #000;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+    body {
+      display: flex;
+      align-items: stretch;
+      justify-content: stretch;
+    }
+    .shipping-paper {
+      background: #fff;
+      color: #000;
+      width: 297mm;
+      height: 210mm;
+      padding: 14mm 16mm 12mm;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      position: relative;
+      box-sizing: border-box;
+      overflow: hidden;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .shipping-paper .s-block {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .shipping-paper .s-address {
+      font-size: 72px;
+      font-weight: 800;
+      line-height: 1.08;
+      margin-bottom: 12px;
+      text-transform: lowercase;
+      min-height: 3.3em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .shipping-paper .s-city {
+      font-size: 58px;
+      font-weight: 800;
+      margin-bottom: 24px;
+      text-transform: uppercase;
+      line-height: 1.06;
+      min-height: 2.2em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .shipping-paper .s-meta {
+      font-size: 40px;
+      margin-bottom: 14px;
+      font-weight: 400;
+      line-height: 1.1;
+      min-height: 2.2em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .shipping-paper .s-footer {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      margin-top: auto;
+      align-items: flex-end;
+      gap: 18mm;
+      box-sizing: border-box;
+    }
+    .shipping-paper .s-phone {
+      font-size: 58px;
+      font-weight: 800;
+      line-height: 1.03;
+      flex: 1;
+      text-align: left;
+      min-height: 2.1em;
+      display: flex;
+      align-items: flex-end;
+    }
+    .shipping-paper .s-contact {
+      font-size: 30px;
+      text-align: right;
+      line-height: 1.15;
+      width: 34%;
+      min-height: 2.3em;
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-end;
+    }
+  </style>
+</head>
+<body>
+  <div class="shipping-paper">
+    <div id="ship-print-content" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center">${contentHtml}</div>
+  </div>
+  <script>
+    (function() {
+      function fitShippingElement(element, maxFontSize, minFontSize, maxLines) {
+        if (!element) return;
+        element.style.fontSize = maxFontSize + 'px';
+        function fits() {
+          var style = window.getComputedStyle(element);
+          var lineHeight = parseFloat(style.lineHeight) || (parseFloat(element.style.fontSize) || maxFontSize) * 1.1;
+          var maxHeight = lineHeight * maxLines + 2;
+          return element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= maxHeight;
+        }
+        for (var size = maxFontSize; size >= minFontSize; size -= 1) {
+          element.style.fontSize = size + 'px';
+          if (fits()) return;
+        }
+        element.style.fontSize = minFontSize + 'px';
+      }
+      fitShippingElement(document.querySelector('.s-address'), 72, 22, 5);
+      fitShippingElement(document.querySelector('.s-city'), 58, 26, 3);
+      Array.prototype.forEach.call(document.querySelectorAll('.s-meta'), function(el) {
+        fitShippingElement(el, 40, 20, 2);
+      });
+      fitShippingElement(document.querySelector('.s-phone'), 58, 20, 3);
+      fitShippingElement(document.querySelector('.s-contact'), 30, 16, 3);
+      window.addEventListener('afterprint', function() {
+        setTimeout(function() { window.close(); }, 50);
+      });
+    })();
+  </script>
+</body>
+</html>`;
+}
+
+function printShippingLabelDocument(invNo) {
+  if (shippingPrintFrame) {
+    shippingPrintFrame.remove();
+    shippingPrintFrame = null;
+  }
+  const frame = document.createElement('iframe');
+  frame.style.position = 'fixed';
+  frame.style.right = '0';
+  frame.style.bottom = '0';
+  frame.style.width = '0';
+  frame.style.height = '0';
+  frame.style.border = '0';
+  frame.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(frame);
+  shippingPrintFrame = frame;
+  const cleanup = () => {
+    if (shippingPrintFrame) {
+      shippingPrintFrame.remove();
+      shippingPrintFrame = null;
+    }
+  };
+  const printWindow = frame.contentWindow;
+  if (!printWindow) {
+    cleanup();
+    return;
+  }
+  printWindow.document.open();
+  printWindow.document.write(buildShippingPrintHtml(invNo));
+  printWindow.document.close();
+  frame.onload = () => {
+    setTimeout(() => {
+      try {
+        printWindow.focus();
+        printWindow.print();
+      } catch {}
+      setTimeout(cleanup, 4000);
+    }, 150);
+  };
+}
 
 if (shipPrevClose) {
   shipPrevClose.addEventListener('click', () => {
@@ -6718,35 +7007,17 @@ if (shipPrevPrint) {
     }
     invNo = invNo || 'ShippingLabel';
     invNo = invNo.trim().replace(/\s+/g, '');
-    
-    const oldTitle = document.title;
-    document.title = 'Etiqueta-' + invNo;
-    document.body.classList.add('printing-shipping');
-    
-    const afterPrint = () => {
-      document.body.classList.remove('printing-shipping');
-      document.title = oldTitle;
-      window.removeEventListener('afterprint', afterPrint);
-    };
-    window.addEventListener('afterprint', afterPrint);
-    
+    fitShippingLabel();
     setTimeout(async () => {
-      window.print();
-      setTimeout(() => {
-        if (document.title === 'Etiqueta-' + invNo) {
-          document.body.classList.remove('printing-shipping');
-          document.title = oldTitle;
-        }
-      }, 2000);
-      
+      printShippingLabelDocument(invNo);
       if (currentShippingInvId) {
-      const inv = currentInvoices.find(x => String(x.id) === String(currentShippingInvId));
+        const inv = currentInvoices.find(x => String(x.id) === String(currentShippingInvId));
         if (inv && !inv.shipping_printed) {
-           try {
-             await apiFetchJSON(`/api/invoices/${currentShippingInvId}/print-shipping`, { method:'PUT' });
-             inv.shipping_printed = true;
-             loadInvoices(); // Refresh list to show gray button
-           } catch {}
+          try {
+            await apiFetchJSON(`/api/invoices/${currentShippingInvId}/print-shipping`, { method:'PUT' });
+            inv.shipping_printed = true;
+            loadInvoices();
+          } catch {}
         }
       }
     }, 100);
@@ -6799,17 +7070,18 @@ window.printShippingLabel = async function(id) {
 
   // HTML Structure matching the CSS classes
   let html = `
-    ${company ? `<div class="s-meta">${company}</div>` : ''}
-    <div class="s-address">${address || ''}</div>
-    <div class="s-city">${zip || ''} ${city || ''}</div>
-    <div class="s-meta">${province || ''} ${country || ''}</div>
+    ${company ? `<div class="s-meta s-block">${company}</div>` : ''}
+    <div class="s-address s-block">${address || ''}</div>
+    <div class="s-city s-block">${zip || ''} ${city || ''}</div>
+    <div class="s-meta s-block">${province || ''} ${country || ''}</div>
     <div class="s-footer">
-        <div class="s-phone">${phone ? 'Tel: ' + phone : ''}</div>
-        <div class="s-contact">${contact || ''}</div>
+        <div class="s-phone s-block">${phone ? 'Tel: ' + phone : ''}</div>
+        <div class="s-contact s-block">${contact || ''}</div>
      </div>
   `;
   
   if (shipContent) shipContent.innerHTML = html;
+  requestAnimationFrame(() => fitShippingLabel());
   if (shipPrevModal) shipPrevModal.style.display = 'flex';
 };
 
@@ -8199,25 +8471,21 @@ async function loadFinishedStock(page = 1) {
   tbody.innerHTML = list.map((p, idx) => {
     const totalStock = Number(p.total_stock || 0);
     let stockHtml = totalStock;
-    let expiryHtml = '-';
-    let loteHtml = '-';
+    let expiryHtml = '';
+    let loteHtml = '';
     if (p.batches && p.batches.length > 0) {
-      const batchQtySum = p.batches.reduce((sum, b) => sum + Number(b.qty || 0), 0);
-      const remainderQty = totalStock - batchQtySum;
-      const displayBatches = [...p.batches];
-      if (remainderQty !== 0) {
-        displayBatches.push({ qty: remainderQty, expiry: '-', lote: '' });
-      }
+      const displayBatches = p.batches.filter(b => Number(b.qty || 0) > 0 && String(b.lote || '').trim());
       stockHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => `<div>${b.qty}</div>`).join('') + `</div>`;
-      expiryHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => `<div>${b.expiry || '-'}</div>`).join('') + `</div>`;
+      expiryHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => `<div>${b.expiry || ''}</div>`).join('') + `</div>`;
       loteHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => {
-        let l = b.lote || '-';
-        if (l !== '-') {
-          const parts = l.split('-');
-          if (parts.length === 3) l = parts[2] + parts[1];
-        }
+        let l = String(b.lote || '').trim();
+        const parts = l.split('-');
+        if (parts.length === 3) l = parts[2] + parts[1];
         return `<div>${l}</div>`;
       }).join('') + `</div>`;
+      if (!displayBatches.length) {
+        stockHtml = 0;
+      }
     }
     return `
     <tr>

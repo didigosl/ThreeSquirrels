@@ -23,6 +23,7 @@ services:
       DB_PASSWORD: postgres
       DB_NAME: komeya_stage
       JWT_SECRET: stage_secret_only
+      SUPERADMIN_BOOTSTRAP_PASSWORD: 999000
       UPLOAD_DIR: /app/uploads-stage
     depends_on:
       - ts-stage-db

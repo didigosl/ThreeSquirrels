@@ -103,17 +103,18 @@
       .invoice-paper .sign-area { display:none; }
       
       /* Shipping Label Preview */
-      .shipping-paper { background:#fff; color:#000; width:297mm; height:210mm; padding:60px; margin:0 auto; font-family:"Helvetica Neue", Helvetica, Arial, sans-serif; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; position:relative; box-sizing:border-box; }
+      .shipping-paper { background:#fff; color:#000; width:297mm; height:210mm; padding:18mm 20mm 16mm; margin:0 auto; font-family:"Helvetica Neue", Helvetica, Arial, sans-serif; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; position:relative; box-sizing:border-box; overflow:hidden; }
+      .shipping-paper .s-block { width:100%; max-width:100%; box-sizing:border-box; overflow-wrap:anywhere; word-break:break-word; }
       .shipping-paper .s-name { font-size: 52px; margin-bottom: 30px; font-weight: 400; }
-      .shipping-paper .s-address { font-size: 80px; font-weight: 800; line-height: 1.2; margin-bottom: 20px; text-transform: lowercase; }
-      .shipping-paper .s-city { font-size: 64px; font-weight: 800; margin-bottom: 50px; text-transform: uppercase; }
-      .shipping-paper .s-meta { font-size: 48px; margin-bottom: 20px; font-weight: 400; }
-      .shipping-paper .s-footer { display: flex; justify-content: space-between; width: 100%; margin-top: auto; align-items: baseline; padding: 0 40px; box-sizing:border-box; }
-      .shipping-paper .s-phone { font-size: 64px; font-weight: 800; }
-      .shipping-paper .s-contact { font-size: 32px; text-align: right; }
+      .shipping-paper .s-address { font-size: 72px; font-weight: 800; line-height: 1.1; margin-bottom: 12px; text-transform: lowercase; min-height: 3.3em; display:flex; align-items:center; justify-content:center; }
+      .shipping-paper .s-city { font-size: 58px; font-weight: 800; margin-bottom: 24px; text-transform: uppercase; line-height:1.08; min-height: 2.2em; display:flex; align-items:center; justify-content:center; }
+      .shipping-paper .s-meta { font-size: 40px; margin-bottom: 14px; font-weight: 400; line-height:1.1; min-height: 2.2em; display:flex; align-items:center; justify-content:center; }
+      .shipping-paper .s-footer { display:flex; justify-content:space-between; width:100%; margin-top:auto; align-items:flex-end; gap:18mm; box-sizing:border-box; }
+      .shipping-paper .s-phone { font-size: 58px; font-weight: 800; line-height:1.05; flex:1; text-align:left; min-height: 2.1em; display:flex; align-items:flex-end; }
+      .shipping-paper .s-contact { font-size: 30px; text-align:right; line-height:1.15; width:34%; min-height: 2.3em; display:flex; align-items:flex-end; justify-content:flex-end; }
 
       @media print {
-        @page { size: A4 portrait; margin: 0; }
+        @page { margin: 0; }
         body.printing-invoice, body.printing-shipping { background: #fff !important; }
         body.printing-invoice, body.printing-invoice html,
         body.printing-shipping, body.printing-shipping html { width: 100% !important; height: auto !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; display: block !important; }
@@ -149,7 +150,12 @@
         
         /* Remove padding and max-width from the paper itself to fit A4 */
         .invoice-paper { box-shadow:none; margin:0; width:100%; max-width:none; padding:15mm; min-height:100vh; page-break-after: avoid; background:#fff !important; box-sizing: border-box; }
-        .shipping-paper { box-shadow:none; margin:0; padding:15mm; width:297mm; height:210mm; max-width:100%; max-height:100%; border:none; outline:none; page-break-after: avoid; transform-origin: center center; background:#fff !important; box-sizing: border-box; }
+        .shipping-paper { box-shadow:none; margin:0; padding:14mm 16mm 12mm; width:297mm; height:210mm; max-width:none; max-height:none; border:none; outline:none; page-break-after: avoid; transform-origin: center center; background:#fff !important; box-sizing: border-box; overflow:hidden; }
+        body.printing-shipping #shipping-preview-modal,
+        body.printing-shipping #shipping-preview-modal .modal,
+        body.printing-shipping #shipping-preview-modal .modal > div:not(.modal-header):not(.modal-actions) { width:297mm !important; max-width:297mm !important; min-width:297mm !important; }
+        body.printing-shipping #shipping-preview-modal .modal,
+        body.printing-shipping #shipping-preview-modal .modal > div:not(.modal-header):not(.modal-actions) { margin:0 !important; }
         
         /* Hide scrollbars completely in print */
         ::-webkit-scrollbar { display: none !important; }
@@ -1611,6 +1617,10 @@
                       </div>
                       <div class="group"><span class="label">电话</span><input id="ct-ship-phone" type="text"></div>
                       <div class="group"><span class="label">联系人</span><input id="ct-ship-contact" type="text"></div>
+                      <div class="group">
+                        <span class="label">Nota</span>
+                        <input id="ct-invoice-nota" type="text" placeholder="显示到发票左下角 Nota">
+                      </div>
                     </div>
                   </div>
                   <div class="modal-actions" style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border)">
@@ -2526,6 +2536,6 @@
       </div>
     </div>
 
-    <script src="app.js?v=20260408-authfix1"></script>
+    <script src="app.js?v=20260409-stock-lote-clean2"></script>
   </body>
 </html>

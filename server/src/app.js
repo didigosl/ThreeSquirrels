@@ -242,6 +242,7 @@ async function ensureSchema() {
   await query('alter table contacts add column if not exists sales text', []);
   await query('alter table contacts add column if not exists use_price text', []);
   await query('alter table contacts add column if not exists is_iva boolean default true', []);
+  await query('alter table contacts add column if not exists invoice_nota text', []);
   await query('alter table contacts add column if not exists email text', []);
   await query('alter table contacts add column if not exists province text', []);
   await query('alter table contacts add column if not exists ship_address text', []);
@@ -1014,9 +1015,9 @@ app.post('/api/contacts', authRequired, ensureAllow('contacts','create'), async 
   const isIva = x.is_iva === undefined ? true : Boolean(x.is_iva);
   try {
     const r = await query(`
-      insert into contacts(name, contact, phone, city, remark, owner, created, company, code, country, address, zip, sales, use_price, is_iva, email, province, ship_address, ship_zip, ship_city, ship_province, ship_country, ship_phone, ship_contact)
-      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) returning id
-    `, [x.name||'', x.contact||'', x.phone||'', x.city||'', x.remark||'', owner, x.created||'', x.company||'', x.code||'', x.country||'', x.address||'', x.zip||'', x.sales||'', x.use_price||'price1', isIva, x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'']);
+      insert into contacts(name, contact, phone, city, remark, owner, created, company, code, country, address, zip, sales, use_price, is_iva, invoice_nota, email, province, ship_address, ship_zip, ship_city, ship_province, ship_country, ship_phone, ship_contact)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) returning id
+    `, [x.name||'', x.contact||'', x.phone||'', x.city||'', x.remark||'', owner, x.created||'', x.company||'', x.code||'', x.country||'', x.address||'', x.zip||'', x.sales||'', x.use_price||'price1', isIva, x.invoice_nota||'', x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'']);
     res.json({ id: r.rows[0].id });
   } catch (e) {
     if (e.code === '23505') { // Unique violation
@@ -1035,10 +1036,10 @@ app.put('/api/contacts/:id', authRequired, ensureAllow('contacts','edit'), async
   try {
     const r = await query(`
       update contacts set name=$1, contact=$2, phone=$3, city=$4, remark=$5, company=$6, code=$7, country=$8, address=$9, zip=$10, sales=$11, use_price=$12, is_iva=$13,
-      email=$14, province=$15, ship_address=$16, ship_zip=$17, ship_city=$18, ship_province=$19, ship_country=$20, ship_phone=$21, ship_contact=$22, owner=$23
-      where id=$24
+      invoice_nota=$14, email=$15, province=$16, ship_address=$17, ship_zip=$18, ship_city=$19, ship_province=$20, ship_country=$21, ship_phone=$22, ship_contact=$23, owner=$24
+      where id=$25
     `, [x.name||'', x.contact||'', x.phone||'', x.city||'', x.remark||'', x.company||'', x.code||'', x.country||'', x.address||'', x.zip||'', x.sales||'', x.use_price||'price1', isIva,
-        x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'', owner,
+        x.invoice_nota||'', x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'', owner,
         id]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'not_found' });
     res.json({ ok: true });
@@ -1055,10 +1056,10 @@ app.put('/api/contacts/by-name', authRequired, ensureAllow('contacts','edit'), a
   const isIva = x.is_iva === undefined ? true : Boolean(x.is_iva);
   await query(`
     update contacts set contact=$1, phone=$2, city=$3, remark=$4, company=$5, code=$6, country=$7, address=$8, zip=$9, sales=$10, use_price=$11, is_iva=$12,
-    email=$13, province=$14, ship_address=$15, ship_zip=$16, ship_city=$17, ship_province=$18, ship_country=$19, ship_phone=$20, ship_contact=$21
-    where owner=$22 and name=$23
+    invoice_nota=$13, email=$14, province=$15, ship_address=$16, ship_zip=$17, ship_city=$18, ship_province=$19, ship_country=$20, ship_phone=$21, ship_contact=$22
+    where owner=$23 and name=$24
   `, [x.contact||'', x.phone||'', x.city||'', x.remark||'', x.company||'', x.code||'', x.country||'', x.address||'', x.zip||'', x.sales||'', x.use_price||'price1', isIva,
-      x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'',
+      x.invoice_nota||'', x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'',
       owner, x.name||'']);
   res.json({ ok: true });
 });
@@ -1073,10 +1074,10 @@ app.put('/api/contacts/by-company', authRequired, ensureAllow('contacts','edit')
   
   await query(`
     update contacts set name=$1, contact=$2, phone=$3, city=$4, remark=$5, code=$6, country=$7, address=$8, zip=$9, sales=$10, use_price=$11, is_iva=$12,
-    email=$13, province=$14, ship_address=$15, ship_zip=$16, ship_city=$17, ship_province=$18, ship_country=$19, ship_phone=$20, ship_contact=$21
-    where id=$22
+    invoice_nota=$13, email=$14, province=$15, ship_address=$16, ship_zip=$17, ship_city=$18, ship_province=$19, ship_country=$20, ship_phone=$21, ship_contact=$22
+    where id=$23
   `, [x.name||'', x.contact||'', x.phone||'', x.city||'', x.remark||'', x.code||'', x.country||'', x.address||'', x.zip||'', x.sales||'', x.use_price||'price1', isIva,
-      x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'',
+      x.invoice_nota||'', x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'',
       exist.rows[0].id]);
   res.json({ ok: true });
 });
