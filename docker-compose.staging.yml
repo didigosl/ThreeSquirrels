@@ -29,7 +29,7 @@ services:
       - ts-stage-db
     volumes:
       - ./server/src:/app/src
-      - ./uploads-stage:/app/uploads-stage
+      - ts-stage-uploads:/app/uploads-stage
     networks:
       - ts-stage-web
 
@@ -39,7 +39,7 @@ services:
     volumes:
       - ./server/nginx.staging.conf:/etc/nginx/nginx.conf:ro
       - ./:/usr/share/nginx/html:ro
-      - ./uploads-stage:/usr/share/nginx/html/uploads:ro
+      - ts-stage-uploads:/usr/share/nginx/html/uploads:ro
     ports:
       - "18080:80"
     depends_on:
@@ -49,6 +49,9 @@ services:
 
 volumes:
   ts-stage-dbdata:
+    name: threesquirrels-stage_ts-stage-dbdata
+  ts-stage-uploads:
+    name: threesquirrels-stage_ts-stage-uploads
 
 networks:
   ts-stage-web:

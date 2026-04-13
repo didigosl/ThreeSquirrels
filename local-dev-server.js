@@ -7,7 +7,7 @@ const { URL } = require('url');
 
 const rootDir = __dirname;
 const port = 8000;
-const targetUrl = new URL(process.env.TS_PROXY_TARGET || 'http://8.220.74.149:18080');
+const targetUrl = new URL(process.env.TS_PROXY_TARGET || 'http://127.0.0.1:18080');
 const fallbackTargetUrl = process.env.TS_PROXY_FALLBACK_TARGET
   ? new URL(process.env.TS_PROXY_FALLBACK_TARGET)
   : (targetUrl.origin === 'http://8.220.74.149:18080' ? null : new URL('http://8.220.74.149:18080'));

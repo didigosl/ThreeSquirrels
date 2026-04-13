@@ -229,6 +229,7 @@ async function ensureSchema() {
   await query('alter table ledger add column if not exists date_time text', []);
   await query('alter table ledger add column if not exists created_at bigint', []);
   await query('alter table ledger add column if not exists created_by text', []);
+  await query('alter table ledger add column if not exists confirmed_by text', []);
   await query('alter table ledger add column if not exists confirmed boolean default true', []);
   await query('update ledger set confirmed=true where confirmed is null', []);
   await query('alter table contacts add column if not exists owner text', []);
@@ -339,8 +340,10 @@ async function ensureSchema() {
       type text, -- 'in', 'out'
       created_at bigint,
       created_by text,
-      notes text
+      notes text,
+      lote text
     );
+    alter table inventory_logs add column if not exists lote text;
     create table if not exists materials (
       id serial primary key,
       name text,
@@ -967,7 +970,7 @@ app.put('/api/ledger/:id/confirm', authRequired, ensureAllow('ledger','create'),
   const row = r0.rows[0];
   if (!row) return res.status(404).json({ error:'not_found' });
   await applyLedgerEffects(row);
-  await query('update ledger set confirmed=true where id=$1', [id]);
+  await query('update ledger set confirmed=true, confirmed_by=$2 where id=$1', [id, req.user?.name || '']);
   res.json({ ok: true });
 });
 app.delete('/api/ledger/:id', authRequired, ensureAllow('ledger','edit'), async (req, res) => {
@@ -2076,10 +2079,45 @@ app.post('/api/inventory/finished', authRequired, async (req, res) => {
     
     await query('update products set stock = stock + $1 where id=$2', [parsedQty, productId]);
     
-    await query('insert into inventory_logs(product_id, quantity, type, created_at, created_by, notes) values($1,$2,$3,$4,$5,$6)',
-      [productId, parsedQty, 'in', entryNow, req.user.name || 'system', lote || '']);
+    await query('insert into inventory_logs(product_id, quantity, type, created_at, created_by, notes, lote) values($1,$2,$3,$4,$5,$6,$7)',
+      [productId, parsedQty, 'in', entryNow, req.user.name || 'system', '', lote || '']);
   }
     
+  res.json({ ok: true });
+});
+app.put('/api/inventory/finished/adjust', authRequired, ensureAllow('finished_stock_adjust','view'), async (req, res) => {
+  const { productId, qty, lote = '', expiry = '', notes = '' } = req.body || {};
+  const pid = Number(productId || 0);
+  const delta = Number(qty || 0);
+  const loteText = String(lote || '').trim();
+  const expiryText = String(expiry || '').trim();
+  const noteText = String(notes || '').trim();
+  if (!pid || !Number.isFinite(delta) || delta === 0 || !loteText || !noteText) return res.status(400).json({ error: 'bad_request' });
+  const p = await query('select id from products where id=$1', [pid]);
+  if (!p.rows[0]) return res.status(404).json({ error: 'not_found' });
+  const now = Date.now();
+  const batchR = await query('select id, quantity, lote from inventory_batches where product_id=$1 order by quantity desc, id desc', [pid]);
+  const matchBatch = (x) => {
+    const raw = String(x.lote || '').trim();
+    return raw === loteText || formatLote(raw) === loteText;
+  };
+  const positiveBatch = batchR.rows.find(x => Number(x.quantity || 0) > 0 && matchBatch(x));
+  const anyBatch = batchR.rows.find(matchBatch);
+  const batch = delta < 0 ? positiveBatch : (positiveBatch || anyBatch);
+  if (delta > 0) {
+    if (batch) {
+      await query('update inventory_batches set quantity=quantity+$1, expiration_date=$2 where id=$3', [delta, expiryText || '', batch.id]);
+    } else {
+      await query('insert into inventory_batches(product_id, quantity, expiration_date, lote, created_at) values($1,$2,$3,$4,$5)', [pid, delta, expiryText || '', loteText, now]);
+    }
+  } else {
+    if (!batch) return res.status(400).json({ error: 'batch_not_found' });
+    const remaining = Number(batch.quantity || 0) + delta;
+    await query('update inventory_batches set quantity=$1, expiration_date=$2 where id=$3', [Math.max(remaining, 0), expiryText || '', batch.id]);
+  }
+  const stockR = await query('select coalesce(sum(case when quantity > 0 then quantity else 0 end), 0) as stock from inventory_batches where product_id=$1', [pid]);
+  await query('update products set stock = $1 where id=$2', [Number(stockR.rows[0]?.stock || 0), pid]);
+  await query('insert into inventory_logs(product_id, quantity, type, created_at, created_by, notes, lote) values($1,$2,$3,$4,$5,$6,$7)', [pid, delta, 'adjust', now, req.user.name || 'system', noteText, loteText]);
   res.json({ ok: true });
 });
 
@@ -2104,9 +2142,10 @@ async function getFinishedInventoryRecords({ productId = null, page = 1, size = 
         ''::text as invoice_no,
         ''::text as customer,
         l.quantity::numeric as qty,
-        'in'::text as type,
+        l.type::text as type,
         l.created_by as user,
-        coalesce(nullif(l.notes, ''), b.lote, '') as lote
+        coalesce(nullif(l.lote, ''), nullif(b.lote, ''), nullif(l.notes, ''), '') as lote,
+        case when l.type = 'adjust' then coalesce(l.notes, '') else '' end as notes
       from inventory_logs l
       join products p on p.id = l.product_id
       left join lateral (
@@ -2116,7 +2155,7 @@ async function getFinishedInventoryRecords({ productId = null, page = 1, size = 
         order by abs(created_at - l.created_at) asc, id desc
         limit 1
       ) b on true
-      where l.type='in'${inFilter}
+      where l.type in ('in','adjust')${inFilter}
       union all
       select
         i.created_at,
@@ -2147,7 +2186,8 @@ async function getFinishedInventoryRecords({ productId = null, page = 1, size = 
             when item->>'description' ~* 'Lote:\\s*([^ ]+)' then regexp_replace(item->>'description', '.*Lote:\\s*([^ ]+).*', '\\1', 'i')
             else ''
           end
-        ) as lote
+        ) as lote,
+        ''::text as notes
       from invoices i
       left join daily_orders d on d.invoice_id = i.id
       cross join lateral jsonb_array_elements(i.items) as item
@@ -2172,7 +2212,8 @@ async function getFinishedInventoryRecords({ productId = null, page = 1, size = 
       qty: Number(x.qty || 0),
       type: x.type,
       user: x.user || '',
-      lote: x.lote || ''
+      lote: x.lote || '',
+      notes: x.notes || ''
     })),
     total: r.rows[0]?.total_count || 0
   };
@@ -2199,10 +2240,12 @@ app.get('/api/inventory/finished/:id/logs', authRequired, async (req, res) => {
       type: x.type,
       date: x.date,
       qty: Math.abs(Number(x.qty || 0)),
+      raw_qty: Number(x.qty || 0),
       user: x.user,
       invoice_no: x.invoice_no,
       customer: x.customer,
-      lote: x.lote
+      lote: x.lote,
+      notes: x.notes || ''
     })));
   } catch (e) {
     console.error('Error in logs:', e);

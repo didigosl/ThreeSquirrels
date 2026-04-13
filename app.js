@@ -396,12 +396,24 @@ const ldOwner = document.getElementById('ld-owner');
 const ldOwnerDD = document.getElementById('ld-owner-dd');
 const ldOwnerList = document.getElementById('ld-owner-list');
 const ldOwnerLabel = document.getElementById('ld-owner-label');
+const ldMethod = document.getElementById('ld-method');
+const ldMethodDD = document.getElementById('ld-method-dd');
+const ldMethodList = document.getElementById('ld-method-list');
+const ldMethodLabel = document.getElementById('ld-method-label');
+const ldConfirm = document.getElementById('ld-confirm');
+const ldConfirmDD = document.getElementById('ld-confirm-dd');
+const ldConfirmList = document.getElementById('ld-confirm-list');
+const ldConfirmLabel = document.getElementById('ld-confirm-label');
+const ledgerNotesModal = document.getElementById('ledger-notes-modal');
+const ledgerNotesContent = document.getElementById('ledger-notes-content');
 let ledgerPage = 1;
 const ledgerPageSize = 100;
 function updateLedgerHeaderCover() {}
 let ledgerHdrType = 'all';
 let ledgerHdrCat = '';
 let ledgerHdrOwner = '';
+let ledgerHdrMethod = '';
+let ledgerHdrConfirm = 'all';
 function clientOwner(name) {
   const all = [...contactsData.customers, ...contactsData.merchants, ...contactsData.others];
   const obj = all.find(x => (x.name||'') === (name||''));
@@ -466,6 +478,46 @@ function openLedgerOwnerFilter() {
   addItem('商家', '商家');
   addItem('其它往来单位', '其它');
 }
+function openLedgerMethodFilter() {
+  ldMethodDD.style.display = 'block';
+  ldMethodList.innerHTML = '';
+  const addItem = (label, val) => {
+    const row = document.createElement('div'); row.className = 'dd-item'; row.textContent = label;
+    row.addEventListener('click', () => {
+      ledgerHdrMethod = val;
+      ldMethodDD.style.display = 'none';
+      setLabel(ldMethodLabel, val || '支付方式', !!val);
+      ledgerPage = 1;
+      applyFilters();
+    });
+    ldMethodList.appendChild(row);
+  };
+  addItem('全部', '');
+  [...new Set((records || []).map(r => (r.method || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN')).forEach(name => addItem(name, name));
+}
+function openLedgerConfirmFilter() {
+  ldConfirmDD.style.display = 'block';
+  ldConfirmList.innerHTML = '';
+  const addItem = (label, val) => {
+    const row = document.createElement('div'); row.className = 'dd-item'; row.textContent = label;
+    row.addEventListener('click', () => {
+      ledgerHdrConfirm = val;
+      ldConfirmDD.style.display = 'none';
+      setLabel(ldConfirmLabel, val === 'all' ? '操作' : (val === 'confirmed' ? '已确认' : '未确认'), val !== 'all');
+      ledgerPage = 1;
+      applyFilters();
+    });
+    ldConfirmList.appendChild(row);
+  };
+  addItem('全部', 'all');
+  addItem('已确认', 'confirmed');
+  addItem('未确认', 'unconfirmed');
+}
+function openLedgerNotesModal(text) {
+  if (!ledgerNotesModal || !ledgerNotesContent || !text) return;
+  ledgerNotesContent.textContent = text;
+  ledgerNotesModal.style.display = 'flex';
+}
 
 window.downloadLedgerTemplate = function() {
   if (typeof XLSX === 'undefined') {
@@ -485,6 +537,8 @@ window.downloadLedgerTemplate = function() {
 ldType?.addEventListener('click', (e) => { e.stopPropagation(); openLedgerTypeFilter(); });
 ldCat?.addEventListener('click', (e) => { e.stopPropagation(); openLedgerCatFilter(); });
 ldOwner?.addEventListener('click', (e) => { e.stopPropagation(); openLedgerOwnerFilter(); });
+ldMethod?.addEventListener('click', (e) => { e.stopPropagation(); openLedgerMethodFilter(); });
+ldConfirm?.addEventListener('click', (e) => { e.stopPropagation(); openLedgerConfirmFilter(); });
 const accRows = document.getElementById('acc-rows');
 const accAdd = document.getElementById('acc-add');
 const accountsData = [
@@ -1078,12 +1132,34 @@ function render(data) {
       td.textContent = text;
       return td;
     };
+    const makeClampTd = (text, options = {}) => {
+      const td = document.createElement('td');
+      td.className = 'ledger-clamp-cell';
+      td.title = text || '';
+      const box = document.createElement('div');
+      box.className = 'ledger-clamp-text';
+      box.textContent = text || '';
+      if (options.clickable && text) {
+        td.style.cursor = 'pointer';
+        td.title = '点击查看完整内容';
+        td.addEventListener('click', () => options.onClick?.(text));
+      }
+      td.appendChild(box);
+      return td;
+    };
+    const makeStackTd = (mainText, subText) => {
+      const td = document.createElement('td');
+      td.className = 'ledger-stack-cell';
+      td.innerHTML = `<div class="ledger-stack-main">${mainText || ''}</div><div class="ledger-stack-sub">${subText || ''}</div>`;
+      td.title = [mainText || '', subText || ''].filter(Boolean).join('\n');
+      return td;
+    };
     tr.appendChild(makeTd(r.type || ''));
     tr.appendChild(makeTd(r.category || ''));
     const tdDoc = document.createElement('td');
     tdDoc.innerHTML = `<div>${r.doc || ''}</div><div style="font-size:12px; color:#94a3b8; margin-top:4px">${r.date || ''}</div>`;
     tr.appendChild(tdDoc);
-    tr.appendChild(makeTd(r.client || ''));
+    tr.appendChild(makeClampTd(r.client || ''));
     tr.appendChild(makeTd(amt));
     tr.appendChild(makeTd(r.method || ''));
     const tdFile = document.createElement('td');
@@ -1199,8 +1275,8 @@ function render(data) {
       tdFile.textContent = r.file ? r.file : '-';
     }
     tr.appendChild(tdFile);
-    tr.appendChild(makeTd(r.entry || ''));
-    tr.appendChild(makeTd(r.notes || ''));
+    tr.appendChild(makeStackTd(r.createdBy || '-', `确认：${r.confirmedBy || (r.confirmed === false ? '未确认' : r.createdBy || '-')}`));
+    tr.appendChild(makeClampTd(r.notes || '', { clickable: true, onClick: openLedgerNotesModal }));
     const uploadDate = r.dateTime ? r.dateTime.split(' ')[0] : (r.createdAt ? new Date(r.createdAt).toISOString().split('T')[0] : '');
     tr.appendChild(makeTd(uploadDate));
     const tdOps = document.createElement('td');
@@ -1250,7 +1326,7 @@ function render(data) {
 }
 function getFilters() {
   const t = filterType.value;
-  const key = filterKey.value.trim();
+  const key = filterKey.value.trim().toLocaleLowerCase();
   const s = filterStart.value ? new Date(filterStart.value) : null;
   const e = filterEnd.value ? new Date(filterEnd.value) : null;
   return { t, key, s, e };
@@ -1268,7 +1344,14 @@ function applyFilters(preserveScroll = false) {
       const owner = clientOwner(r.client || '');
       if (owner !== ledgerHdrOwner) return false;
     }
-    if (key && !((r.client||'').includes(key) || (r.notes||'').includes(key))) return false;
+    if (ledgerHdrMethod && (r.method || '') !== ledgerHdrMethod) return false;
+    if (ledgerHdrConfirm === 'confirmed' && r.confirmed === false) return false;
+    if (ledgerHdrConfirm === 'unconfirmed' && r.confirmed !== false) return false;
+    if (key) {
+      const client = (r.client || '').toLocaleLowerCase();
+      const notes = (r.notes || '').toLocaleLowerCase();
+      if (!(client.includes(key) || notes.includes(key))) return false;
+    }
     const d = new Date(r.date);
     if (s && d < s) return false;
     if (e && d > e) return false;
@@ -1683,6 +1766,8 @@ document.addEventListener('click', (e) => {
   if (!ldType?.contains(e.target)) ldTypeDD.style.display = 'none';
   if (!ldCat?.contains(e.target)) ldCatDD.style.display = 'none';
   if (!ldOwner?.contains(e.target)) ldOwnerDD.style.display = 'none';
+  if (!ldMethod?.contains(e.target)) ldMethodDD.style.display = 'none';
+  if (!ldConfirm?.contains(e.target)) ldConfirmDD.style.display = 'none';
 });
 const payHistoryModal = document.getElementById('pay-history-modal');
 const payHistoryHead = document.getElementById('pay-history-head');
@@ -3644,6 +3729,7 @@ const permStructure = [
       { mod: 'tasks', label: '任务信息' },
       { mod: 'daily_orders', label: '订单管理' },
       { mod: 'finished_stock', label: '商品库存' },
+      { mod: 'finished_stock_adjust', label: '库存调整' },
       { mod: 'raw_stock', label: '原材料库存' }
     ]
   },
@@ -4271,6 +4357,7 @@ async function loadLedgerFromServer(preserveScroll = false) {
           dateTime: r.date_time || '',
           createdAt,
           createdBy: r.created_by || '',
+          confirmedBy: r.confirmed_by || '',
           confirmed: r.confirmed !== false,
           entry: '手动'
         };
@@ -5563,6 +5650,123 @@ if (soSave) {
 const invPrevModal = document.getElementById('invoice-preview-modal');
 const invPrevClose = document.getElementById('inv-prev-close');
 const invPrevPrint = document.getElementById('inv-prev-print');
+const invPaper = document.getElementById('invoice-paper');
+const invPreviewShell = document.getElementById('invoice-preview-shell');
+const invPreviewStage = document.getElementById('invoice-preview-stage');
+let invoicePrintFrame = null;
+
+function updateInvoicePreviewScale() {
+  if (!invPrevModal || !invPaper || !invPreviewShell || !invPreviewStage) return;
+  if (invPrevModal.style.display === 'none') return;
+  invPaper.style.transform = 'scale(1)';
+  invPreviewStage.style.width = 'auto';
+  invPreviewStage.style.height = 'auto';
+  const shellRect = invPreviewShell.getBoundingClientRect();
+  const maxWidth = Math.max(320, shellRect.width - 8);
+  const maxHeight = Math.max(400, window.innerHeight - 180);
+  const baseWidth = invPaper.offsetWidth;
+  const baseHeight = invPaper.offsetHeight;
+  if (!baseWidth || !baseHeight) return;
+  const scale = Math.min(maxWidth / baseWidth, maxHeight / baseHeight, 1);
+  invPaper.style.transform = `scale(${scale})`;
+  invPreviewStage.style.width = `${Math.ceil(baseWidth * scale)}px`;
+  invPreviewStage.style.height = `${Math.ceil(baseHeight * scale)}px`;
+}
+
+function getInvoicePrintStyles() {
+  return `
+    @page { size: A4 portrait; margin: 0; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 210mm;
+      min-height: 297mm;
+      background: #ffffff;
+      color: #000000;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      font-family: sans-serif;
+    }
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    .invoice-paper {
+      background: #fff;
+      color: #000;
+      width: 210mm;
+      min-height: 297mm;
+      padding: 12mm 14mm 14mm;
+      font-family: sans-serif;
+      position: relative;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+    }
+    .invoice-paper h1 { margin:0 0 2px; font-size:24px; text-align:right; font-weight:800; letter-spacing:-0.5px; }
+    .invoice-paper .inv-meta-right { text-align:right; color:#000; font-size:12px; line-height:1.2; margin-bottom:18px; }
+    .invoice-paper .inv-status { color:#ef4444; font-size:11px; font-weight:600; text-transform:uppercase; margin-top:2px; }
+    .invoice-paper .meta-grid { display:flex; justify-content:space-between; gap:16mm; margin-bottom:18px; align-items:flex-start; }
+    .invoice-paper .company-info, .invoice-paper .customer-info { font-size:12px; line-height:1.3; color:#333; }
+    .invoice-paper .company-info { flex:1; min-width:0; }
+    .invoice-paper .customer-info { flex:1; min-width:0; text-align:right; }
+    .invoice-paper .company-name { font-size:14px; font-weight:800; margin-bottom:2px; text-transform:uppercase; color:#000; }
+    .invoice-paper .customer-label { font-weight:700; color:#000; margin-bottom:2px; }
+    .invoice-paper .dates-grid { text-align:right; font-size:11px; margin-bottom:18px; line-height:1.4; color:#000; }
+    .invoice-paper table { width:100%; border-collapse:collapse; margin-bottom:20px; font-size:11px; }
+    .invoice-paper th { background:#2c3e50 !important; color:#fff !important; padding:6px 8px; text-align:left; font-weight:600; }
+    .invoice-paper td { border-bottom:1px solid #eee; padding:8px 8px; vertical-align:top; color:#333; }
+    .invoice-paper .item-idx { width:30px; text-align:center; }
+    .invoice-paper .item-name { font-weight:700; color:#000; font-size:12px; }
+    .invoice-paper .item-desc { color:#666; font-size:10px; margin-top:1px; }
+    .invoice-paper .totals-area { display:flex; justify-content:flex-end; margin-bottom:24px; }
+    .invoice-paper .totals-table { width:280px; font-size:12px; border-collapse:collapse; }
+    .invoice-paper .totals-table td { padding:4px 0; border:none; }
+    .invoice-paper .totals-table .total-label { text-align:right; padding-right:16px; font-weight:700; color:#000; }
+    .invoice-paper .totals-table .total-val { text-align:right; font-weight:600; color:#000; }
+    .invoice-paper .grand-total { background:#f3f4f6 !important; font-weight:800; padding:8px !important; margin-top:4px; }
+    .invoice-paper .footer-area { font-size:11px; color:#000; display:flex; justify-content:space-between; align-items:flex-end; margin-top:auto; padding-top:20px; min-height:150px; }
+    .invoice-paper .notes-area { max-width:60%; overflow-wrap:anywhere; word-break:break-word; }
+    .invoice-paper .notes-label { font-weight:800; margin-bottom:2px; }
+    .invoice-paper .payment-info { margin-top:12px; font-size:11px; line-height:1.3; }
+    .invoice-paper .payment-label { font-weight:700; margin-bottom:2px; }
+  `;
+}
+
+function buildInvoicePrintHtml(titleText) {
+  const paperHtml = invPaper ? invPaper.outerHTML : '';
+  const safeTitle = String(titleText || 'Factura').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${safeTitle}</title>
+  <style>${getInvoicePrintStyles()}</style>
+</head>
+<body>
+  ${paperHtml}
+</body>
+</html>`;
+}
+
+function printInvoiceDocument(titleText) {
+  if (!invPaper) return;
+  const originalTitle = document.title;
+  const restoreTitle = () => {
+    document.title = originalTitle;
+    document.body.classList.remove('printing-invoice');
+  };
+  document.title = titleText || originalTitle;
+  document.body.classList.add('printing-invoice');
+  window.addEventListener('afterprint', restoreTitle, { once: true });
+  setTimeout(() => {
+    try {
+      window.print();
+    } catch {}
+    setTimeout(restoreTitle, 4000);
+  }, 100);
+}
 
 if (invPrevClose) invPrevClose.addEventListener('click', () => invPrevModal.style.display = 'none');
 if (invPrevPrint) {
@@ -5572,31 +5776,16 @@ if (invPrevPrint) {
     if (!invNo.startsWith('Factura')) {
       invNo = 'Factura-' + invNo;
     }
-    invNo = invNo.replace(/\s+/g, ''); // Removes spaces to match Factura-000249-26
-    const oldTitle = document.title;
-    document.title = invNo;
-    document.body.classList.add('printing-invoice');
-    
-    // Use a one-time event listener to restore the title after printing dialog closes
-    const afterPrint = () => {
-      document.body.classList.remove('printing-invoice');
-      document.title = oldTitle;
-      window.removeEventListener('afterprint', afterPrint);
-    };
-    window.addEventListener('afterprint', afterPrint);
-    
+    invNo = invNo.replace(/\s+/g, '');
     setTimeout(() => {
-      window.print();
-      // Fallback in case afterprint doesn't fire (some browsers)
-      setTimeout(() => {
-        if (document.title === invNo) {
-          document.body.classList.remove('printing-invoice');
-          document.title = oldTitle;
-        }
-      }, 2000);
+      printInvoiceDocument(invNo);
     }, 100);
   });
 }
+
+window.addEventListener('resize', () => {
+  updateInvoicePreviewScale();
+});
 
 function normalizeInvoicePreviewText(text) {
   return String(text || '').replace(/\s+/g, ' ').trim();
@@ -5844,6 +6033,10 @@ window.previewInvoice = async function(id) {
   document.getElementById('prev-grand-total-2').textContent = grandTotal.toFixed(2) + '€';
   
   invPrevModal.style.display = 'flex';
+  requestAnimationFrame(() => {
+    updateInvoicePreviewScale();
+    requestAnimationFrame(() => updateInvoicePreviewScale());
+  });
 };
 
 window.printInvoice = function(id) {
@@ -6352,10 +6545,11 @@ function renderProducts(list) {
     prodRows.innerHTML = '<tr class="empty"><td colspan="15">暂无商品数据</td></tr>';
     return;
   }
-  list.forEach(x => {
+  list.forEach((x, idx) => {
+    const displayIndex = prodTotal - (prodPage - 1) * prodPageSize - idx;
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${x.id}</td>
+      <td>${displayIndex}</td>
       <td style="padding:0; width:50px; height:50px">${x.image ? `<img src="${x.image}" class="thumb-img" onclick="showFileViewer('${x.image}')" style="width:100%; height:100%; object-fit:contain; display:block">` : ''}</td>
       <td>${x.sku||''}</td>
       <td>${x.barcode||''}</td>
@@ -6412,6 +6606,7 @@ function renderProdPager() {
 function openProdModal(x) {
   if (!prodModal) return;
   const isEdit = !!x;
+  const stockInput = document.getElementById('prod-stock');
   document.getElementById('prod-modal-title').textContent = isEdit ? '编辑商品' : '新增商品';
   document.getElementById('prod-id').value = isEdit ? x.id : '';
   document.getElementById('prod-sku').value = x?.sku||'';
@@ -6425,6 +6620,10 @@ function openProdModal(x) {
   document.getElementById('prod-p3').value = x?.price3||'';
   document.getElementById('prod-p4').value = x?.price4||'';
   document.getElementById('prod-stock').value = x?.stock||'0';
+  if (stockInput) {
+    stockInput.readOnly = true;
+    stockInput.title = '库存请在商品库存页面调整';
+  }
   document.getElementById('prod-image').value = x?.image||'';
   document.getElementById('prod-desc').value = x?.description||'';
   document.getElementById('prod-notes').value = x?.notes||'';
@@ -6539,7 +6738,7 @@ if (prodForm) {
         price2: document.getElementById('prod-p2').value,
         price3: document.getElementById('prod-p3').value,
         price4: document.getElementById('prod-p4').value,
-        stock: document.getElementById('prod-stock').value,
+        stock: id ? (document.getElementById('prod-stock').value || '0') : '0',
         image: imageUrl,
         description: document.getElementById('prod-desc').value,
         notes: document.getElementById('prod-notes').value
@@ -6788,16 +6987,49 @@ function fitShippingText(element, maxFontSize, minFontSize, maxLines) {
 function fitShippingLabel() {
   const paper = document.getElementById('shipping-paper');
   if (!paper || !shipContent) return;
+  const stackEl = shipContent.querySelector('.s-stack');
+  shipContent.style.transform = 'scale(1)';
+  shipContent.style.transformOrigin = 'center center';
   const addressEl = shipContent.querySelector('.s-address');
   const cityEl = shipContent.querySelector('.s-city');
   const metaEls = Array.from(shipContent.querySelectorAll('.s-meta'));
   const phoneEl = shipContent.querySelector('.s-phone');
   const contactEl = shipContent.querySelector('.s-contact');
-  fitShippingText(addressEl, 72, 36, 4);
-  fitShippingText(cityEl, 58, 34, 2);
-  metaEls.forEach(el => fitShippingText(el, 40, 24, 2));
-  fitShippingText(phoneEl, 58, 28, 2);
+  fitShippingText(addressEl, 72, 24, 4);
+  fitShippingText(cityEl, 58, 24, 2);
+  metaEls.forEach(el => fitShippingText(el, 40, 18, 3));
+  fitShippingText(phoneEl, 58, 20, 2);
   fitShippingText(contactEl, 30, 18, 3);
+  if (stackEl) {
+    const widthScale = (shipContent.clientWidth - 8) / Math.max(stackEl.scrollWidth, 1);
+    const heightScale = (shipContent.clientHeight - 8) / Math.max(stackEl.scrollHeight, 1);
+    const scale = Math.min(widthScale, heightScale, 1);
+    shipContent.style.transform = `scale(${Math.max(scale, 0.55)})`;
+  }
+}
+
+function shippingLabelText(...parts) {
+  return parts.map(x => String(x || '').trim()).filter(Boolean).join(' ');
+}
+
+function buildShippingLabelHtml(data) {
+  const companyLine = shippingLabelText(data.company || data.name || '');
+  const addressLine = shippingLabelText(data.address);
+  const cityLine = shippingLabelText(data.zip, data.city);
+  const regionLine = shippingLabelText(data.province, data.country);
+  const phoneLine = data.phone ? `Tel: ${String(data.phone).trim()}` : '';
+  const contactLine = shippingLabelText(data.contact);
+  const blocks = [];
+  if (companyLine) blocks.push(`<div class="s-meta s-block">${companyLine}</div>`);
+  if (addressLine) blocks.push(`<div class="s-address s-block">${addressLine}</div>`);
+  if (cityLine) blocks.push(`<div class="s-city s-block">${cityLine}</div>`);
+  if (regionLine) blocks.push(`<div class="s-meta s-block">${regionLine}</div>`);
+  if (phoneLine) blocks.push(`<div class="s-phone s-block">${phoneLine}</div>`);
+  if (contactLine) blocks.push(`<div class="s-contact s-block">${contactLine}</div>`);
+  if (!blocks.length && data.name) {
+    blocks.push(`<div class="s-meta s-block">${String(data.name).trim()}</div>`);
+  }
+  return `<div class="s-stack">${blocks.join('')}</div>`;
 }
 
 function buildShippingPrintHtml(invNo) {
@@ -6845,20 +7077,30 @@ function buildShippingPrintHtml(invNo) {
       page-break-inside: avoid;
       break-inside: avoid;
     }
+    .shipping-paper .s-stack {
+      width: 100%;
+      max-width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.9em;
+      box-sizing: border-box;
+    }
     .shipping-paper .s-block {
       width: 100%;
       max-width: 100%;
       box-sizing: border-box;
       overflow-wrap: anywhere;
       word-break: break-word;
+      text-align: center;
+      margin: 0;
     }
     .shipping-paper .s-address {
       font-size: 72px;
       font-weight: 800;
       line-height: 1.08;
-      margin-bottom: 12px;
       text-transform: lowercase;
-      min-height: 3.3em;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -6866,58 +7108,40 @@ function buildShippingPrintHtml(invNo) {
     .shipping-paper .s-city {
       font-size: 58px;
       font-weight: 800;
-      margin-bottom: 24px;
       text-transform: uppercase;
       line-height: 1.06;
-      min-height: 2.2em;
       display: flex;
       align-items: center;
       justify-content: center;
     }
     .shipping-paper .s-meta {
       font-size: 40px;
-      margin-bottom: 14px;
       font-weight: 400;
       line-height: 1.1;
-      min-height: 2.2em;
       display: flex;
       align-items: center;
       justify-content: center;
-    }
-    .shipping-paper .s-footer {
-      display: flex;
-      justify-content: space-between;
-      width: 100%;
-      margin-top: auto;
-      align-items: flex-end;
-      gap: 18mm;
-      box-sizing: border-box;
     }
     .shipping-paper .s-phone {
       font-size: 58px;
       font-weight: 800;
       line-height: 1.03;
-      flex: 1;
-      text-align: left;
-      min-height: 2.1em;
       display: flex;
-      align-items: flex-end;
+      align-items: center;
+      justify-content: center;
     }
     .shipping-paper .s-contact {
       font-size: 30px;
-      text-align: right;
       line-height: 1.15;
-      width: 34%;
-      min-height: 2.3em;
       display: flex;
-      align-items: flex-end;
-      justify-content: flex-end;
+      align-items: center;
+      justify-content: center;
     }
   </style>
 </head>
 <body>
   <div class="shipping-paper">
-    <div id="ship-print-content" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center">${contentHtml}</div>
+    <div id="ship-print-content" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;transform-origin:center center">${contentHtml}</div>
   </div>
   <script>
     (function() {
@@ -6936,13 +7160,22 @@ function buildShippingPrintHtml(invNo) {
         }
         element.style.fontSize = minFontSize + 'px';
       }
+      var content = document.getElementById('ship-print-content');
+      var stack = document.querySelector('.s-stack');
       fitShippingElement(document.querySelector('.s-address'), 72, 22, 5);
-      fitShippingElement(document.querySelector('.s-city'), 58, 26, 3);
+      fitShippingElement(document.querySelector('.s-city'), 58, 24, 3);
       Array.prototype.forEach.call(document.querySelectorAll('.s-meta'), function(el) {
-        fitShippingElement(el, 40, 20, 2);
+        fitShippingElement(el, 40, 18, 3);
       });
       fitShippingElement(document.querySelector('.s-phone'), 58, 20, 3);
       fitShippingElement(document.querySelector('.s-contact'), 30, 16, 3);
+      if (content && stack) {
+        content.style.transform = 'scale(1)';
+        var widthScale = (content.clientWidth - 8) / Math.max(stack.scrollWidth, 1);
+        var heightScale = (content.clientHeight - 8) / Math.max(stack.scrollHeight, 1);
+        var scale = Math.min(widthScale, heightScale, 1);
+        content.style.transform = 'scale(' + Math.max(scale, 0.55) + ')';
+      }
       window.addEventListener('afterprint', function() {
         setTimeout(function() { window.close(); }, 50);
       });
@@ -7029,56 +7262,35 @@ window.printShippingLabel = async function(id) {
   const inv = currentInvoices.find(x => String(x.id) === String(id));
   if (!inv) return;
   
-  // Find customer
+  try { await ensureRealContactsLoaded(); } catch {}
   let cust = null;
   try {
-    const contacts = await apiFetchJSON(`/api/contacts?q=${encodeURIComponent(inv.customer)}`);
-    cust = contacts.find(c => c.name === inv.customer);
+    cust = await getInvoiceCustomerContact(inv.customer);
   } catch {}
   
-  let name = inv.customer; // Store Name
-  let company = '';
-  let address = '';
-  let zip = '';
-  let city = '';
+  let name = String(inv.customer || '').trim();
+  let company = String(inv.company_name || '').trim();
+  let address = String(inv.customer_address || '').trim();
+  let zip = String(inv.customer_zip || '').trim();
+  let city = String(inv.customer_city || '').trim();
   let province = '';
-  let country = '';
+  let country = String(inv.customer_country || '').trim();
   let phone = '';
   let contact = '';
   
   if (cust) {
-    name = cust.name;
-    company = cust.company;
-    if (cust.ship_address) {
-      address = cust.ship_address;
-      zip = cust.ship_zip;
-      city = cust.ship_city;
-      province = cust.ship_province;
-      country = cust.ship_country;
-      phone = cust.ship_phone;
-      contact = cust.ship_contact;
-    } else {
-      address = cust.address;
-      zip = cust.zip;
-      city = cust.city;
-      province = cust.province;
-      country = cust.country;
-      phone = cust.phone;
-      contact = cust.contact;
-    }
+    name = String(cust.name || '').trim() || name;
+    company = String(cust.company || '').trim() || company || name;
+    address = String(cust.ship_address || '').trim() || address || String(cust.address || '').trim();
+    zip = String(cust.ship_zip || '').trim() || zip || String(cust.zip || '').trim();
+    city = String(cust.ship_city || '').trim() || city || String(cust.city || '').trim();
+    province = String(cust.ship_province || '').trim() || province || String(cust.province || '').trim();
+    country = String(cust.ship_country || '').trim() || country || String(cust.country || '').trim();
+    phone = String(cust.ship_phone || '').trim() || phone || String(cust.phone || '').trim();
+    contact = String(cust.ship_contact || '').trim() || contact || String(cust.contact || '').trim();
   }
-
-  // HTML Structure matching the CSS classes
-  let html = `
-    ${company ? `<div class="s-meta s-block">${company}</div>` : ''}
-    <div class="s-address s-block">${address || ''}</div>
-    <div class="s-city s-block">${zip || ''} ${city || ''}</div>
-    <div class="s-meta s-block">${province || ''} ${country || ''}</div>
-    <div class="s-footer">
-        <div class="s-phone s-block">${phone ? 'Tel: ' + phone : ''}</div>
-        <div class="s-contact s-block">${contact || ''}</div>
-     </div>
-  `;
+  company = company || name;
+  const html = buildShippingLabelHtml({ name, company, address, zip, city, province, country, phone, contact });
   
   if (shipContent) shipContent.innerHTML = html;
   requestAnimationFrame(() => fitShippingLabel());
@@ -7204,11 +7416,13 @@ async function handleRoute() {
     if (!ensureView('ledger')) return;
     document.getElementById('page-ledger').style.display = 'block';
     try {
-      if (typeof ledgerHdrType !== 'undefined') { ledgerHdrType = 'all'; ledgerHdrCat = ''; ledgerHdrOwner = ''; }
+      if (typeof ledgerHdrType !== 'undefined') { ledgerHdrType = 'all'; ledgerHdrCat = ''; ledgerHdrOwner = ''; ledgerHdrMethod = ''; ledgerHdrConfirm = 'all'; }
       if (typeof setLabel === 'function') {
         setLabel(document.getElementById('ld-type-label'), '类型', false);
         setLabel(document.getElementById('ld-cat-label'), '子类目', false);
         setLabel(document.getElementById('ld-owner-label'), '往来单位', false);
+        setLabel(document.getElementById('ld-method-label'), '支付方式', false);
+        setLabel(document.getElementById('ld-confirm-label'), '操作', false);
       }
     } catch {}
     loadLedgerFromServer().then(() => {
@@ -8419,9 +8633,12 @@ let fsPage = 1;
 const fsPageSize = 50;
 let fsTotal = 0;
 let fsCurrentTab = 'stock';
+let fsAdjustPage = 1;
+let fsAdjustTotal = 0;
 let fsRecordPage = 1;
 const fsRecordPageSize = 100;
 let fsRecordTotal = 0;
+let fsAdjustState = null;
 
 function renderLoteLines(loteValue = '') {
   const raw = String(loteValue || '').trim();
@@ -8430,30 +8647,71 @@ function renderLoteLines(loteValue = '') {
   if (parts.length === 0) return '-';
   return `<div style="display:flex; flex-direction:column; gap:4px">` + parts.map(x => `<div>${x}</div>`).join('') + `</div>`;
 }
+function formatFinishedLote(loteValue = '') {
+  let l = String(loteValue || '').trim();
+  const parts = l.split('-');
+  if (parts.length === 3) l = parts[2] + parts[1];
+  return l;
+}
+function mergeFinishedBatches(batches = []) {
+  const grouped = new Map();
+  (Array.isArray(batches) ? batches : []).forEach(batch => {
+    const rawLote = String(batch?.lote || '').trim();
+    const qty = Number(batch?.qty || 0);
+    if (!rawLote || qty <= 0) return;
+    const expiry = String(batch?.expiry || '').trim();
+    const key = `${rawLote}__${expiry}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, { lote: rawLote, expiry, qty: 0 });
+    }
+    grouped.get(key).qty += qty;
+  });
+  return Array.from(grouped.values()).sort((a, b) => {
+    const ea = String(a.expiry || '');
+    const eb = String(b.expiry || '');
+    return ea.localeCompare(eb) || String(a.lote || '').localeCompare(String(b.lote || ''));
+  });
+}
 
 function switchFinishedStockTab(tab, btn) {
-  fsCurrentTab = tab === 'records' ? 'records' : 'stock';
+  if (tab === 'adjust' && !can('finished_stock_adjust', 'view')) {
+    tab = 'stock';
+    btn = document.getElementById('fs-tab-stock');
+  }
+  fsCurrentTab = tab === 'records' ? 'records' : (tab === 'adjust' ? 'adjust' : 'stock');
   const stockPanel = document.getElementById('fs-stock-panel');
   const recordPanel = document.getElementById('fs-records-panel');
+  const adjustPanel = document.getElementById('fs-adjust-panel');
   const stockToolbar = document.getElementById('fs-stock-toolbar');
+  const addBtn = document.getElementById('fs-add-btn');
+  const adjustTab = document.getElementById('fs-tab-adjust');
+  if (adjustTab) adjustTab.style.display = can('finished_stock_adjust', 'view') ? 'inline-flex' : 'none';
   if (stockPanel) stockPanel.style.display = fsCurrentTab === 'stock' ? 'block' : 'none';
   if (recordPanel) recordPanel.style.display = fsCurrentTab === 'records' ? 'block' : 'none';
-  if (stockToolbar) stockToolbar.style.display = fsCurrentTab === 'stock' ? 'flex' : 'none';
+  if (adjustPanel) adjustPanel.style.display = fsCurrentTab === 'adjust' ? 'block' : 'none';
+  if (stockToolbar) stockToolbar.style.display = fsCurrentTab === 'records' ? 'none' : 'flex';
+  if (addBtn) addBtn.style.display = fsCurrentTab === 'stock' ? 'inline-flex' : 'none';
   document.querySelectorAll('#page-finished-stock .tab').forEach(el => el.classList.remove('active'));
   if (btn) btn.classList.add('active');
   else {
-    const activeBtn = document.getElementById(fsCurrentTab === 'stock' ? 'fs-tab-stock' : 'fs-tab-records');
+    const activeBtn = document.getElementById(fsCurrentTab === 'stock' ? 'fs-tab-stock' : (fsCurrentTab === 'records' ? 'fs-tab-records' : 'fs-tab-adjust'));
     if (activeBtn) activeBtn.classList.add('active');
   }
   if (fsCurrentTab === 'stock') loadFinishedStock(1);
-  else loadFinishedStockRecords(1);
+  else if (fsCurrentTab === 'records') loadFinishedStockRecords(1);
+  else loadFinishedStockAdjustments(1);
 }
 window.switchFinishedStockTab = switchFinishedStockTab;
+function handleFsSearchInput() {
+  if (fsCurrentTab === 'adjust') loadFinishedStockAdjustments(1);
+  else loadFinishedStock(1);
+}
+window.handleFsSearchInput = handleFsSearchInput;
 
 async function loadFinishedStock(page = 1) {
   fsPage = page;
   const q = document.getElementById('fs-search')?.value?.trim() || '';
-  const res = await fetchWithAuth(`/api/inventory/finished?page=${fsPage}&size=${fsPageSize}&q=${encodeURIComponent(q)}`);
+  const res = await fetchWithAuth(`/api/inventory/finished?page=${fsPage}&size=${fsPageSize}&q=${encodeURIComponent(q)}&_t=${Date.now()}`);
   if (!res.ok) return;
   const data = await res.json();
   const list = data.list || [];
@@ -8473,19 +8731,13 @@ async function loadFinishedStock(page = 1) {
     let stockHtml = totalStock;
     let expiryHtml = '';
     let loteHtml = '';
-    if (p.batches && p.batches.length > 0) {
-      const displayBatches = p.batches.filter(b => Number(b.qty || 0) > 0 && String(b.lote || '').trim());
+    const displayBatches = mergeFinishedBatches(p.batches);
+    if (displayBatches.length > 0) {
       stockHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => `<div>${b.qty}</div>`).join('') + `</div>`;
       expiryHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => `<div>${b.expiry || ''}</div>`).join('') + `</div>`;
-      loteHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => {
-        let l = String(b.lote || '').trim();
-        const parts = l.split('-');
-        if (parts.length === 3) l = parts[2] + parts[1];
-        return `<div>${l}</div>`;
-      }).join('') + `</div>`;
-      if (!displayBatches.length) {
-        stockHtml = 0;
-      }
+      loteHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => `<div>${formatFinishedLote(b.lote)}</div>`).join('') + `</div>`;
+    } else if (p.batches && p.batches.length > 0) {
+      stockHtml = 0;
     }
     return `
     <tr>
@@ -8507,19 +8759,65 @@ async function loadFinishedStock(page = 1) {
   renderFsPager();
 }
 
+async function loadFinishedStockAdjustments(page = 1) {
+  fsAdjustPage = page;
+  const q = document.getElementById('fs-search')?.value?.trim() || '';
+  const res = await fetchWithAuth(`/api/inventory/finished?page=${fsAdjustPage}&size=${fsPageSize}&q=${encodeURIComponent(q)}&_t=${Date.now()}`);
+  if (!res.ok) return;
+  const data = await res.json();
+  const list = data.list || [];
+  fsAdjustTotal = data.total || 0;
+  const tbody = document.getElementById('finished-stock-adjust-rows');
+  if (!tbody) return;
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#94a3b8">暂无数据</td></tr>';
+    renderFsAdjustPager();
+    return;
+  }
+  tbody.innerHTML = list.map((p, idx) => {
+    const totalStock = Number(p.total_stock || 0);
+    let stockHtml = totalStock;
+    let expiryHtml = '';
+    let loteHtml = '';
+    const displayBatches = mergeFinishedBatches(p.batches);
+    if (displayBatches.length > 0) {
+      stockHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => `<div>${b.qty}</div>`).join('') + `</div>`;
+      expiryHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => `<div>${b.expiry || ''}</div>`).join('') + `</div>`;
+      loteHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => `<div>${formatFinishedLote(b.lote)}</div>`).join('') + `</div>`;
+    } else if (p.batches && p.batches.length > 0) {
+      stockHtml = 0;
+    }
+    return `
+    <tr>
+      <td>${fsAdjustTotal - (fsAdjustPage - 1) * fsPageSize - idx}</td>
+      <td style="padding:8px; width:60px; height:60px; text-align:center">${p.image ? `<img src="${p.image}" class="thumb-img" onclick="showFileViewer('${p.image}')" style="width:44px; height:44px; object-fit:contain; display:inline-block; vertical-align:middle">` : ''}</td>
+      <td>${p.sku || ''}</td>
+      <td>${p.name}</td>
+      <td>${p.name_cn || ''}</td>
+      <td>${stockHtml}</td>
+      <td>${loteHtml}</td>
+      <td>${expiryHtml}</td>
+      <td style="text-align:center">${can('finished_stock_adjust', 'view') ? `<button class="btn-secondary" style="padding:4px 8px; font-size:12px" onclick="openFinishedStockAdjustment('${encodeURIComponent(JSON.stringify(p))}')">调整</button>` : ''}</td>
+    </tr>
+    `;
+  }).join('');
+  renderFsAdjustPager();
+}
+window.loadFinishedStockAdjustments = loadFinishedStockAdjustments;
+
 async function loadFinishedStockRecords(page = 1) {
   fsRecordPage = page;
   const tbody = document.getElementById('finished-stock-record-rows');
   if (!tbody) return;
   tbody.innerHTML = '<tr><td colspan="10" class="empty">加载中...</td></tr>';
   try {
-    const res = await fetchWithAuth(`/api/inventory/finished/logs?page=${fsRecordPage}&size=${fsRecordPageSize}`);
+    const res = await fetchWithAuth(`/api/inventory/finished/logs?page=${fsRecordPage}&size=${fsRecordPageSize}&_t=${Date.now()}`);
     if (!res.ok) throw new Error('Failed to load finished stock records');
     const data = await res.json();
     const list = data.list || [];
     fsRecordTotal = data.total || 0;
     if (list.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="10" class="empty">暂无记录</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" class="empty">暂无记录</td></tr>';
       renderFsRecordPager();
       return;
     }
@@ -8539,6 +8837,7 @@ async function loadFinishedStockRecords(page = 1) {
           <td>${row.customer || '-'}</td>
           <td style="text-align:right; color:${qtyColor}; font-weight:600">${qty > 0 ? '+' : ''}${qty}</td>
           <td>${renderLoteLines(row.lote)}</td>
+          <td style="white-space:pre-wrap; word-break:break-word">${row.notes || '-'}</td>
           <td>${row.user || '-'}</td>
         </tr>
       `;
@@ -8546,7 +8845,7 @@ async function loadFinishedStockRecords(page = 1) {
     renderFsRecordPager();
   } catch (e) {
     console.error(e);
-    tbody.innerHTML = '<tr><td colspan="10" class="empty" style="color:#ef4444">加载失败</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="empty" style="color:#ef4444">加载失败</td></tr>';
   }
 }
 
@@ -8581,10 +8880,25 @@ function renderFsRecordPager() {
     <button class="btn-secondary" ${fsRecordPage >= totalPages ? 'disabled' : ''} onclick="loadFinishedStockRecords(${fsRecordPage + 1})">下一页</button>
   `;
 }
+function renderFsAdjustPager() {
+  const pager = document.getElementById('fs-adjust-pager');
+  if (!pager) return;
+  const totalPages = Math.ceil(fsAdjustTotal / fsPageSize);
+  if (totalPages <= 1) {
+    pager.style.display = 'none';
+    return;
+  }
+  pager.style.display = 'flex';
+  pager.innerHTML = `
+    <button class="btn-secondary" ${fsAdjustPage <= 1 ? 'disabled' : ''} onclick="loadFinishedStockAdjustments(${fsAdjustPage - 1})">上一页</button>
+    <span style="font-size:14px; color:#cbd5e1">第 ${fsAdjustPage} / ${totalPages} 页</span>
+    <button class="btn-secondary" ${fsAdjustPage >= totalPages ? 'disabled' : ''} onclick="loadFinishedStockAdjustments(${fsAdjustPage + 1})">下一页</button>
+  `;
+}
 async function loadStockHistory(id) {
   const tbody = document.getElementById('stock-history-rows');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8">加载中...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#94a3b8">加载中...</td></tr>';
   
   try {
     const res = await fetchWithAuth(`/api/inventory/finished/${id}/logs`);
@@ -8592,14 +8906,13 @@ async function loadStockHistory(id) {
     const logs = await res.json();
     
     if (logs.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8">暂无记录</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#94a3b8">暂无记录</td></tr>';
       return;
     }
     
     tbody.innerHTML = logs.map((log, i) => {
-      const isIn = log.type === 'in';
-      const color = isIn ? '#10b981' : '#f97316';
-      const typeLabel = isIn ? '入库' : '销售出库';
+      const color = log.type === 'in' ? '#10b981' : (log.type === 'adjust' ? '#facc15' : '#f97316');
+      const typeLabel = log.type === 'in' ? '入库' : (log.type === 'adjust' ? '库存调整' : '销售出库');
       const d = new Date(log.date);
       const dateStr = `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
       const user = log.user || '-';
@@ -8614,8 +8927,9 @@ async function loadStockHistory(id) {
           <td>${invoiceNo}</td>
           <td>${customer}</td>
           <td>${lote}</td>
-          <td>${isIn ? '+' : '-'}${log.qty}</td>
+          <td>${Number(log.raw_qty || 0) > 0 ? '+' : ''}${Number(log.raw_qty || 0)}</td>
           <td>${typeLabel}</td>
+          <td style="white-space:pre-wrap; word-break:break-word">${log.notes || '-'}</td>
           <td>${user}</td>
         </tr>
       `;
@@ -8623,10 +8937,75 @@ async function loadStockHistory(id) {
     
   } catch (e) {
     console.error(e);
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:#ef4444">加载失败</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#ef4444">加载失败</td></tr>';
   }
 }
 let fsItems = [];
+function escapeHtml(text) {
+  return String(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function openFinishedStockAdjustment(encodedProduct) {
+  const p = typeof encodedProduct === 'string' ? JSON.parse(decodeURIComponent(encodedProduct)) : encodedProduct;
+  if (!p) return;
+  fsAdjustState = {
+    productId: p.id,
+    name: p.name || '',
+    batches: mergeFinishedBatches(p.batches)
+  };
+  const defaultBatch = fsAdjustState.batches[0] || {};
+  document.getElementById('fs-adjust-product-id').value = p.id;
+  document.getElementById('fs-adjust-notes').value = '';
+  document.getElementById('fs-adjust-tbody').innerHTML = `
+    <tr>
+      <td>${escapeHtml(p.name || '')}</td>
+      <td><input id="fs-adjust-qty" type="number" step="0.01" style="width:100%" placeholder="可填正负数"></td>
+      <td>${fsAdjustState.batches.length ? `
+        <select id="fs-adjust-lote" style="width:100%">
+          ${fsAdjustState.batches.map(b => `<option value="${escapeHtml(b.lote || '')}" ${String(b.lote || '') === String(defaultBatch.lote || '') ? 'selected' : ''}>${escapeHtml(`${formatFinishedLote(b.lote)} / 库存:${b.qty}${b.expiry ? ` / 到期:${b.expiry}` : ''}`)}</option>`).join('')}
+        </select>
+      ` : `
+        <input id="fs-adjust-lote" type="text" value="" style="width:100%" placeholder="输入批次">
+      `}</td>
+      <td><input id="fs-adjust-expiry" type="date" value="${escapeHtml(defaultBatch.expiry || '')}" style="width:100%"></td>
+    </tr>
+  `;
+  const loteInput = document.getElementById('fs-adjust-lote');
+  loteInput?.addEventListener('change', () => {
+    if (!fsAdjustState?.batches) return;
+    const matched = fsAdjustState.batches.find(b => String(b.lote || '').trim() === loteInput.value.trim());
+    if (matched) document.getElementById('fs-adjust-expiry').value = matched.expiry || '';
+  });
+  document.getElementById('fs-adjust-modal').style.display = 'flex';
+}
+window.openFinishedStockAdjustment = openFinishedStockAdjustment;
+async function saveFinishedStockAdjustment() {
+  const productId = Number(document.getElementById('fs-adjust-product-id').value || 0);
+  const qty = Number(document.getElementById('fs-adjust-qty').value || 0);
+  const lote = (document.getElementById('fs-adjust-lote').value || '').trim();
+  const expiry = (document.getElementById('fs-adjust-expiry').value || '').trim();
+  const notes = (document.getElementById('fs-adjust-notes').value || '').trim();
+  if (!productId || !Number.isFinite(qty) || qty === 0) return alert('请填写有效数量');
+  if (!lote) return alert('请选择或输入Lote');
+  if (!notes) return alert('请填写备注');
+  const res = await fetchWithAuth('/api/inventory/finished/adjust', {
+    method: 'PUT',
+    body: JSON.stringify({ productId, qty, lote, expiry, notes })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    return alert(
+      err.error === 'bad_request' ? '请填写完整调整信息'
+      : err.error === 'not_found' ? '商品不存在'
+      : err.error === 'batch_not_found' ? '所选Lote不存在'
+      : '保存失败'
+    );
+  }
+  document.getElementById('fs-adjust-modal').style.display = 'none';
+  if (fsCurrentTab === 'adjust') loadFinishedStockAdjustments(fsAdjustPage);
+  loadFinishedStock(fsPage);
+  loadFinishedStockRecords(1);
+}
+window.saveFinishedStockAdjustment = saveFinishedStockAdjustment;
 
 function openFinishedStockModal(resetItems = true) {
   const m = document.getElementById('fs-add-modal');
