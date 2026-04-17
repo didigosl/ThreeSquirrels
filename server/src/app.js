@@ -370,6 +370,90 @@ function formatLote(loteDate) {
   return loteDate;
 }
 
+function extractExplicitLote(item) {
+  const text = String(item?.description || '').trim();
+  if (!text) return '';
+  const m = text.match(/lote\s*[:：]\s*([^\s,;]+)/i);
+  return m ? String(m[1] || '').trim() : '';
+}
+
+function sameInvoiceItemIdentity(a, b) {
+  const aPid = String(a?.productId || '').trim();
+  const bPid = String(b?.productId || '').trim();
+  if (aPid && bPid) return aPid === bPid;
+  const aSku = String(a?.sku || '').trim();
+  const bSku = String(b?.sku || '').trim();
+  if (aSku && bSku) return aSku === bSku;
+  return String(a?.name || '').trim() === String(b?.name || '').trim();
+}
+
+async function resolveProductIdFromItem(item) {
+  const rawPid = Number(item?.productId || 0);
+  if (rawPid > 0) return rawPid;
+
+  const sku = String(item?.sku || '').trim();
+  if (sku) {
+    const p = await query('select id from products where trim(sku)=trim($1) order by id desc limit 1', [sku]);
+    if (p.rows[0]) return Number(p.rows[0].id);
+  }
+
+  const name = String(item?.name || '').trim();
+  if (name) {
+    const p = await query('select id from products where trim(name)=trim($1) order by id desc limit 1', [name]);
+    if (p.rows[0]) return Number(p.rows[0].id);
+  }
+
+  return 0;
+}
+
+async function restoreInventoryForInvoiceItem(item, qtyOverride = null) {
+  const qty = Number(qtyOverride != null ? qtyOverride : item?.qty || 0);
+  if (qty <= 0) return;
+
+  const pid = await resolveProductIdFromItem(item);
+  if (!pid) return;
+
+  await query('update products set stock = stock + $1 where id=$2', [qty, pid]);
+
+  const explicitLote = extractExplicitLote(item);
+  const deductions = Array.isArray(item?.deductions) ? item.deductions : [];
+
+  // If the invoice line has no visible lote, return stock to unlotted inventory only.
+  if (!explicitLote) return;
+
+  let remaining = qty;
+  for (const d of deductions) {
+    if (remaining <= 0) break;
+    const take = Math.min(remaining, Number(d?.qty || 0));
+    if (take <= 0) continue;
+
+    if (d?.batch_id) {
+      const b = await query('select id from inventory_batches where id=$1', [d.batch_id]);
+      if (b.rows[0]) {
+        await query('update inventory_batches set quantity = quantity + $1 where id=$2', [take, d.batch_id]);
+      } else {
+        await query(
+          'insert into inventory_batches(product_id, quantity, expiration_date, lote, created_at) values($1,$2,$3,$4,$5)',
+          [pid, take, d?.expiry || '', d?.lote || explicitLote, Date.now()]
+        );
+      }
+    } else {
+      await query(
+        'insert into inventory_batches(product_id, quantity, expiration_date, lote, created_at) values($1,$2,$3,$4,$5)',
+        [pid, take, d?.expiry || '', d?.lote || explicitLote, Date.now()]
+      );
+    }
+    remaining -= take;
+  }
+
+  if (remaining > 0) {
+    await query(
+      'insert into inventory_batches(product_id, quantity, expiration_date, lote, created_at) values($1,$2,$3,$4,$5)',
+      [pid, remaining, '', explicitLote, Date.now()]
+    );
+  }
+}
+
 async function simulateSplitStock(items) {
   let finalItems = [];
   for (const item of items) {
@@ -442,65 +526,76 @@ async function deductAndSplitStock(items) {
       finalItems.push(item);
       continue;
     }
-    
-    let pid = item.productId;
-    if (!pid) {
-       if (item.sku) {
-          const p = await query('select id from products where sku=$1', [item.sku]);
-          if (p.rows[0]) pid = p.rows[0].id;
-       } else if (item.name) {
-          const p = await query('select id from products where name=$1', [item.name]);
-          if (p.rows[0]) pid = p.rows[0].id;
-       }
-    }
 
+    const pid = await resolveProductIdFromItem(item);
     if (pid) {
+      const stockR = await query(`
+        select
+          coalesce(p.stock, 0) as total_stock,
+          coalesce((
+            select sum(case when quantity > 0 then quantity else 0 end)
+            from inventory_batches
+            where product_id = p.id
+          ), 0) as batch_stock
+        from products p
+        where p.id = $1
+      `, [pid]);
+      const totalStock = Number(stockR.rows[0]?.total_stock || 0);
+      const batchStock = Number(stockR.rows[0]?.batch_stock || 0);
+      const unlottedAvailable = Math.max(0, totalStock - batchStock);
+
       await query('update products set stock = stock - $1 where id=$2', [qty, pid]);
-      
+
       let remaining = qty;
-      const batches = await query('select * from inventory_batches where product_id=$1 and quantity > 0 order by expiration_date asc', [pid]);
-      
+      const unlottedTake = Math.min(remaining, unlottedAvailable);
+      if (unlottedTake > 0) {
+        const splitItem = { ...item };
+        splitItem.qty = unlottedTake;
+        splitItem.description = (splitItem.description || '').trim();
+        splitItem.deductions = [];
+        finalItems.push(splitItem);
+        remaining -= unlottedTake;
+      }
+
+      const batches = await query('select * from inventory_batches where product_id=$1 and quantity > 0 order by expiration_date asc, id asc', [pid]);
+
       for (const b of batches.rows) {
         if (remaining <= 0) break;
         const take = Math.min(Number(b.quantity), remaining);
-        
+
         if (Number(b.quantity) === take) {
           await query('update inventory_batches set quantity = 0 where id=$1', [b.id]);
         } else {
           await query('update inventory_batches set quantity = quantity - $1 where id=$2', [take, b.id]);
         }
-        
-        let splitItem = { ...item };
+
+        const splitItem = { ...item };
         splitItem.qty = take;
-        
-        // Only append system Lote if the user didn't already provide one in the description.
-        // This allows manual Lote overrides during invoice edits to be preserved perfectly.
+
         if (!/lote/i.test(splitItem.description || '')) {
           let spec = (splitItem.description || '').trim();
           let loteStr = formatLote(b.lote);
           if (loteStr) spec = `${spec} Lote:${loteStr}`.trim();
           splitItem.description = spec;
         }
-        
+
         splitItem.deductions = [{
           batch_id: b.id,
           qty: take,
           expiry: b.expiration_date,
           lote: b.lote
         }];
-        
+
         finalItems.push(splitItem);
         remaining -= take;
       }
-      
+
       if (remaining > 0) {
-         let splitItem = { ...item };
-         splitItem.qty = remaining;
-         if (!/lote/i.test(splitItem.description || '')) {
-            splitItem.description = (splitItem.description || '').trim();
-         }
-         splitItem.deductions = [];
-         finalItems.push(splitItem);
+        const splitItem = { ...item };
+        splitItem.qty = remaining;
+        splitItem.description = (splitItem.description || '').trim();
+        splitItem.deductions = [];
+        finalItems.push(splitItem);
       }
     } else {
       finalItems.push(item);
@@ -1591,40 +1686,10 @@ app.delete('/api/invoices/:id', authRequired, ensureAllow('sales_invoice','delet
   const paid = Number(p.rows[0]?.paid || 0);
   if (paid > 0) return res.status(400).json({ error: 'cannot_delete_paid_invoice' });
 
-  // Restore Stock
+  // Restore stock for full invoice items.
   const items = Array.isArray(inv.items) ? inv.items : (typeof inv.items === 'string' ? JSON.parse(inv.items) : []);
   for (const item of items) {
-    const qty = Number(item.qty || 0);
-    if (qty > 0) {
-       let pid = item.productId;
-       if (!pid) {
-          if (item.sku) {
-             const p = await query('select id from products where sku=$1', [item.sku]);
-             if (p.rows[0]) pid = p.rows[0].id;
-          } else if (item.name) {
-             const p = await query('select id from products where name=$1', [item.name]);
-             if (p.rows[0]) pid = p.rows[0].id;
-          }
-       }
-
-       if (pid) {
-        await query('update products set stock = stock + $1 where id=$2', [qty, pid]);
-        
-        // Restore batches if deduction info exists
-        if (item.deductions && Array.isArray(item.deductions)) {
-           for (const d of item.deductions) {
-              const b = await query('select id from inventory_batches where id=$1', [d.batch_id]);
-              if (b.rows[0]) {
-                 await query('update inventory_batches set quantity = quantity + $1 where id=$2', [d.qty, d.batch_id]);
-              } else {
-                 // Recreate batch
-                 await query('insert into inventory_batches(product_id, quantity, expiration_date, created_at) values($1,$2,$3,$4)',
-                      [pid, d.qty, d.expiry, Date.now()]);
-              }
-           }
-        }
-      }
-    }
+    await restoreInventoryForInvoiceItem(item);
   }
 
   // Delete Payable
@@ -1665,43 +1730,47 @@ app.put('/api/invoices/:id', authRequired, ensureAllow('sales_order','view'), as
     return res.status(400).json({ error: 'cannot_edit_paid_invoice' });
   }
 
-  // Restore Old Stock
   const oldItems = Array.isArray(inv.items) ? inv.items : (typeof inv.items === 'string' ? JSON.parse(inv.items) : []);
-  for (const item of oldItems) {
-    const qty = Number(item.qty || 0);
-    if (qty > 0) {
-       let pid = item.productId;
-       if (!pid) {
-          if (item.sku) {
-             const p = await query('select id from products where sku=$1', [item.sku]);
-             if (p.rows[0]) pid = p.rows[0].id;
-          } else if (item.name) {
-             const p = await query('select id from products where name=$1', [item.name]);
-             if (p.rows[0]) pid = p.rows[0].id;
-          }
-       }
+  const newItems = Array.isArray(x.items) ? x.items : [];
 
-       if (pid) {
-        await query('update products set stock = stock + $1 where id=$2', [qty, pid]);
-        
-        if (item.deductions && Array.isArray(item.deductions)) {
-           for (const d of item.deductions) {
-              const b = await query('select id from inventory_batches where id=$1', [d.batch_id]);
-              if (b.rows[0]) {
-                 await query('update inventory_batches set quantity = quantity + $1 where id=$2', [d.qty, d.batch_id]);
-              } else {
-                 await query('insert into inventory_batches(product_id, quantity, expiration_date, created_at) values($1,$2,$3,$4)',
-                      [pid, d.qty, d.expiry, Date.now()]);
-              }
-           }
-        }
-      }
+  // Build per-item deltas (old - new): positive means return to stock; negative means extra deduction needed.
+  const deltas = [];
+  const usedNew = new Array(newItems.length).fill(false);
+  for (const oldItem of oldItems) {
+    const oldQty = Number(oldItem?.qty || 0);
+    if (oldQty <= 0) continue;
+    let matchIdx = -1;
+    for (let i = 0; i < newItems.length; i++) {
+      if (usedNew[i]) continue;
+      if (sameInvoiceItemIdentity(oldItem, newItems[i])) { matchIdx = i; break; }
     }
+    const newQty = matchIdx >= 0 ? Number(newItems[matchIdx]?.qty || 0) : 0;
+    if (matchIdx >= 0) usedNew[matchIdx] = true;
+    const delta = oldQty - Math.max(0, newQty);
+    if (delta !== 0) deltas.push({ base: oldItem, delta });
+  }
+  for (let i = 0; i < newItems.length; i++) {
+    if (usedNew[i]) continue;
+    const newQty = Number(newItems[i]?.qty || 0);
+    if (newQty > 0) deltas.push({ base: newItems[i], delta: -newQty });
   }
 
-  const items = Array.isArray(x.items) ? x.items : [];
-  // Deduct New Stock and Split Items
-  const finalItems = await deductAndSplitStock(items);
+  // Apply returns (only the delta amount), and only restore lote/batches if the old line had explicit lote.
+  for (const d of deltas) {
+    if (d.delta > 0) await restoreInventoryForInvoiceItem(d.base, d.delta);
+  }
+
+  // Apply extra deductions (only the delta amount).
+  const extraItems = deltas
+    .filter(d => d.delta < 0)
+    .map(d => ({ ...d.base, qty: Math.abs(d.delta) }));
+  await deductAndSplitStock(extraItems);
+
+  // Persist the user-edited invoice lines as entered.
+  // Stock changes are handled by the delta logic above; we do not rebuild the whole invoice from current inventory anymore.
+  const finalItems = newItems
+    .filter(item => Number(item?.qty || 0) > 0)
+    .map(item => ({ ...item, deductions: [] }));
 
   // Recalculate total
   const total = finalItems.reduce((sum, item) => {
