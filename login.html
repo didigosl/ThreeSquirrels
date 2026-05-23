@@ -23,11 +23,10 @@
       .label { font-size:13px; color: var(--muted); }
       input, select { width:100%; padding:12px 14px; border:1px solid var(--line); border-radius:10px; outline:none; font-size:15px; background:#fff; }
       input:focus, select:focus { border-color: var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,0.12); }
-      .chips { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }
-      .chip { display:inline-flex; align-items:center; padding:8px 12px; border:1px solid var(--line); border-radius:999px; cursor:pointer; background:#fff; color:#0f172a; }
-      .chip.active { border-color: var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,0.12); }
-      .selected { margin-top:8px; font-size:13px; color: var(--muted); }
-      .selected b { color:#0f172a; }
+      .password-wrap { position: relative; }
+      .password-wrap input { padding-right: 52px; }
+      .eye-btn { position:absolute; right:12px; top:50%; transform:translateY(-50%); border:none; background:transparent; color:#64748b; cursor:pointer; font-size:18px; line-height:1; padding:4px; user-select:none; }
+      .eye-btn:hover { color:#2563eb; }
       .btn { width:100%; padding:12px 14px; border:none; border-radius:10px; background: var(--blue); color:#fff; font-weight:600; cursor:pointer; transition: transform .08s ease, filter .12s ease, opacity .12s ease; }
       .btn:hover { filter: brightness(1.03); }
       .btn:active { transform: scale(0.98); filter: brightness(0.95); }
@@ -50,12 +49,15 @@
         <div class="brand">🐿️ 三只松鼠财务管理</div>
         <form id="login-form" class="form">
           <div>
-            <div class="label">账号</div>
-            <div id="login-chips" class="chips"></div>
+            <div class="label">登录名称</div>
+            <input id="login-name" type="text" placeholder="请输入登录名称" autocomplete="username">
           </div>
           <div>
             <div class="label">密码</div>
-            <input id="login-pass" type="password" placeholder="请输入密码">
+            <div class="password-wrap">
+              <input id="login-pass" type="password" placeholder="请输入密码" autocomplete="current-password">
+              <button id="login-eye" class="eye-btn" type="button" aria-label="按住查看密码" title="按住查看密码">👁</button>
+            </div>
           </div>
           <div style="display:flex; align-items:center; gap:8px">
             <input id="login-default" type="checkbox" style="width:auto">
@@ -69,81 +71,26 @@
     </div>
     <script>
       const form = document.getElementById('login-form');
-      const chips = document.getElementById('login-chips');
+      const nameInput = document.getElementById('login-name');
       const p = document.getElementById('login-pass');
+      const eyeBtn = document.getElementById('login-eye');
       const err = document.getElementById('login-error');
       const def = document.getElementById('login-default');
-      const sel = document.getElementById('login-selected');
       const submitBtn = document.getElementById('login-submit');
       const API_BASE = '';
       function setAuthUser(user) { if (user) localStorage.setItem('authUser', JSON.stringify(user)); else localStorage.removeItem('authUser'); }
-      function setSelected(name) {
-        selectedName = name || '';
-        if (sel) sel.textContent = selectedName || '未选择';
+      const rememberedUser = JSON.parse(localStorage.getItem('rememberedUser') || '{}');
+      if (rememberedUser.name) {
+        nameInput.value = rememberedUser.name;
+        p.value = rememberedUser.password || '';
+        def.checked = true;
       }
-      let selectedName = '';
-      function renderUsers(users) {
-        const uniq = Array.from(new Set((users || []).filter(Boolean)));
-        chips.innerHTML = '';
-        uniq.forEach(n => {
-          const c = document.createElement('button');
-          c.type='button';
-          c.className='chip';
-          c.textContent = n;
-          c.addEventListener('click', () => {
-            setSelected(n);
-            [...chips.querySelectorAll('.chip')].forEach(x => x.classList.toggle('active', x===c));
-            err.style.display = 'none';
-            const rem = JSON.parse(localStorage.getItem('rememberedUser')||'{}');
-            if (rem.name !== n) {
-              p.value = '';
-              def.checked = false;
-            } else {
-              p.value = rem.password || '';
-              def.checked = true;
-            }
-          });
-          chips.appendChild(c);
-        });
-        const rem = JSON.parse(localStorage.getItem('rememberedUser')||'{}');
-        if (rem.name && uniq.includes(rem.name)) {
-          setSelected(rem.name);
-          const btn = [...chips.querySelectorAll('.chip')].find(x => x.textContent===rem.name);
-          if (btn) btn.classList.add('active');
-          p.value = rem.password || '';
-          def.checked = true;
-        } else if (uniq.length > 0) {
-          setSelected(uniq[0]);
-          const btn = [...chips.querySelectorAll('.chip')].find(x => x.textContent===uniq[0]);
-          if (btn) btn.classList.add('active');
-        }
-      }
-      
-      async function fillUsers(){
-        const fallbackUsers = ['aaaaaa','shuangqun','caiwu','yiwu'];
-        renderUsers(fallbackUsers);
-        let users = [];
-        try {
-          const ctl = new AbortController();
-          const timer = setTimeout(() => ctl.abort(), 2500);
-          const res = await fetch(API_BASE + '/api/auth/users', { signal: ctl.signal });
-          clearTimeout(timer);
-          if (res.ok) {
-            const data = await res.json();
-            users = data.map(u => u.name);
-          }
-        } catch (e) { console.warn('load users fallback', e); }
-        
-        if (users.length) renderUsers(users);
-      }
-      
-      fillUsers();
 
       form.addEventListener('submit', async e => {
         e.preventDefault();
-        const name = (selectedName || '').trim();
+        const name = (nameInput.value || '').trim();
         const pass = p.value || '';
-        if (!name) { err.textContent = '请先选择账号'; err.style.display = 'block'; return; }
+        if (!name) { err.textContent = '请输入登录名称'; err.style.display = 'block'; return; }
         let authData = null;
         if (submitBtn) {
           submitBtn.disabled = true;
@@ -160,7 +107,11 @@
               localStorage.removeItem('rememberedUser');
               def.checked = false;
             }
-            err.textContent = `账号或密码错误（当前账号：${name}）`;
+            if (r.status === 401) {
+              err.textContent = `账号或密码错误（当前账号：${name}）`;
+            } else {
+              err.textContent = `后端不可用或返回错误（HTTP ${r.status}），不是密码错误（当前账号：${name}）`;
+            }
             err.style.display = 'block';
             return;
           }
@@ -169,7 +120,7 @@
           localStorage.setItem('authToken', authData.token);
           err.style.display = 'none';
         } catch {
-          err.textContent = `登录超时或失败（当前账号：${name}）`;
+          err.textContent = `当前是连接测试后端超时或失败，不是密码错误（当前账号：${name}）`;
           err.style.display = 'block';
           return;
         } finally {
@@ -188,6 +139,30 @@
         setAuthUser({ name, role: (authData?.user?.role || '') });
         location.href = './index.html#ledger';
       });
+
+      nameInput?.addEventListener('input', () => {
+        err.style.display = 'none';
+        if (!def.checked) return;
+        const remembered = JSON.parse(localStorage.getItem('rememberedUser') || '{}');
+        if (remembered.name && remembered.name !== nameInput.value.trim()) {
+          def.checked = false;
+        }
+      });
+      p?.addEventListener('input', () => {
+        err.style.display = 'none';
+      });
+      const showPassword = () => {
+        if (p) p.type = 'text';
+      };
+      const hidePassword = () => {
+        if (p) p.type = 'password';
+      };
+      eyeBtn?.addEventListener('mousedown', showPassword);
+      eyeBtn?.addEventListener('mouseup', hidePassword);
+      eyeBtn?.addEventListener('mouseleave', hidePassword);
+      eyeBtn?.addEventListener('touchstart', showPassword, { passive: true });
+      eyeBtn?.addEventListener('touchend', hidePassword);
+      eyeBtn?.addEventListener('touchcancel', hidePassword);
     </script>
   </body>
   </html>

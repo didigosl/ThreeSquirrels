@@ -1,0 +1,879 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>仓库生产录入</title>
+  <style>
+    :root {
+      --line: #334155;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --blue: #2563eb;
+      --green: #10b981;
+      --red: #ef4444;
+      --panel: #020617;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(180deg, #020617, #0f172a 35%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .wrap {
+      width: min(920px, calc(100vw - 24px));
+      margin: 12px auto 20px;
+    }
+    .card {
+      background: rgba(15, 23, 42, 0.96);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      overflow: hidden;
+    }
+    .head {
+      padding: 22px 24px 12px;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.8);
+    }
+    .head-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .title { margin: 0; font-size: 30px; font-weight: 700; }
+    .body { padding: 22px 24px 24px; }
+    .group { margin-bottom: 18px; }
+    .label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 14px; }
+    input, button {
+      font: inherit;
+    }
+    input[type="text"], input[type="date"], input[type="number"] {
+      width: 100%;
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+      outline: none;
+      min-height: 50px;
+    }
+    input[type="text"]:focus, input[type="date"]:focus, input[type="number"]:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.6fr 1fr 1fr;
+      gap: 16px;
+    }
+    .btn {
+      border: none;
+      border-radius: 12px;
+      background: var(--blue);
+      color: #fff;
+      padding: 14px 18px;
+      font-weight: 700;
+      cursor: pointer;
+      min-height: 48px;
+    }
+    .btn:disabled { opacity: 0.65; cursor: not-allowed; }
+    .btn-secondary {
+      background: #1e293b;
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+    .icon-btn {
+      min-width: 48px;
+      width: 48px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      line-height: 1;
+    }
+    .btn-ghost {
+      background: #0f172a;
+      color: var(--muted);
+      border: 1px solid var(--line);
+    }
+    #prod-search::placeholder,
+    #lote-input::placeholder,
+    #expiry-input::placeholder,
+    #box-count-input::placeholder {
+      color: var(--red);
+      opacity: 1;
+    }
+    .picker {
+      position: relative;
+    }
+    .picker-list {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      right: 0;
+      max-height: 360px;
+      overflow: auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      display: none;
+      z-index: 20;
+    }
+    .item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.65);
+      cursor: pointer;
+    }
+    .item:last-child { border-bottom: none; }
+    .item:hover { background: #111827; }
+    .thumb {
+      width: 52px;
+      height: 52px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      object-fit: cover;
+      background: #0f172a;
+      flex: 0 0 auto;
+    }
+    .picker-meta { flex: 1; min-width: 0; }
+    .picker-name { font-size: 16px; font-weight: 700; color: var(--text); }
+    .picker-cn { margin-top: 4px; color: var(--muted); font-size: 13px; }
+    .search-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .search-row > input,
+    .input-with-tool > input {
+      flex: 1;
+    }
+    .chosen {
+      display: none;
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 14px;
+      padding: 14px;
+      align-items: center;
+      gap: 14px;
+    }
+    .upload-box {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .file-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 13px 16px;
+      border-radius: 12px;
+      background: #0f172a;
+      color: var(--text);
+      border: 1px solid var(--line);
+      cursor: pointer;
+      min-height: 48px;
+      font-weight: 700;
+    }
+    .file-text {
+      color: var(--muted);
+      font-size: 14px;
+      word-break: break-all;
+    }
+    .upload-preview {
+      width: 104px;
+      height: 104px;
+      border-radius: 14px;
+      border: 1px dashed var(--line);
+      background: var(--panel);
+      object-fit: cover;
+      display: none;
+    }
+    .input-with-tool {
+      position: relative;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .tool-btn {
+      width: 100%;
+      min-width: 0;
+      height: 100%;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+    }
+    .tool-wrap {
+      position: relative;
+      width: 116px;
+      min-width: 116px;
+      height: 50px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #0f172a;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .tool-wrap input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      padding: 0;
+      min-height: 50px;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      appearance: none;
+      -webkit-appearance: none;
+      pointer-events: none;
+    }
+    .batch-box {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .batch-chip {
+      border: 1px solid var(--line);
+      background: #111827;
+      color: var(--text);
+      border-radius: 999px;
+      padding: 7px 12px;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .batch-chip:hover { border-color: #3b82f6; }
+    #box-count-input {
+      text-align: center;
+      font-size: 28px;
+      font-weight: 700;
+    }
+    #box-count-input::placeholder {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    .msg {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      display: none;
+      font-size: 14px;
+    }
+    .msg.ok { background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.4); color: #a7f3d0; }
+    .msg.err { background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.4); color: #fecaca; }
+    .pending {
+      margin-top: 14px;
+      border-top: 1px solid rgba(51, 65, 85, 0.8);
+      padding-top: 16px;
+    }
+    .pending-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .pending-empty {
+      color: var(--muted);
+      font-size: 14px;
+      padding: 10px 0;
+    }
+    .pending-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .pending-item {
+      display: grid;
+      grid-template-columns: 62px 1fr 52px;
+      gap: 12px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      padding: 12px;
+    }
+    .pending-photo {
+      width: 62px;
+      height: 62px;
+      border-radius: 10px;
+      object-fit: cover;
+      background: #111827;
+      border: 1px solid var(--line);
+    }
+    .pending-action {
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-end;
+    }
+    .pending-name { font-size: 15px; font-weight: 700; }
+    .pending-cn { margin-top: 4px; color: var(--muted); font-size: 13px; }
+    .pending-meta {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .pending-meta-main {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 10px 18px;
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 700;
+      text-align: right;
+    }
+    .pending-meta-sub {
+      display: flex;
+      justify-content: flex-end;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: right;
+    }
+    .pending-meta span { white-space: nowrap; }
+    .hidden { display: none !important; }
+    @media (max-width: 760px) {
+      .wrap { width: calc(100vw - 12px); margin: 6px auto 12px; }
+      .body, .head { padding: 16px; }
+      .head-row { align-items: flex-start; }
+      .title { font-size: 24px; }
+      .grid { grid-template-columns: 1fr; }
+      .search-row, .input-with-tool { flex-direction: row; }
+      .actions .btn { width: 100%; }
+      .tool-wrap { width: 96px; min-width: 96px; }
+      .pending-item { grid-template-columns: 52px 1fr 44px; }
+      .pending-photo { width: 52px; height: 52px; }
+      .upload-box { align-items: flex-start; }
+      .pending-meta-main, .pending-meta-sub { justify-content: flex-start; text-align: left; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="head">
+        <div class="head-row">
+          <h1 class="title">仓库生产录入</h1>
+          <button id="force-refresh-btn" class="btn btn-secondary icon-btn" type="button" title="强制刷新" aria-label="强制刷新">&#8635;</button>
+        </div>
+      </div>
+      <div class="body">
+        <div class="group picker">
+          <label class="label">菜品名称</label>
+          <div class="search-row">
+            <input id="prod-search" type="text" placeholder="Busque el nombre y Articulo">
+            <div class="tool-wrap">
+              <button id="prod-open-btn" class="btn btn-secondary tool-btn" type="button" title="选择商品" aria-label="选择商品">+</button>
+            </div>
+          </div>
+          <div id="prod-list" class="picker-list"></div>
+          <div id="prod-chosen" class="chosen">
+            <img id="prod-chosen-img" class="thumb" src="" alt="">
+            <div class="picker-meta">
+              <div id="prod-chosen-name" class="picker-name"></div>
+              <div id="prod-chosen-cn" class="picker-cn"></div>
+            </div>
+            <button id="prod-clear" class="btn btn-secondary icon-btn" type="button" title="删除商品" aria-label="删除商品">&#10005;</button>
+          </div>
+        </div>
+
+        <div class="group">
+          <label class="label">拍照记录</label>
+          <div class="upload-box">
+            <label class="file-chip icon-btn" for="photo-camera" title="拍照" aria-label="拍照">&#128247;</label>
+            <input id="photo-camera" class="hidden" type="file" accept="image/*" capture="environment">
+            <label class="file-chip icon-btn" for="photo-file" title="选择文件" aria-label="选择文件">&#128193;</label>
+            <input id="photo-file" class="hidden" type="file" accept="image/*">
+            <span id="photo-file-text" class="file-text">未选择图片</span>
+            <img id="photo-preview" class="upload-preview" src="" alt="">
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="group">
+            <label class="label">Lote</label>
+            <div class="input-with-tool">
+              <input id="lote-input" type="text" placeholder="Lote">
+              <div class="tool-wrap" data-picker="lote-date-picker">
+                <button class="btn btn-ghost tool-btn" type="button" title="选择日期" aria-label="选择日期" style="pointer-events:none">&#128197;</button>
+                <input id="lote-date-picker" type="date">
+              </div>
+            </div>
+            <div id="lote-batches" class="batch-box"></div>
+          </div>
+          <div class="group">
+            <label class="label">Caducidad</label>
+            <div class="input-with-tool">
+              <input id="expiry-input" type="text" placeholder="Fecha de caducidad">
+              <div class="tool-wrap" data-picker="expiry-date-picker">
+                <button class="btn btn-ghost tool-btn" type="button" title="选择日期" aria-label="选择日期" style="pointer-events:none">&#128197;</button>
+                <input id="expiry-date-picker" type="date">
+              </div>
+            </div>
+          </div>
+          <div class="group">
+            <label class="label">Cajas</label>
+            <input id="box-count-input" type="number" min="1" step="1" placeholder="Cajas">
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="submit-btn" class="btn" type="button" title="提交审核" aria-label="提交审核">ok</button>
+        </div>
+
+        <div id="form-msg" class="msg"></div>
+
+        <div class="pending">
+          <div class="pending-title">待后台审核的提交</div>
+          <div id="pending-empty" class="pending-empty">加载中...</div>
+          <div id="pending-list" class="pending-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const prodSearch = document.getElementById('prod-search');
+    const prodOpenBtn = document.getElementById('prod-open-btn');
+    const prodList = document.getElementById('prod-list');
+    const prodChosen = document.getElementById('prod-chosen');
+    const prodChosenImg = document.getElementById('prod-chosen-img');
+    const prodChosenName = document.getElementById('prod-chosen-name');
+    const prodChosenCn = document.getElementById('prod-chosen-cn');
+    const prodClear = document.getElementById('prod-clear');
+    const photoCamera = document.getElementById('photo-camera');
+    const photoFile = document.getElementById('photo-file');
+    const photoFileText = document.getElementById('photo-file-text');
+    const photoPreview = document.getElementById('photo-preview');
+    const loteInput = document.getElementById('lote-input');
+    const loteDatePicker = document.getElementById('lote-date-picker');
+    const expiryDatePicker = document.getElementById('expiry-date-picker');
+    const loteBatches = document.getElementById('lote-batches');
+    const expiryInput = document.getElementById('expiry-input');
+    const forceRefreshBtn = document.getElementById('force-refresh-btn');
+    const boxCountInput = document.getElementById('box-count-input');
+    const submitBtn = document.getElementById('submit-btn');
+    const formMsg = document.getElementById('form-msg');
+    const pendingEmpty = document.getElementById('pending-empty');
+    const pendingList = document.getElementById('pending-list');
+
+    let editingEntryId = 0;
+    let editingPhotoUrl = '';
+    let selectedProduct = null;
+    let selectedPhotoFile = null;
+    let searchTimer = null;
+    let currentBatches = [];
+
+    function escapeHtml(text) {
+      return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function formatDateTime(ts) {
+      const value = Number(ts || 0);
+      if (!value) return '-';
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '-';
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      return `${y}-${m}-${day} ${hh}:${mm}`;
+    }
+
+    function formatDisplayLote(loteValue) {
+      let raw = String(loteValue || '').trim();
+      const parts = raw.split('-');
+      if (parts.length === 3) raw = parts[2] + parts[1];
+      return raw || '-';
+    }
+
+    function showMessage(text, type) {
+      formMsg.textContent = text;
+      formMsg.className = 'msg ' + (type === 'ok' ? 'ok' : 'err');
+      formMsg.style.display = 'block';
+    }
+
+    function clearMessage() {
+      formMsg.style.display = 'none';
+      formMsg.textContent = '';
+      formMsg.className = 'msg';
+    }
+
+    function updateSubmitButtonState() {
+      submitBtn.textContent = editingEntryId ? 'ok*' : 'ok';
+      submitBtn.title = editingEntryId ? '保存修改' : '提交审核';
+      submitBtn.setAttribute('aria-label', editingEntryId ? '保存修改' : '提交审核');
+    }
+
+    function openDatePickerById(id) {
+      const input = document.getElementById(id);
+      if (!input) return;
+      if (typeof input.showPicker === 'function') {
+        input.showPicker();
+        return;
+      }
+      input.focus();
+      input.click();
+    }
+
+    async function loadProducts(q) {
+      const res = await fetch('/api/public/products?page=1&size=20&q=' + encodeURIComponent(q || ''));
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.list || [];
+    }
+
+    function renderProducts(list) {
+      if (!list.length) {
+        prodList.innerHTML = '<div class="item" style="justify-content:center;color:#94a3b8">没有匹配商品</div>';
+        prodList.style.display = 'block';
+        return;
+      }
+      prodList.innerHTML = list.map(p => `
+        <div class="item" data-id="${p.id}">
+          ${p.image ? `<img class="thumb" src="${p.image}" alt="">` : `<div class="thumb"></div>`}
+          <div class="picker-meta">
+            <div class="picker-name">${escapeHtml(p.name || '')}</div>
+            <div class="picker-cn">${escapeHtml((p.name_cn || '') + ((p.sku || '') ? ' / 货号:' + p.sku : ''))}</div>
+          </div>
+          <div style="color:#94a3b8">库存 ${Number(p.stock || 0)}</div>
+        </div>
+      `).join('');
+      prodList.style.display = 'block';
+      Array.from(prodList.querySelectorAll('.item[data-id]')).forEach((el, idx) => {
+        el.addEventListener('click', () => chooseProduct(list[idx]));
+      });
+    }
+
+    async function showProductList(forceAll) {
+      const q = forceAll ? '' : prodSearch.value.trim();
+      renderProducts(await loadProducts(q));
+    }
+
+    async function loadProductBatches(productId) {
+      const res = await fetch(`/api/public/products/${productId}/batch-stock`);
+      if (!res.ok) {
+        currentBatches = [];
+        renderBatchSuggestions();
+        return;
+      }
+      const data = await res.json();
+      currentBatches = Array.isArray(data.batches) ? data.batches.filter(x => Number(x.qty || 0) > 0) : [];
+      renderBatchSuggestions();
+    }
+
+    function renderBatchSuggestions() {
+      if (!selectedProduct) {
+        loteBatches.innerHTML = '';
+        return;
+      }
+      if (!currentBatches.length) {
+        loteBatches.innerHTML = '';
+        return;
+      }
+      loteBatches.innerHTML = currentBatches.map(batch => {
+        const lote = String(batch.lote || '').trim();
+        const expiry = String(batch.expiry || '').trim();
+        const label = `${formatDisplayLote(lote)}${expiry ? ` / 到期:${expiry}` : ''}`;
+        return `<button type="button" class="batch-chip" data-lote="${escapeHtml(lote)}" data-expiry="${escapeHtml(expiry)}">${escapeHtml(label)}</button>`;
+      }).join('');
+      Array.from(loteBatches.querySelectorAll('.batch-chip')).forEach(el => {
+        el.addEventListener('click', () => {
+          applyLoteValue(el.getAttribute('data-lote') || '', el.getAttribute('data-expiry') || '');
+        });
+      });
+    }
+
+    function chooseProduct(product) {
+      selectedProduct = product;
+      prodSearch.value = product.name || '';
+      prodList.style.display = 'none';
+      prodChosen.style.display = 'flex';
+      prodChosenName.textContent = product.name || '';
+      prodChosenCn.textContent = product.name_cn || '';
+      if (product.image) {
+        prodChosenImg.src = product.image;
+        prodChosenImg.style.display = 'block';
+      } else {
+        prodChosenImg.removeAttribute('src');
+        prodChosenImg.style.display = 'none';
+      }
+      clearMessage();
+      loadProductBatches(product.id);
+    }
+
+    function setPhotoPreview(file) {
+      selectedPhotoFile = file || null;
+      photoCamera.value = '';
+      photoFile.value = '';
+      if (!file) {
+        photoFileText.textContent = '未选择图片';
+        photoPreview.removeAttribute('src');
+        photoPreview.style.display = 'none';
+        return;
+      }
+      photoFileText.textContent = file.name || '已选择图片';
+      const reader = new FileReader();
+      reader.onload = () => {
+        photoPreview.src = reader.result;
+        photoPreview.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function setPhotoPreviewUrl(url, labelText = '已选择图片') {
+      selectedPhotoFile = null;
+      editingPhotoUrl = String(url || '').trim();
+      photoCamera.value = '';
+      photoFile.value = '';
+      if (!editingPhotoUrl) {
+        photoFileText.textContent = '未选择图片';
+        photoPreview.removeAttribute('src');
+        photoPreview.style.display = 'none';
+        return;
+      }
+      photoFileText.textContent = labelText;
+      photoPreview.src = editingPhotoUrl;
+      photoPreview.style.display = 'block';
+    }
+
+    function updateExpiryFromLote(loteDateStr) {
+      const text = String(loteDateStr || '').trim();
+      if (!text) return;
+      const parts = text.split('-');
+      if (parts.length !== 3) return;
+      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      if (Number.isNaN(d.getTime())) return;
+      d.setMonth(d.getMonth() + 6);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const expiryText = `${y}-${m}-${day}`;
+      expiryInput.value = expiryText;
+      if (expiryDatePicker) expiryDatePicker.value = expiryText;
+    }
+
+    function applyLoteValue(lote, expiry) {
+      loteInput.value = lote;
+      if (expiry) {
+        expiryInput.value = expiry;
+        if (expiryDatePicker) expiryDatePicker.value = expiry;
+      } else {
+        updateExpiryFromLote(lote);
+      }
+    }
+
+    function resetForm() {
+      editingEntryId = 0;
+      editingPhotoUrl = '';
+      selectedProduct = null;
+      currentBatches = [];
+      prodSearch.value = '';
+      prodChosen.style.display = 'none';
+      prodList.style.display = 'none';
+      loteBatches.innerHTML = '';
+      setPhotoPreview(null);
+      loteInput.value = '';
+      expiryInput.value = '';
+      if (expiryDatePicker) expiryDatePicker.value = '';
+      boxCountInput.value = '';
+      clearMessage();
+      updateSubmitButtonState();
+    }
+
+    async function uploadPhoto(file) {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/public/upload', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error('upload_failed');
+      const data = await res.json();
+      return data.url || '';
+    }
+
+    async function loadPendingEntries() {
+      const res = await fetch('/api/public/production-entries?status=pending&size=12');
+      if (!res.ok) {
+        pendingEmpty.textContent = '待审核记录加载失败';
+        pendingList.innerHTML = '';
+        return;
+      }
+      const list = await res.json();
+      window.__pendingEntries = Array.isArray(list) ? list : [];
+      if (!Array.isArray(list) || list.length === 0) {
+        pendingEmpty.textContent = '当前没有待后台审核的提交';
+        pendingList.innerHTML = '';
+        return;
+      }
+      pendingEmpty.textContent = '';
+      pendingList.innerHTML = list.map(item => `
+        <div class="pending-item">
+          ${item.photo_url ? `<img class="pending-photo" src="${item.photo_url}" alt="">` : `<div class="pending-photo"></div>`}
+          <div>
+            <div class="pending-name">${escapeHtml(item.product_name || '')}</div>
+            <div class="pending-cn">${escapeHtml(item.product_name_cn || '')}</div>
+            <div class="pending-meta">
+              <div class="pending-meta-main">
+                <span>Lote: ${escapeHtml(formatDisplayLote(item.lote || ''))}</span>
+                <span>Caducidad: ${escapeHtml(item.expiration_date || '-')}</span>
+                <span>Cajas: ${Number(item.box_count || 0)}</span>
+              </div>
+              <div class="pending-meta-sub">
+                <span>提交时间: ${escapeHtml(formatDateTime(item.created_at))}</span>
+              </div>
+            </div>
+          </div>
+          <div class="pending-action">
+            <button class="btn btn-secondary icon-btn" type="button" title="编辑" aria-label="编辑" onclick="editPendingEntry(${Number(item.id || 0)})">&#9998;</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function editPendingEntry(id) {
+      const raw = Array.isArray(window.__pendingEntries) ? window.__pendingEntries.find(x => Number(x.id) === Number(id)) : null;
+      if (!raw) return;
+      editingEntryId = Number(raw.id || 0);
+      selectedProduct = {
+        id: Number(raw.product_id || 0),
+        name: raw.product_name || '',
+        name_cn: raw.product_name_cn || '',
+        image: raw.product_image || ''
+      };
+      chooseProduct(selectedProduct);
+      loteInput.value = raw.lote || '';
+      expiryInput.value = raw.expiration_date || '';
+      if (expiryDatePicker) expiryDatePicker.value = raw.expiration_date || '';
+      boxCountInput.value = Number(raw.box_count || 0) || '';
+      setPhotoPreviewUrl(raw.photo_url || '', raw.photo_url ? '已选择图片' : '未选择图片');
+      updateSubmitButtonState();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    window.editPendingEntry = editPendingEntry;
+
+    async function submitForm() {
+      clearMessage();
+      if (!selectedProduct) return showMessage('请先选择菜品', 'err');
+      const lote = loteInput.value.trim();
+      const expirationDate = expiryInput.value;
+      const boxCount = Number(boxCountInput.value || 0);
+      if (!lote) return showMessage('请填写 Lote', 'err');
+      if (!expirationDate) return showMessage('请选择过期时间', 'err');
+      if (!Number.isFinite(boxCount) || boxCount <= 0) return showMessage('请填写正确的箱数', 'err');
+      if (!selectedPhotoFile) return showMessage('请拍照或选择图片', 'err');
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = '提交中...';
+      try {
+        const photoUrl = selectedPhotoFile ? await uploadPhoto(selectedPhotoFile) : editingPhotoUrl;
+        const isEditing = editingEntryId > 0;
+        const res = await fetch(isEditing ? `/api/public/production-entries/${editingEntryId}` : '/api/public/production-entries', {
+          method: isEditing ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            product_id: selectedProduct.id,
+            lote,
+            expiration_date: expirationDate,
+            box_count: boxCount,
+            photo_url: photoUrl
+          })
+        });
+        if (!res.ok) throw new Error('submit_failed');
+        resetForm();
+        showMessage(isEditing ? '修改已保存，等待后台审核。' : '提交成功，等待后台审核。', 'ok');
+        loadPendingEntries();
+      } catch (e) {
+        showMessage('提交失败，请检查网络后重试。', 'err');
+      } finally {
+        submitBtn.disabled = false;
+        updateSubmitButtonState();
+      }
+    }
+
+    prodSearch.addEventListener('input', () => {
+      const q = prodSearch.value.trim();
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(async () => {
+        if (!q) {
+          prodList.style.display = 'none';
+          return;
+        }
+        renderProducts(await loadProducts(q));
+      }, 180);
+    });
+
+    prodSearch.addEventListener('focus', async () => {
+      if (prodSearch.value.trim()) renderProducts(await loadProducts(prodSearch.value.trim()));
+    });
+
+    prodOpenBtn.addEventListener('click', () => showProductList(true));
+    document.querySelectorAll('.tool-wrap[data-picker]').forEach(el => {
+      el.addEventListener('click', () => openDatePickerById(el.dataset.picker || ''));
+    });
+
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.picker')) prodList.style.display = 'none';
+    });
+
+    prodClear.addEventListener('click', () => {
+      selectedProduct = null;
+      currentBatches = [];
+      prodChosen.style.display = 'none';
+      prodSearch.value = '';
+      loteBatches.innerHTML = '';
+      prodSearch.focus();
+    });
+
+    loteInput.addEventListener('change', () => updateExpiryFromLote(loteInput.value));
+    loteDatePicker.addEventListener('change', () => applyLoteValue(loteDatePicker.value, ''));
+    if (expiryDatePicker) {
+      expiryDatePicker.addEventListener('change', () => {
+        expiryInput.value = expiryDatePicker.value || '';
+      });
+    }
+    if (forceRefreshBtn) {
+      forceRefreshBtn.addEventListener('click', () => {
+        const url = new URL(window.location.href);
+        url.searchParams.set('_t', String(Date.now()));
+        window.location.href = url.toString();
+      });
+    }
+
+    function handlePhotoChange(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      setPhotoPreview(file);
+    }
+    photoCamera.addEventListener('change', handlePhotoChange);
+    photoFile.addEventListener('change', handlePhotoChange);
+
+    submitBtn.addEventListener('click', submitForm);
+
+    updateSubmitButtonState();
+    loadPendingEntries();
+  </script>
+</body>
+</html>

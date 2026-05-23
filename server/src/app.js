@@ -5,6 +5,8 @@ import { query } from './db.js';
 import crypto from 'crypto';
 import multer from 'multer';
 import path from 'path';
+import fs from 'fs/promises';
+import convertHeic from 'heic-convert';
 
 // Storage for uploads
 const storage = multer.diskStorage({
@@ -21,6 +23,46 @@ const upload = multer({
   storage: storage,
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB
 });
+
+const HEIC_BRANDS = new Set(['heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1']);
+
+function isHeicBuffer(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return false;
+  if (buffer.toString('ascii', 4, 8) !== 'ftyp') return false;
+  return HEIC_BRANDS.has(buffer.toString('ascii', 8, 12).toLowerCase());
+}
+
+async function normalizeUploadedImage(file) {
+  if (!file?.path) return file;
+  const originalMime = String(file.mimetype || '').toLowerCase();
+  const shouldProbeHeic =
+    originalMime.includes('image') ||
+    /\.(jpe?g|png|heic|heif)$/i.test(String(file.originalname || '')) ||
+    /\.(jpe?g|png|heic|heif)$/i.test(String(file.filename || ''));
+  if (!shouldProbeHeic) return file;
+
+  const inputBuffer = await fs.readFile(file.path);
+  if (!isHeicBuffer(inputBuffer)) return file;
+
+  const converted = await convertHeic({
+    buffer: inputBuffer,
+    format: 'JPEG',
+    quality: 0.92
+  });
+  const parsed = path.parse(file.filename);
+  const nextFilename = `${parsed.name}.jpg`;
+  const nextPath = path.join(path.dirname(file.path), nextFilename);
+  await fs.writeFile(nextPath, converted);
+  if (nextPath !== file.path) {
+    await fs.unlink(file.path).catch(() => {});
+  }
+  return {
+    ...file,
+    filename: nextFilename,
+    path: nextPath,
+    mimetype: 'image/jpeg'
+  };
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -153,6 +195,9 @@ async function ensureSchema() {
       price3 numeric default 0,
       price4 numeric default 0,
       tax_rate numeric default 0,
+      cost_price numeric default 0,
+      dividend_enabled boolean default false,
+      dividend_users jsonb default '[]'::jsonb,
       spec text,
       stock numeric default 0,
       notes text,
@@ -190,11 +235,17 @@ async function ensureSchema() {
   await query('alter table products add column if not exists price3 numeric default 0', []);
   await query('alter table products add column if not exists price4 numeric default 0', []);
   await query('alter table products add column if not exists tax_rate numeric default 0', []);
+  await query('alter table products add column if not exists cost_price numeric default 0', []);
+  await query('alter table products add column if not exists dividend_enabled boolean default false', []);
+  await query("alter table products add column if not exists dividend_users jsonb default '[]'::jsonb", []);
+  await query("update products set dividend_users='[]'::jsonb where dividend_users is null", []);
   await query('alter table products add column if not exists spec text', []);
   await query('alter table products add column if not exists stock numeric default 0', []);
+  await query('alter table products add column if not exists remind_stock numeric default 0', []);
   await query('alter table products add column if not exists notes text', []);
   await query('alter table products add column if not exists created_at bigint', []);
   await query('alter table products add column if not exists created_by text', []);
+  await query('update products set remind_stock=0 where remind_stock is null', []);
 
   await query('alter table users add column if not exists created text', []);
   await query('alter table users add column if not exists enabled boolean default true', []);
@@ -308,6 +359,20 @@ async function ensureSchema() {
       completed_by text,
       completed_at bigint
     );
+    create table if not exists auto_tasks (
+      id serial primary key,
+      title text,
+      description text,
+      created_by text,
+      created_at bigint,
+      start_at bigint,
+      assigned_to text,
+      time_limit int default 0,
+      interval_months int default 1,
+      active boolean default true,
+      last_generated_at bigint,
+      next_generate_at bigint
+    );
     create table if not exists daily_orders (
       id serial primary key,
       customer text,
@@ -325,6 +390,34 @@ async function ensureSchema() {
     alter table daily_orders add column if not exists notes text;
     alter table daily_orders add column if not exists allocated_by text;
     alter table daily_orders add column if not exists shipped_by text;
+    alter table daily_orders add column if not exists logistics_company_id int;
+    alter table daily_orders add column if not exists logistics_status text;
+    alter table daily_orders add column if not exists logistics_updated_at bigint;
+    alter table daily_orders add column if not exists logistics_from text;
+    alter table daily_orders add column if not exists logistics_to text;
+    alter table daily_orders add column if not exists logistics_ship_date text;
+    alter table daily_orders add column if not exists logistics_pallet_count text;
+    alter table daily_orders add column if not exists logistics_box_count text;
+    alter table daily_orders add column if not exists logistics_total_weight text;
+    alter table daily_orders add column if not exists logistics_arrival_date text;
+    alter table daily_orders add column if not exists logistics_completed_by text;
+    alter table daily_orders add column if not exists logistics_reviewed_by text;
+    alter table daily_orders add column if not exists is_manual_logistics boolean default false;
+
+    create table if not exists logistics_companies (
+      id serial primary key,
+      name text not null unique,
+      phone text,
+      contact text,
+      enabled boolean not null default true,
+      created_at bigint,
+      created_by text
+    );
+    alter table logistics_companies add column if not exists phone text;
+    alter table logistics_companies add column if not exists contact text;
+    alter table logistics_companies add column if not exists enabled boolean default true;
+    alter table logistics_companies add column if not exists created_at bigint;
+    alter table logistics_companies add column if not exists created_by text;
     create table if not exists inventory_batches (
       id serial primary key,
       product_id int,
@@ -357,17 +450,138 @@ async function ensureSchema() {
       expiration_date text,
       created_at bigint
     );
+    alter table material_batches add column if not exists lote text;
+    create table if not exists material_logs (
+      id serial primary key,
+      material_id int,
+      quantity numeric,
+      type text,
+      created_at bigint,
+      created_by text,
+      notes text,
+      expiration_date text
+    );
+    alter table material_logs add column if not exists lote text;
+    create table if not exists event_records (
+      id serial primary key,
+      name text,
+      record_date text,
+      due_date text,
+      notes text,
+      status text default 'ongoing',
+      created_by text,
+      created_at bigint,
+      completed_at bigint
+    );
+    alter table event_records add column if not exists confirmed_by text;
+    create table if not exists knowledge_base_entries (
+      id serial primary key,
+      title text,
+      content text,
+      category text default 'internal',
+      created_by text,
+      created_at bigint
+    );
+    create table if not exists production_entries (
+      id serial primary key,
+      product_id int,
+      product_name text,
+      product_name_cn text,
+      product_image text,
+      lote text,
+      expiration_date text,
+      box_count numeric default 0,
+      photo_url text,
+      status text default 'pending',
+      created_at bigint,
+      created_by text,
+      approved_at bigint,
+      approved_by text,
+      rejected_at bigint,
+      rejected_by text,
+      reject_reason text
+    );
   `);
   // Migrations
   try { await query('alter table tasks add column completion_image text'); } catch {}
   try { await query('alter table tasks add column completion_desc text'); } catch {}
   try { await query('alter table tasks add column time_limit int default 0'); } catch {}
+  try { await query('alter table tasks add column auto_task_id int'); } catch {}
+  try { await query('alter table tasks add column auto_task_cycle_at bigint'); } catch {}
+  try { await query('alter table auto_tasks add column time_limit int default 0'); } catch {}
+  try { await query('alter table auto_tasks add column interval_months int default 1'); } catch {}
+  try { await query('alter table auto_tasks add column active boolean default true'); } catch {}
+  try { await query('alter table auto_tasks add column start_at bigint'); } catch {}
+  try { await query('alter table auto_tasks add column last_generated_at bigint'); } catch {}
+  try { await query('alter table auto_tasks add column next_generate_at bigint'); } catch {}
+  try { await query('create index if not exists idx_auto_tasks_active_next on auto_tasks(active, next_generate_at)'); } catch {}
+  try { await query('create unique index if not exists uniq_tasks_auto_cycle on tasks(auto_task_id, auto_task_cycle_at)'); } catch {}
+  try { await query('update auto_tasks set start_at=created_at where start_at is null'); } catch {}
 }
 function formatLote(loteDate) {
   if (!loteDate) return '';
   const parts = loteDate.split('-');
   if (parts.length === 3) return parts[2] + parts[1];
   return loteDate;
+}
+
+function addMonthsTs(baseTs, months) {
+  const base = new Date(Number(baseTs || Date.now()));
+  const day = base.getDate();
+  const d = new Date(base.getTime());
+  d.setDate(1);
+  d.setMonth(d.getMonth() + Math.max(1, Number(months || 1)));
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, lastDay));
+  return d.getTime();
+}
+
+let autoTaskGenerationRunning = false;
+async function ensureAutoTasksGenerated() {
+  if (autoTaskGenerationRunning) return;
+  autoTaskGenerationRunning = true;
+  try {
+    const now = Date.now();
+    const r = await query(
+      `select * from auto_tasks
+       where coalesce(active, true)=true
+       order by coalesce(next_generate_at, created_at) asc, id asc`
+    );
+    for (const row of r.rows || []) {
+      const intervalMonths = Math.max(1, parseInt(row.interval_months, 10) || 1);
+      const startAt = Number(row.start_at || row.created_at || now);
+      let nextTs = Number(row.next_generate_at || 0);
+      if (!nextTs) nextTs = startAt;
+      let lastGeneratedAt = Number(row.last_generated_at || 0);
+      while (nextTs > 0 && nextTs <= now) {
+        await query(
+          `insert into tasks(title, description, created_by, created_at, assigned_to, time_limit, status, auto_task_id, auto_task_cycle_at)
+           values($1,$2,$3,$4,$5,$6,'pending',$7,$8)
+           on conflict (auto_task_id, auto_task_cycle_at) do nothing`,
+          [
+            row.title || '',
+            row.description || '',
+            row.created_by || 'system',
+            Date.now(),
+            row.assigned_to || '',
+            Number(row.time_limit || 0),
+            Number(row.id || 0),
+            nextTs
+          ]
+        );
+        lastGeneratedAt = nextTs;
+        nextTs = addMonthsTs(nextTs, intervalMonths);
+      }
+      if (Number(row.next_generate_at || 0) !== nextTs || Number(row.last_generated_at || 0) !== lastGeneratedAt) {
+        await query(
+          'update auto_tasks set last_generated_at=$1, next_generate_at=$2 where id=$3',
+          [lastGeneratedAt || null, nextTs || null, row.id]
+        );
+      }
+    }
+  } finally {
+    autoTaskGenerationRunning = false;
+  }
 }
 
 function extractExplicitLote(item) {
@@ -404,6 +618,82 @@ async function resolveProductIdFromItem(item) {
   }
 
   return 0;
+}
+
+async function attachInvoiceItemSnapshots(items, oldItems = []) {
+  const list = Array.isArray(items) ? items.map(item => ({ ...item })) : [];
+  const previous = Array.isArray(oldItems) ? oldItems : [];
+  const usedOld = new Array(previous.length).fill(false);
+
+  for (const item of list) {
+    const rawCost = item?.cost_price;
+    if (rawCost !== undefined && rawCost !== null && rawCost !== '') {
+      item.cost_price = Number(rawCost || 0);
+      continue;
+    }
+    let matchedOld = null;
+    for (let i = 0; i < previous.length; i++) {
+      if (usedOld[i]) continue;
+      if (!sameInvoiceItemIdentity(item, previous[i])) continue;
+      matchedOld = previous[i];
+      usedOld[i] = true;
+      break;
+    }
+    if (matchedOld && matchedOld.cost_price !== undefined && matchedOld.cost_price !== null && matchedOld.cost_price !== '') {
+      item.cost_price = Number(matchedOld.cost_price || 0);
+    }
+  }
+
+  const needFill = list.filter(item => item.cost_price === undefined || item.cost_price === null || item.cost_price === '');
+  if (!needFill.length) return list;
+
+  const ids = [...new Set(needFill.map(item => Number(item?.productId || 0)).filter(Boolean))];
+  const skus = [...new Set(needFill.map(item => String(item?.sku || '').trim()).filter(Boolean))];
+  const names = [...new Set(needFill.map(item => String(item?.name || '').trim()).filter(Boolean))];
+
+  const clauses = [];
+  const params = [];
+  if (ids.length) {
+    params.push(ids);
+    clauses.push(`id = any($${params.length}::int[])`);
+  }
+  if (skus.length) {
+    params.push(skus);
+    clauses.push(`sku = any($${params.length}::text[])`);
+  }
+  if (names.length) {
+    params.push(names);
+    clauses.push(`name = any($${params.length}::text[])`);
+  }
+
+  const productMapById = new Map();
+  const productMapBySku = new Map();
+  const productMapByName = new Map();
+
+  if (clauses.length) {
+    const r = await query(`
+      select id, trim(coalesce(sku, '')) as sku, trim(coalesce(name, '')) as name, coalesce(cost_price, 0) as cost_price
+      from products
+      where ${clauses.join(' or ')}
+      order by id desc
+    `, params);
+    for (const row of r.rows) {
+      productMapById.set(Number(row.id), row);
+      if (row.sku && !productMapBySku.has(row.sku)) productMapBySku.set(row.sku, row);
+      if (row.name && !productMapByName.has(row.name)) productMapByName.set(row.name, row);
+    }
+  }
+
+  for (const item of list) {
+    if (!(item.cost_price === undefined || item.cost_price === null || item.cost_price === '')) continue;
+    const rawPid = Number(item?.productId || 0);
+    const sku = String(item?.sku || '').trim();
+    const name = String(item?.name || '').trim();
+    const product = (rawPid && productMapById.get(rawPid)) || (sku && productMapBySku.get(sku)) || (name && productMapByName.get(name)) || null;
+    item.cost_price = Number(product?.cost_price || 0);
+  }
+
+  return list;
 }
 
 async function restoreInventoryForInvoiceItem(item, qtyOverride = null) {
@@ -610,6 +900,10 @@ async function deductAndSplitStock(items) {
     if (await waitForDb()) {
       await ensureSchema();
       await ensureDefaults();
+      await ensureAutoTasksGenerated();
+      setInterval(() => {
+        ensureAutoTasksGenerated().catch(e => console.error('auto task generator failed', e));
+      }, 60 * 1000);
     } else {
       console.error('Failed to connect to database after retries');
     }
@@ -661,7 +955,7 @@ function verifyJwt(token) {
 }
 const SUPERADMIN_NAME = 'aaaaaa';
 const DEFAULT_USER_PASSWORD = '111111';
-const SUPERADMIN_BOOTSTRAP_PASSWORD = process.env.SUPERADMIN_BOOTSTRAP_PASSWORD || SUPERADMIN_NAME;
+const SUPERADMIN_BOOTSTRAP_PASSWORD = process.env.SUPERADMIN_BOOTSTRAP_PASSWORD || '999000';
 
 function getStoredPasswords(user) {
   const vals = [user?.password, user?.password_hash]
@@ -699,6 +993,7 @@ async function ensureDefaults() {
     await query('insert into users(name, role, created, enabled, password) values($1,$2,$3,true,$4)', [SUPERADMIN_NAME,'超级管理员', now, SUPERADMIN_BOOTSTRAP_PASSWORD]);
   }
   await query("update users set enabled=true where name=$1 and enabled is null", [SUPERADMIN_NAME]);
+  await query("update users set password=$2, password_hash=$2 where name=$1 and (password is null or password='' or password=$1)", [SUPERADMIN_NAME, SUPERADMIN_BOOTSTRAP_PASSWORD]);
   await query("update users set password_hash=password where name=$1 and (password_hash is null or password_hash='')", [SUPERADMIN_NAME]);
   
   // Seed default users if missing
@@ -780,26 +1075,46 @@ async function authRequired(req, res, next) {
 
 const rolePermsCache = new Map();
 
+async function getRolePerms(roleName) {
+  if (!roleName) return {};
+  let perms = rolePermsCache.get(roleName);
+  if (!perms) {
+    const r = await query('select perms from roles where name=$1', [roleName]);
+    perms = (r.rows[0]?.perms) || {};
+    rolePermsCache.set(roleName, perms);
+  }
+  return perms;
+}
+
+function normalizeNameList(val) {
+  if (Array.isArray(val)) return [...new Set(val.map(v => String(v || '').trim()).filter(Boolean))];
+  if (typeof val === 'string') {
+    const text = val.trim();
+    if (!text) return [];
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) return [...new Set(parsed.map(v => String(v || '').trim()).filter(Boolean))];
+    } catch {}
+    return [...new Set(text.split(',').map(v => String(v || '').trim()).filter(Boolean))];
+  }
+  return [];
+}
+
 function ensureAllow(module, action) {
   return async (req, res, next) => {
     if (!req.user) return res.status(401).json({ error:'unauthorized' });
     const roleName = req.user.role || '';
     if (roleName === '超级管理员') return next();
     
-    let perms = rolePermsCache.get(roleName);
-    if (!perms) {
-      const r = await query('select perms from roles where name=$1', [roleName]);
-      perms = (r.rows[0]?.perms) || {};
-      rolePermsCache.set(roleName, perms);
+    const perms = await getRolePerms(roleName);
+    const modPerms = perms[module] || {};
+    if (action === 'view') {
+      if (modPerms.view) return next();
+    } else if (action === 'assigned_only') {
+      if (modPerms.assigned_only) return next();
+    } else {
+      if (modPerms.edit || modPerms[action]) return next();
     }
-    
-    // We now only check if the user has 'view' permission for the module.
-    // All granular permissions (create, edit, delete, etc.) are merged into 'view'.
-    if (perms[module] && perms[module]['view']) return next();
-    
-    // Fallback: If they somehow have the specific action but not view (legacy data), allow it.
-    if (perms[module] && perms[module][action]) return next();
-    
     return res.status(403).json({ error:'forbidden' });
   };
 }
@@ -846,23 +1161,32 @@ app.get('/api/auth/me', authRequired, async (req, res) => {
   res.json({ user: req.user });
 });
 
+function roundMoneyValue(val) {
+  return Math.round((Number(val || 0) + Number.EPSILON) * 100) / 100;
+}
+
+function moneyGte(a, b) {
+  return roundMoneyValue(a) >= roundMoneyValue(b);
+}
+
 function normalizePayable(rec) {
   const now = Date.now();
-  const paid = Math.min(Number(rec.paid || 0), Number(rec.amount || 0));
-  const settled = Number(rec.amount || 0) > 0 && paid >= Number(rec.amount || 0);
+  const amount = roundMoneyValue(rec.amount || 0);
+  const paid = Math.min(roundMoneyValue(rec.paid || 0), amount);
+  const settled = amount > 0 && moneyGte(paid, amount);
   const history = Array.isArray(rec.history) ? rec.history : [];
   return {
     type: String(rec.type || ''),
     partner: String(rec.partner || ''),
     doc: String(rec.doc || ''),
-    amount: Number(rec.amount || 0),
+    amount,
     paid,
     settled,
     trust_days: rec.trustDays ?? null,
     notes: String(rec.notes || ''),
     invoice_no: String(rec.invoiceNo || ''),
     invoice_date: String(rec.invoiceDate || ''),
-    invoice_amount: Number(rec.invoiceAmount || 0),
+    invoice_amount: roundMoneyValue(rec.invoiceAmount || 0),
     sales: String(rec.sales || ''),
     date: String(rec.date || ''),
     created_at: Number(rec.createdAt || now),
@@ -989,12 +1313,171 @@ app.delete('/api/payables', authRequired, ensureAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/upload', authRequired, upload.single('file'), (req, res) => {
+app.post('/api/upload', authRequired, upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
-  const fileUrl = `/uploads/${req.file.filename}`;
-  res.json({ url: fileUrl, filename: req.file.originalname });
+  try {
+    const normalizedFile = await normalizeUploadedImage(req.file);
+    const fileUrl = `/uploads/${normalizedFile.filename}`;
+    res.json({ url: fileUrl, filename: req.file.originalname });
+  } catch (err) {
+    console.error('upload normalize failed', err);
+    res.status(500).json({ error: 'upload_normalize_failed' });
+  }
+});
+app.post('/api/public/upload', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    const normalizedFile = await normalizeUploadedImage(req.file);
+    const fileUrl = `/uploads/${normalizedFile.filename}`;
+    res.json({ url: fileUrl, filename: req.file.originalname });
+  } catch (err) {
+    console.error('public upload normalize failed', err);
+    res.status(500).json({ error: 'upload_normalize_failed' });
+  }
+});
+app.get('/api/public/products', async (req, res) => {
+  const { page = '1', size = '50', q = '' } = req.query;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const pageSize = Math.max(1, Math.min(100, parseInt(size, 10) || 20));
+  let sql = 'select id, sku, name, name_cn, image, stock from products';
+  let countSql = 'select count(*)::int as c from products';
+  const vals = [];
+  if (String(q || '').trim()) {
+    vals.push(`%${String(q).trim()}%`);
+    const cond = ' where (name ilike $1 or name_cn ilike $1 or sku ilike $1 or barcode ilike $1)';
+    sql += cond;
+    countSql += cond;
+  }
+  const count = await query(countSql, vals);
+  sql += ` order by length(sku) asc, sku asc limit $${vals.length + 1} offset $${vals.length + 2}`;
+  vals.push(pageSize, (pageNum - 1) * pageSize);
+  const list = await query(sql, vals);
+  res.json({ list: list.rows, total: Number(count.rows[0]?.c || 0) });
+});
+app.get('/api/public/products/:id/batch-stock', async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  if (!id) return res.status(400).json({ error: 'bad_request' });
+  const r = await query(`
+    select
+      p.id,
+      p.name,
+      p.name_cn,
+      p.stock,
+      (
+        select json_agg(json_build_object('qty', quantity, 'expiry', expiration_date, 'lote', lote) order by expiration_date asc, id asc)
+        from inventory_batches
+        where product_id = p.id and quantity > 0
+      ) as batches
+    from products p
+    where p.id=$1
+  `, [id]);
+  if (!r.rows[0]) return res.status(404).json({ error: 'not_found' });
+  res.json(r.rows[0]);
+});
+app.get('/api/public/production-entries', async (req, res) => {
+  const status = String(req.query.status || 'pending').trim();
+  const size = Math.max(1, Math.min(50, parseInt(req.query.size, 10) || 10));
+  const q = String(req.query.q || '').trim();
+  const params = [status];
+  let where = ` where status=$1 and created_by='warehouse-device'`;
+  if (q) {
+    params.push(`%${q}%`);
+    where += ` and (
+      coalesce(product_name,'') ilike $${params.length}
+      or coalesce(product_name_cn,'') ilike $${params.length}
+      or coalesce(lote,'') ilike $${params.length}
+    )`;
+  }
+  params.push(size);
+  const r = await query(
+    `select id, product_id, product_name, product_name_cn, product_image, lote, expiration_date, box_count, photo_url, created_at
+     from production_entries${where}
+     order by created_at desc, id desc
+     limit $${params.length}`,
+    params
+  );
+  res.json(r.rows);
+});
+app.post('/api/public/production-entries', async (req, res) => {
+  const x = req.body || {};
+  const productId = Number(x.product_id || 0);
+  const boxCount = Number(x.box_count || 0);
+  const photoUrl = String(x.photo_url || '').trim();
+  if (!productId || !Number.isFinite(boxCount) || boxCount <= 0 || !photoUrl) {
+    return res.status(400).json({ error: 'bad_request' });
+  }
+  const prod = await query('select id, name, name_cn, image from products where id=$1', [productId]);
+  if (!prod.rows[0]) return res.status(404).json({ error: 'product_not_found' });
+  const p = prod.rows[0];
+  const now = Date.now();
+  const r = await query(
+    `insert into production_entries(
+      product_id, product_name, product_name_cn, product_image, lote, expiration_date, box_count, photo_url, status, created_at, created_by
+    ) values($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9,$10) returning id`,
+    [
+      productId,
+      p.name || '',
+      p.name_cn || '',
+      p.image || '',
+      String(x.lote || '').trim(),
+      String(x.expiration_date || '').trim(),
+      boxCount,
+      photoUrl,
+      now,
+      'warehouse-device'
+    ]
+  );
+  res.json({ id: r.rows[0].id });
+});
+app.put('/api/public/production-entries/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  const x = req.body || {};
+  const productId = Number(x.product_id || 0);
+  const boxCount = Number(x.box_count || 0);
+  const photoUrl = String(x.photo_url || '').trim();
+  if (!id || !productId || !Number.isFinite(boxCount) || boxCount <= 0 || !photoUrl) {
+    return res.status(400).json({ error: 'bad_request' });
+  }
+  const current = await query(
+    `select id, status, created_by from production_entries where id=$1`,
+    [id]
+  );
+  const entry = current.rows[0];
+  if (!entry || String(entry.created_by || '') !== 'warehouse-device') {
+    return res.status(404).json({ error: 'not_found' });
+  }
+  if (String(entry.status || '') !== 'pending') {
+    return res.status(400).json({ error: 'already_reviewed' });
+  }
+  const prod = await query('select id, name, name_cn, image from products where id=$1', [productId]);
+  if (!prod.rows[0]) return res.status(404).json({ error: 'product_not_found' });
+  const p = prod.rows[0];
+  await query(
+    `update production_entries set
+      product_id=$1,
+      product_name=$2,
+      product_name_cn=$3,
+      product_image=$4,
+      lote=$5,
+      expiration_date=$6,
+      box_count=$7,
+      photo_url=$8
+     where id=$9`,
+    [
+      productId,
+      p.name || '',
+      p.name_cn || '',
+      p.image || '',
+      String(x.lote || '').trim(),
+      String(x.expiration_date || '').trim(),
+      boxCount,
+      photoUrl,
+      id
+    ]
+  );
+  res.json({ ok: true });
 });
 
 app.get('/api/ledger', authRequired, ensureAllow('ledger','view'), async (req, res) => {
@@ -1003,35 +1486,37 @@ app.get('/api/ledger', authRequired, ensureAllow('ledger','view'), async (req, r
 });
 async function applyLedgerEffects(x) {
   const method = (x.method || '').trim();
+  const amount = roundMoneyValue(x.amount || 0);
   if (x.doc && x.type) {
     if (x.type === '收入') {
-      await query(`update payables set paid = least(coalesce(paid,0) + $1, amount), settled = (least(coalesce(paid,0) + $1, amount) >= amount),
+      await query(`update payables set paid = least(round(coalesce(paid,0) + $1, 2), round(amount, 2)), settled = (least(round(coalesce(paid,0) + $1, 2), round(amount, 2)) >= round(amount, 2)),
         history = coalesce(history,'[]'::jsonb) || jsonb_build_array(jsonb_build_object('date',$2::text,'user',$3::text,'kind',$4::text,'amount',$1::numeric,'partner',partner,'doc',doc,'notes',$5::text,'method',$6::text))
-        where doc=$7 and type='应收账款'`, [Number(x.amount||0), x.date_time||x.date||'', x.created_by||'', '收款', x.notes||'', method, x.doc]);
+        where doc=$7 and type='应收账款'`, [amount, x.date_time||x.date||'', x.created_by||'', '收款', x.notes||'', method, x.doc]);
     } else if (x.type === '支出' || x.type === '开支') {
-      await query(`update payables set paid = least(coalesce(paid,0) + $1, amount), settled = (least(coalesce(paid,0) + $1, amount) >= amount),
+      await query(`update payables set paid = least(round(coalesce(paid,0) + $1, 2), round(amount, 2)), settled = (least(round(coalesce(paid,0) + $1, 2), round(amount, 2)) >= round(amount, 2)),
         history = coalesce(history,'[]'::jsonb) || jsonb_build_array(jsonb_build_object('date',$2::text,'user',$3::text,'kind',$4::text,'amount',$1::numeric,'partner',partner,'doc',doc,'notes',$5::text,'method',$6::text))
-        where doc=$7 and type='应付账款'`, [Number(x.amount||0), x.date_time||x.date||'', x.created_by||'', '付款', x.notes||'', method, x.doc]);
+        where doc=$7 and type='应付账款'`, [amount, x.date_time||x.date||'', x.created_by||'', '付款', x.notes||'', method, x.doc]);
     }
   }
   
   if (method && x.type) {
     if (x.type === '收入') {
-      await query(`update accounts set balance = coalesce(balance,0) + $1 where trim(name) = $2`, [Number(x.amount||0), method]);
+      await query(`update accounts set balance = coalesce(balance,0) + $1 where trim(name) = $2`, [amount, method]);
     } else if (x.type === '支出' || x.type === '开支') {
-      await query(`update accounts set balance = coalesce(balance,0) - $1 where trim(name) = $2`, [Number(x.amount||0), method]);
+      await query(`update accounts set balance = coalesce(balance,0) - $1 where trim(name) = $2`, [amount, method]);
     }
   }
 }
 app.post('/api/ledger', authRequired, ensureAllow('ledger','create'), async (req, res) => {
   const x = req.body || {};
   const now = Date.now();
+  const createdAt = Number(x.createdAt);
   const confirmed = x.confirmed === false ? false : true;
   const r = await query(`
     insert into ledger(type,category,doc,client,amount,method,file,notes,date,date_time,created_at,created_by,confirmed)
     values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
     returning id
-  `, [x.type||'', x.category||'', x.doc||'', x.client||'', Number(x.amount||0), x.method||'', x.file||'', x.notes||'', x.date||'', x.dateTime||'', now, x.createdBy||'', confirmed]);
+  `, [x.type||'', x.category||'', x.doc||'', x.client||'', Number(x.amount||0), x.method||'', x.file||'', x.notes||'', x.date||'', x.dateTime||'', (Number.isFinite(createdAt) && createdAt > 0 ? createdAt : now), x.createdBy||'', confirmed]);
   if (confirmed) await applyLedgerEffects({ type:x.type, doc:x.doc, amount:x.amount, method:x.method, date_time:x.dateTime, date:x.date, created_by:x.createdBy, notes:x.notes });
   res.json({ id: r.rows[0].id });
 });
@@ -1041,10 +1526,10 @@ app.put('/api/ledger/:id', authRequired, ensureAllow('ledger','edit'), async (re
   const r = await query(`
     update ledger set
       type=$1, category=$2, doc=$3, client=$4, amount=$5, method=$6, file=$7, notes=$8,
-      date=$9, date_time=$10, created_by=$11
-    where id=$12 and confirmed=false
+      date=$9, date_time=$10
+    where id=$11 and confirmed=false
     returning id
-  `, [x.type||'', x.category||'', x.doc||'', x.client||'', Number(x.amount||0), x.method||'', x.file||'', x.notes||'', x.date||'', x.dateTime||'', x.createdBy||'', id]);
+  `, [x.type||'', x.category||'', x.doc||'', x.client||'', Number(x.amount||0), x.method||'', x.file||'', x.notes||'', x.date||'', x.dateTime||'', id]);
   if (!r.rows[0]) return res.status(400).json({ error:'not_editable' });
   res.json({ ok: true });
 });
@@ -1360,8 +1845,17 @@ app.post('/api/users', authRequired, ensureAllow('user_accounts','create_user'),
 app.put('/api/users/:id', authRequired, ensureAllow('user_accounts','enable_user'), async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
   const x = req.body || {};
-  await query('update users set role=$1, enabled=$2 where id=$3', [x.role||'', !!x.enabled, id]);
-  res.json({ ok: true });
+  const userR = await query('select id, name, enabled from users where id=$1', [id]);
+  const user = userR.rows[0];
+  if (!user) return res.status(404).json({ error: 'not_found' });
+  const name = String(x.name ?? user.name ?? '').trim();
+  const role = String(x.role ?? '').trim();
+  const enabled = typeof x.enabled === 'boolean' ? x.enabled : !!user.enabled;
+  if (!name) return res.status(400).json({ error: 'bad_request' });
+  const duplicate = await query('select id from users where lower(name)=lower($1) and id<>$2 limit 1', [name, id]);
+  if (duplicate.rows[0]) return res.status(400).json({ error: 'duplicate' });
+  await query('update users set name=$1, role=$2, enabled=$3 where id=$4', [name, role, enabled, id]);
+  res.json({ ok: true, name, role, enabled });
 });
 app.post('/api/users/:id/reset-password', authRequired, ensureAllow('user_accounts','reset_password'), async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
@@ -1483,7 +1977,29 @@ app.post('/api/products/batch-stock', authRequired, async (req, res) => {
   
   if (validNames.length === 0 && validIds.length === 0) return res.json([]);
   
-  let sql = 'select id, name, name_cn, stock, image, spec, description, tax_rate, price1, price2, price3, price4, sku from products where 1=0';
+  let sql = `
+    select
+      p.id,
+      p.name,
+      p.name_cn,
+      p.stock,
+      p.image,
+      p.spec,
+      p.description,
+      p.tax_rate,
+      p.price1,
+      p.price2,
+      p.price3,
+      p.price4,
+      p.sku,
+      (
+        select json_agg(json_build_object('qty', quantity, 'expiry', expiration_date, 'lote', lote) order by expiration_date asc, id asc)
+        from inventory_batches
+        where product_id = p.id and quantity > 0
+      ) as batches
+    from products p
+    where 1=0
+  `;
   const params = [];
   
   if (validNames.length > 0) {
@@ -1505,7 +2021,9 @@ app.post('/api/products/batch-stock', authRequired, async (req, res) => {
 app.get('/api/products', authRequired, ensureAllow('sales_products','view'), async (req, res) => {
   const { q='', page='1', size='50' } = req.query;
   const p = [];
-  let sql = 'select * from products';
+  let sql = `select *,
+    (coalesce(dividend_enabled, false) or coalesce(jsonb_array_length(coalesce(dividend_users, '[]'::jsonb)), 0) > 0) as dividend_enabled
+    from products`;
   if (q && q.trim()) {
     sql += ' where (name ilike $1 or name_cn ilike $1 or sku ilike $1 or barcode ilike $1)';
     p.push('%' + q.trim() + '%');
@@ -1522,31 +2040,40 @@ app.get('/api/products', authRequired, ensureAllow('sales_products','view'), asy
 app.post('/api/products', authRequired, ensureAllow('sales_products','create'), async (req, res) => {
   const x = req.body || {};
   const now = Date.now();
+  const dividendUsers = normalizeNameList(x.dividend_users);
+  const dividendEnabled = dividendUsers.length > 0;
   try {
     const r = await query(`
-      insert into products(sku, barcode, name, name_cn, image, description, price1, price2, price3, price4, tax_rate, spec, stock, notes, created_at, created_by)
-      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) returning id
+      insert into products(sku, barcode, name, name_cn, image, description, price1, price2, price3, price4, tax_rate, cost_price, dividend_enabled, dividend_users, spec, stock, remind_stock, notes, created_at, created_by)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) returning id
     `, [x.sku||'', x.barcode||'', x.name||'', x.name_cn||'', x.image||'', x.description||'', 
         Number(x.price1||0), Number(x.price2||0), Number(x.price3||0), Number(x.price4||0), Number(x.tax_rate||0), 
-        x.spec||'', Number(x.stock||0), x.notes||'', now, req.user.name||'']);
+        Number(x.cost_price||0), dividendEnabled, JSON.stringify(dividendUsers), x.spec||'', Number(x.stock||0), Math.max(0, Number(x.remind_stock||0)), x.notes||'', now, req.user.name||'']);
     res.json({ id: r.rows[0].id });
   } catch (e) {
     if (e.code === '23505') return res.status(400).json({ error: 'duplicate_sku' });
     throw e;
   }
 });
+app.put('/api/products-remind-stock-all', authRequired, ensureAllow('sales_products','edit'), async (req, res) => {
+  const remindStock = Math.max(0, Number(req.body?.remind_stock || 0));
+  await query('update products set remind_stock=$1', [remindStock]);
+  res.json({ ok: true, remind_stock: remindStock });
+});
 
 app.put('/api/products/:id', authRequired, ensureAllow('sales_products','edit'), async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
   const x = req.body || {};
+  const dividendUsers = normalizeNameList(x.dividend_users);
+  const dividendEnabled = dividendUsers.length > 0;
   try {
     const r = await query(`
       update products set sku=$1, barcode=$2, name=$3, name_cn=$4, image=$5, description=$6, 
-      price1=$7, price2=$8, price3=$9, price4=$10, tax_rate=$11, spec=$12, stock=$13, notes=$14
-      where id=$15 returning id
+      price1=$7, price2=$8, price3=$9, price4=$10, tax_rate=$11, cost_price=$12, dividend_enabled=$13, dividend_users=$14, spec=$15, stock=$16, remind_stock=$17, notes=$18
+      where id=$19 returning id
     `, [x.sku||'', x.barcode||'', x.name||'', x.name_cn||'', x.image||'', x.description||'', 
         Number(x.price1||0), Number(x.price2||0), Number(x.price3||0), Number(x.price4||0), Number(x.tax_rate||0), 
-        x.spec||'', Number(x.stock||0), x.notes||'', id]);
+        Number(x.cost_price||0), dividendEnabled, JSON.stringify(dividendUsers), x.spec||'', Number(x.stock||0), Math.max(0, Number(x.remind_stock||0)), x.notes||'', id]);
     if (!r.rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json({ ok: true });
   } catch (e) {
@@ -1554,11 +2081,172 @@ app.put('/api/products/:id', authRequired, ensureAllow('sales_products','edit'),
     throw e;
   }
 });
+app.put('/api/products/:id/remind-stock', authRequired, ensureAllow('sales_products','edit'), async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  const remindStock = Math.max(0, Number(req.body?.remind_stock || 0));
+  const r = await query('update products set remind_stock=$1 where id=$2 returning id, remind_stock', [remindStock, id]);
+  if (!r.rows[0]) return res.status(404).json({ error: 'not_found' });
+  res.json({ ok: true, remind_stock: Number(r.rows[0].remind_stock || 0) });
+});
 
 app.delete('/api/products/:id', authRequired, ensureAllow('sales_products','delete'), async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
   await query('delete from products where id=$1', [id]);
   res.json({ ok: true });
+});
+
+app.get('/api/sales-stats/dividend-users', authRequired, ensureAllow('sales_stats','view'), async (req, res) => {
+  const currentRole = req.user?.role || '';
+  const currentUser = String(req.user?.name || '').trim();
+  const currentPerms = currentRole === '超级管理员' ? {} : await getRolePerms(currentRole);
+  const params = [];
+  const conds = [`coalesce(jsonb_array_length(coalesce(dividend_users, '[]'::jsonb)), 0) > 0`];
+  if (currentRole !== '超级管理员' && currentPerms?.sales_stats?.assigned_only && currentUser) {
+    params.push(currentUser);
+    conds.push(`coalesce(dividend_users, '[]'::jsonb) ? $${params.length}`);
+  }
+  const r = await query(`
+    select distinct trim(u.name) as name
+    from products p
+    cross join lateral jsonb_array_elements_text(coalesce(p.dividend_users, '[]'::jsonb)) as u(name)
+    where ${conds.join(' and ')}
+    order by trim(u.name) asc
+  `, params);
+  res.json({ list: r.rows.map(row => String(row.name || '').trim()).filter(Boolean) });
+});
+
+app.get('/api/sales-stats/products', authRequired, ensureAllow('sales_stats','view'), async (req, res) => {
+  const { start = '', end = '', q = '', dividend_user = '' } = req.query;
+  const currentRole = req.user?.role || '';
+  const currentUser = String(req.user?.name || '').trim();
+  const currentPerms = currentRole === '超级管理员' ? {} : await getRolePerms(currentRole);
+  const params = [];
+  const invoiceConds = [];
+  if (String(start || '').trim()) {
+    params.push(String(start).trim());
+    invoiceConds.push(`i.date >= $${params.length}`);
+  }
+  if (String(end || '').trim()) {
+    params.push(String(end).trim());
+    invoiceConds.push(`i.date <= $${params.length}`);
+  }
+  const rowConds = ['qty > 0'];
+  if (String(q || '').trim()) {
+    params.push(`%${String(q).trim()}%`);
+    const qp = `$${params.length}`;
+    rowConds.push(`(
+      coalesce(sku, '') ilike ${qp}
+      or coalesce(product_name, '') ilike ${qp}
+      or coalesce(product_name_cn, '') ilike ${qp}
+      or coalesce(spec, '') ilike ${qp}
+    )`);
+  }
+  if (String(dividend_user || '').trim()) {
+    params.push(String(dividend_user).trim());
+    rowConds.push(`coalesce(dividend_users, '[]'::jsonb) ? $${params.length}`);
+  }
+  if (currentRole !== '超级管理员' && currentPerms?.sales_stats?.assigned_only && currentUser) {
+    params.push(currentUser);
+    rowConds.push(`coalesce(dividend_users, '[]'::jsonb) ? $${params.length}`);
+  }
+  const sql = `
+    with expanded as (
+      select
+        i.id as invoice_id,
+        i.invoice_no,
+        i.date as invoice_date,
+        item,
+        nullif(trim(item->>'productId'), '') as pid_text,
+        trim(coalesce(item->>'sku', '')) as sku_text,
+        trim(coalesce(item->>'name', '')) as name_text
+      from invoices i
+      cross join lateral jsonb_array_elements(coalesce(i.items, '[]'::jsonb)) item
+      ${invoiceConds.length ? 'where ' + invoiceConds.join(' and ') : ''}
+    ),
+    rows as (
+      select
+        coalesce(prod.id, case when e.pid_text ~ '^[0-9]+$' then e.pid_text::int else null end) as product_id,
+        coalesce(prod.sku, e.sku_text) as sku,
+        coalesce(prod.name, e.name_text) as product_name,
+        coalesce(prod.name_cn, trim(coalesce(e.item->>'cn_name', e.item->>'name_cn', ''))) as product_name_cn,
+        coalesce(prod.spec, '') as spec,
+        coalesce(nullif(e.item->>'cost_price', '')::numeric, 0) as item_cost_price,
+        (coalesce(prod.dividend_enabled, false) or coalesce(jsonb_array_length(coalesce(prod.dividend_users, '[]'::jsonb)), 0) > 0) as dividend_enabled,
+        coalesce(prod.dividend_users, '[]'::jsonb) as dividend_users,
+        coalesce(nullif(e.item->>'qty', '')::numeric, 0) as qty,
+        coalesce(nullif(e.item->>'price', '')::numeric, 0) as unit_price,
+        case
+          when coalesce(nullif(e.item->>'tax_rate', '')::numeric, 0) >= 1 then coalesce(nullif(e.item->>'tax_rate', '')::numeric, 0) / 100.0
+          else coalesce(nullif(e.item->>'tax_rate', '')::numeric, 0)
+        end as tax_rate,
+        e.invoice_id
+      from expanded e
+      left join lateral (
+        select p.id, p.sku, p.name, p.name_cn, p.spec, p.cost_price,
+          (coalesce(p.dividend_enabled, false) or coalesce(jsonb_array_length(coalesce(p.dividend_users, '[]'::jsonb)), 0) > 0) as dividend_enabled,
+          p.dividend_users
+        from products p
+        where
+          (e.pid_text ~ '^[0-9]+$' and p.id = e.pid_text::int)
+          or (not (e.pid_text ~ '^[0-9]+$') and e.sku_text <> '' and p.sku = e.sku_text)
+          or (not (e.pid_text ~ '^[0-9]+$') and e.sku_text = '' and e.name_text <> '' and p.name = e.name_text)
+        order by
+          case
+            when e.pid_text ~ '^[0-9]+$' and p.id = e.pid_text::int then 0
+            when e.sku_text <> '' and p.sku = e.sku_text then 1
+            else 2
+          end
+        limit 1
+      ) prod on true
+    ),
+    agg as (
+      select
+        product_id,
+        sku,
+        product_name as name,
+        product_name_cn as name_cn,
+        spec,
+        dividend_enabled,
+        count(distinct invoice_id)::int as invoice_count,
+        coalesce(sum(qty), 0) as sales_qty,
+        coalesce(sum(qty * unit_price), 0) as sales_amount,
+        coalesce(sum(qty * unit_price * tax_rate), 0) as tax_amount,
+        coalesce(sum(qty * unit_price * (1 + tax_rate)), 0) as gross_amount,
+        case
+          when coalesce(sum(qty), 0) = 0 then 0
+          else coalesce(sum(qty * item_cost_price), 0) / nullif(sum(qty), 0)
+        end as cost_price,
+        coalesce(sum(qty * item_cost_price), 0) as cost_amount,
+        coalesce(sum(qty * (unit_price - item_cost_price)), 0) as profit_amount
+      from rows
+      where ${rowConds.join(' and ')}
+      group by product_id, sku, product_name, product_name_cn, spec, dividend_enabled
+    )
+    select
+      coalesce(json_agg(agg order by dividend_enabled desc, sales_qty desc, name asc), '[]'::json) as list,
+      coalesce(sum(sales_qty), 0) as total_qty,
+      coalesce(sum(sales_amount), 0) as total_sales_amount,
+      coalesce(sum(tax_amount), 0) as total_tax_amount,
+      coalesce(sum(gross_amount), 0) as total_gross_amount,
+      coalesce(sum(cost_amount), 0) as total_cost_amount,
+      coalesce(sum(profit_amount), 0) as total_profit_amount,
+      count(*)::int as total
+    from agg
+  `;
+  const r = await query(sql, params);
+  const row = r.rows[0] || {};
+  res.json({
+    list: row.list || [],
+    total: Number(row.total || 0),
+    summary: {
+      qty: Number(row.total_qty || 0),
+      sales_amount: Number(row.total_sales_amount || 0),
+      tax_amount: Number(row.total_tax_amount || 0),
+      gross_amount: Number(row.total_gross_amount || 0),
+      cost_amount: Number(row.total_cost_amount || 0),
+      profit_amount: Number(row.total_profit_amount || 0)
+    }
+  });
 });
 
 // Invoices endpoints
@@ -1578,7 +2266,18 @@ app.get('/api/invoices', authRequired, ensureAllow('sales_invoice','view'), asyn
   `;
   const conds = [];
   if (q && q.trim()) {
-    conds.push(`(i.invoice_no ilike $${p.length+1} or i.customer ilike $${p.length+1})`);
+    conds.push(`(
+      i.invoice_no ilike $${p.length+1}
+      or i.customer ilike $${p.length+1}
+      or coalesce((
+        select c.company
+        from contacts c
+        where trim(c.name)=trim(i.customer) or trim(c.company)=trim(i.customer)
+        order by case when trim(c.name)=trim(i.customer) then 0 else 1 end, c.id desc
+        limit 1
+      ), '') ilike $${p.length+1}
+      or cast(coalesce(i.total_amount, 0) as text) ilike $${p.length+1}
+    )`);
     p.push('%' + q.trim() + '%');
   }
   if (conds.length > 0) sql += ' where ' + conds.join(' and ');
@@ -1617,7 +2316,7 @@ app.get('/api/invoices/next-no', authRequired, ensureAllow('sales_order','view')
   res.json({ nextNo });
 });
 
-app.post('/api/invoices', authRequired, ensureAllow('sales_order','view'), async (req, res) => {
+app.post('/api/invoices', authRequired, ensureAllow('sales_order','edit'), async (req, res) => {
   const x = req.body || {};
   const now = Date.now();
   // Use provided invoice_no or generate new one
@@ -1636,7 +2335,7 @@ app.post('/api/invoices', authRequired, ensureAllow('sales_order','view'), async
     invoiceNo = `Factura- ${String(nextSeq).padStart(6, '0')}-${year2}`;
   }
 
-  const items = Array.isArray(x.items) ? x.items : [];
+  const items = await attachInvoiceItemSnapshots(Array.isArray(x.items) ? x.items : []);
   // Recalculate total amount from items to ensure accuracy (including taxes)
   // Logic: each item has price, qty, tax_rate (0.1, 0.21, etc). Default 0.
   // total = sum(price * qty * (1 + tax_rate))
@@ -1701,14 +2400,14 @@ app.delete('/api/invoices/:id', authRequired, ensureAllow('sales_invoice','delet
   res.json({ ok: true });
 });
 
-app.put('/api/invoices/:id/print-shipping', authRequired, ensureAllow('sales_order','view'), async (req, res) => {
+app.put('/api/invoices/:id/print-shipping', authRequired, ensureAllow('sales_order','edit'), async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
   const r = await query('update invoices set shipping_printed=true where id=$1 returning id', [id]);
   if (!r.rows[0]) return res.status(404).json({ error: 'not_found' });
   res.json({ ok: true });
 });
 
-app.put('/api/invoices/:id', authRequired, ensureAllow('sales_order','view'), async (req, res) => {
+app.put('/api/invoices/:id', authRequired, ensureAllow('sales_order','edit'), async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
   const x = req.body || {};
   
@@ -1726,12 +2425,12 @@ app.put('/api/invoices/:id', authRequired, ensureAllow('sales_order','view'), as
   const oldTotal = Number(inv.total_amount || 0);
   
   // If fully paid, disallow edit (double check backend side)
-  if (paid >= oldTotal && oldTotal > 0) {
+  if (moneyGte(paid, oldTotal) && oldTotal > 0) {
     return res.status(400).json({ error: 'cannot_edit_paid_invoice' });
   }
 
   const oldItems = Array.isArray(inv.items) ? inv.items : (typeof inv.items === 'string' ? JSON.parse(inv.items) : []);
-  const newItems = Array.isArray(x.items) ? x.items : [];
+  const newItems = await attachInvoiceItemSnapshots(Array.isArray(x.items) ? x.items : [], oldItems);
 
   // Build per-item deltas (old - new): positive means return to stock; negative means extra deduction needed.
   const deltas = [];
@@ -1773,7 +2472,7 @@ app.put('/api/invoices/:id', authRequired, ensureAllow('sales_order','view'), as
     .map(item => ({ ...item, deductions: [] }));
 
   // Recalculate total
-  const total = finalItems.reduce((sum, item) => {
+  const total = roundMoneyValue(finalItems.reduce((sum, item) => {
     const qty = Number(item.qty||0);
     const price = Number(item.price||0);
     let taxRate = Number(item.tax_rate);
@@ -1784,7 +2483,7 @@ app.put('/api/invoices/:id', authRequired, ensureAllow('sales_order','view'), as
     const rowVal = qty * price;
     const rowTax = rowVal * taxRate;
     return sum + rowVal + rowTax;
-  }, 0);
+  }, 0));
 
   // Update invoice
   await query(`
@@ -1805,12 +2504,12 @@ app.put('/api/invoices/:id', authRequired, ensureAllow('sales_order','view'), as
   res.json({ ok: true });
 });
 
-app.get('/api/company-info', authRequired, ensureAllow('system','view'), async (req, res) => {
+app.get('/api/company-info', authRequired, async (req, res) => {
   const r = await query('select * from company_info limit 1');
   res.json(r.rows[0] || {});
 });
 
-app.post('/api/company-info', authRequired, ensureAllow('system','edit'), async (req, res) => {
+app.post('/api/company-info', authRequired, ensureAllow('company_info','edit'), async (req, res) => {
   const x = req.body || {};
   // Check if exists
   const r = await query('select id from company_info limit 1');
@@ -1829,7 +2528,74 @@ app.post('/api/company-info', authRequired, ensureAllow('system','edit'), async 
   res.json({ ok: true });
 });
 
+app.get('/api/auto-tasks', authRequired, async (req, res) => {
+  await ensureAutoTasksGenerated();
+  const { role, name } = req.user;
+  let sql = 'select * from auto_tasks';
+  const params = [];
+  if (role !== '超级管理员') {
+    params.push(name, name);
+    sql += ' where assigned_to=$1 or created_by=$2';
+  }
+  sql += ' order by created_at desc, id desc';
+  const r = await query(sql, params);
+  res.json(r.rows || []);
+});
+app.post('/api/auto-tasks', authRequired, ensureAllow('tasks','edit'), async (req, res) => {
+  const x = req.body || {};
+  const title = String(x.title || '').trim();
+  const description = String(x.description || '').trim();
+  const assignedTo = String(x.assigned_to || '').trim();
+  const intervalMonths = Math.max(1, parseInt(x.interval_months, 10) || 1);
+  const timeLimit = Math.max(0, parseInt(x.time_limit, 10) || 0);
+  const startAt = Math.max(0, parseInt(x.start_at, 10) || 0) || Date.now();
+  const active = x.active !== false;
+  if (!title || !assignedTo) return res.status(400).json({ error: 'bad_request' });
+  const createdAt = Date.now();
+  const nextGenerateAt = active ? startAt : null;
+  const r = await query(
+    `insert into auto_tasks(title, description, created_by, created_at, start_at, assigned_to, time_limit, interval_months, active, next_generate_at)
+     values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
+    [title, description, req.user.name || '', createdAt, startAt, assignedTo, timeLimit, intervalMonths, active, nextGenerateAt]
+  );
+  if (active) await ensureAutoTasksGenerated();
+  res.json({ id: r.rows[0].id });
+});
+app.put('/api/auto-tasks/:id', authRequired, ensureAllow('tasks','edit'), async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const x = req.body || {};
+  const current = await query('select * from auto_tasks where id=$1', [id]);
+  const row = current.rows[0];
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  if (row.created_by !== req.user.name && req.user.role !== '超级管理员') return res.status(403).json({ error: 'forbidden' });
+  const title = String(x.title || '').trim();
+  const description = String(x.description || '').trim();
+  const assignedTo = String(x.assigned_to || '').trim();
+  const intervalMonths = Math.max(1, parseInt(x.interval_months, 10) || 1);
+  const timeLimit = Math.max(0, parseInt(x.time_limit, 10) || 0);
+  const startAt = Math.max(0, parseInt(x.start_at, 10) || 0) || Number(row.start_at || row.created_at || Date.now());
+  const active = x.active !== false;
+  if (!title || !assignedTo) return res.status(400).json({ error: 'bad_request' });
+  let nextGenerateAt = null;
+  if (active) {
+    if (Number(row.last_generated_at || 0) > 0) {
+      nextGenerateAt = addMonthsTs(Number(row.last_generated_at), intervalMonths);
+      while (nextGenerateAt <= Date.now()) nextGenerateAt = addMonthsTs(nextGenerateAt, intervalMonths);
+    } else {
+      nextGenerateAt = startAt;
+    }
+  }
+  await query(
+    `update auto_tasks
+     set title=$1, description=$2, assigned_to=$3, time_limit=$4, interval_months=$5, active=$6, start_at=$7, next_generate_at=$8
+     where id=$9`,
+    [title, description, assignedTo, timeLimit, intervalMonths, active, startAt, nextGenerateAt, id]
+  );
+  if (active) await ensureAutoTasksGenerated();
+  res.json({ ok: true });
+});
 app.get('/api/tasks', authRequired, async (req, res) => {
+  await ensureAutoTasksGenerated();
   const { role, name } = req.user;
   const { status, page = '1', size = '100' } = req.query;
   const limit = Math.max(1, parseInt(size));
@@ -1886,14 +2652,14 @@ app.get('/api/tasks', authRequired, async (req, res) => {
     stats: statsRes.rows[0]
   });
 });
-app.post('/api/tasks', authRequired, async (req, res) => {
+app.post('/api/tasks', authRequired, ensureAllow('tasks','edit'), async (req, res) => {
   const x = req.body || {};
   const timeLimit = parseInt(x.timeLimit, 10) || 0;
   const r = await query(`insert into tasks(title,description,created_by,created_at,assigned_to,time_limit) values($1,$2,$3,$4,$5,$6) returning id`,
     [x.title||'', x.desc||'', req.user.name, Date.now(), x.assign||'', timeLimit]);
   res.json({ id: r.rows[0].id });
 });
-app.put('/api/tasks/:id', authRequired, async (req, res) => {
+app.put('/api/tasks/:id', authRequired, ensureAllow('tasks','edit'), async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const x = req.body || {};
   const timeLimit = parseInt(x.time_limit, 10) || 0;
@@ -1906,13 +2672,13 @@ app.put('/api/tasks/:id', authRequired, async (req, res) => {
     [x.title||'', x.description||'', x.assigned_to||'', timeLimit, id]);
   res.json({ ok: true });
 });
-app.put('/api/tasks/:id/complete', authRequired, async (req, res) => {
+app.put('/api/tasks/:id/complete', authRequired, ensureAllow('tasks','edit'), async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const { image, desc } = req.body;
   await query('update tasks set status=$1, completed_by=$2, completed_at=$3, completion_image=$4, completion_desc=$5 where id=$6', ['waiting_audit', req.user.name, Date.now(), image||'', desc||'', id]);
   res.json({ ok: true });
 });
-app.put('/api/tasks/:id/audit', authRequired, async (req, res) => {
+app.put('/api/tasks/:id/audit', authRequired, ensureAllow('tasks','edit'), async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (req.user.role !== '超级管理员') return res.status(403).json({ error: 'forbidden' });
   await query('update tasks set status=$1 where id=$2', ['completed', id]);
@@ -1940,12 +2706,17 @@ app.get('/api/daily-orders', authRequired, async (req, res) => {
     left join invoices i on d.invoice_id = i.id
   `;
   const p = [];
-  if (status) { sql += ' where d.status=$1'; p.push(status); }
-  sql += ' order by d.created_at desc';
+  sql += ' where coalesce(d.is_manual_logistics,false)=false';
+  if (status) { sql += ' and d.status=$1'; p.push(status); }
+  if (String(status || '').trim() === 'shipped') {
+    sql += ' order by coalesce(d.logistics_updated_at, i.created_at, 0) desc, d.id desc';
+  } else {
+    sql += ' order by d.created_at desc';
+  }
   const r = await query(sql, p);
   res.json(r.rows);
 });
-app.post('/api/daily-orders', authRequired, async (req, res) => {
+app.post('/api/daily-orders', authRequired, ensureAllow('daily_orders','edit'), async (req, res) => {
   const x = req.body || {};
   const items = Array.isArray(x.items) ? x.items : [];
   const today = new Date();
@@ -1955,7 +2726,7 @@ app.post('/api/daily-orders', authRequired, async (req, res) => {
     [x.customer||'', x.sales||'', JSON.stringify(items), req.user.name, Date.now(), dateStr, x.notes||'']);
   res.json({ id: r.rows[0].id });
 });
-app.put('/api/daily-orders/:id', authRequired, async (req, res) => {
+app.put('/api/daily-orders/:id', authRequired, ensureAllow('daily_orders','edit'), async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const x = req.body || {};
   const items = Array.isArray(x.items) ? x.items : [];
@@ -1979,7 +2750,7 @@ app.put('/api/daily-orders/:id', authRequired, async (req, res) => {
     [x.customer||'', x.notes||'', JSON.stringify(newItems), id]);
   res.json({ ok: true });
 });
-app.delete('/api/daily-orders/:id', authRequired, async (req, res) => {
+app.delete('/api/daily-orders/:id', authRequired, ensureAllow('daily_orders','edit'), async (req, res) => {
   const id = parseInt(req.params.id, 10);
   // Only allow deleting if not shipped or cancelled
   const ord = await query('select status from daily_orders where id=$1', [id]);
@@ -1990,7 +2761,7 @@ app.delete('/api/daily-orders/:id', authRequired, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.put('/api/daily-orders/:id/allocate', authRequired, async (req, res) => {
+app.put('/api/daily-orders/:id/allocate', authRequired, ensureAllow('daily_orders','edit'), async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const { items } = req.body; // updated items with allocated_qty
   
@@ -2002,9 +2773,29 @@ app.put('/api/daily-orders/:id/allocate', authRequired, async (req, res) => {
   
   res.json({ ok: true });
 });
-app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
+app.put('/api/daily-orders/:id/ship', authRequired, ensureAllow('daily_orders','edit'), async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  await query('update daily_orders set status=$1, shipped_by=$2 where id=$3', ['shipped', req.user.name, id]);
+  const x = req.body || {};
+  const companyId = Number(x.logistics_company_id || 0);
+  const from = String(x.logistics_from || '').trim();
+  const to = String(x.logistics_to || '').trim();
+  const shipDate = String(x.logistics_ship_date || '').trim();
+  const palletCount = String(x.logistics_pallet_count || '').trim();
+  const boxCount = String(x.logistics_box_count || '').trim();
+  const totalWeight = String(x.logistics_total_weight || '').trim();
+  if (!companyId) return res.status(400).json({ error: 'logistics_company_required' });
+  if (!from) return res.status(400).json({ error: 'logistics_from_required' });
+  if (!to) return res.status(400).json({ error: 'logistics_to_required' });
+  if (!shipDate) return res.status(400).json({ error: 'logistics_ship_date_required' });
+  if (!palletCount) return res.status(400).json({ error: 'logistics_pallet_count_required' });
+  if (!boxCount) return res.status(400).json({ error: 'logistics_box_count_required' });
+  if (!totalWeight) return res.status(400).json({ error: 'logistics_total_weight_required' });
+  const comp = (await query('select id, enabled from logistics_companies where id=$1', [companyId])).rows[0];
+  if (!comp || comp.enabled !== true) return res.status(400).json({ error: 'bad_logistics_company' });
+  await query(
+    'update daily_orders set status=$1, shipped_by=coalesce(shipped_by,$2), logistics_company_id=$3, logistics_status=$4, logistics_updated_at=$5, logistics_from=$6, logistics_to=$7, logistics_ship_date=$8, logistics_pallet_count=$9, logistics_box_count=$10, logistics_total_weight=$11 where id=$12',
+    ['shipped', req.user.name, companyId, 'ongoing', Date.now(), from, to, shipDate, palletCount, boxCount, totalWeight, id]
+  );
   
   // Auto Create Invoice & Deduct Stock
   const ord = (await query('select * from daily_orders where id=$1', [id])).rows[0];
@@ -2029,22 +2820,22 @@ app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
     const invoiceNo = `Factura- ${String(nextSeq).padStart(6, '0')}-${year2}`;
     
     // Use allocated_qty for invoice items
-    const invoiceItems = items.map(item => {
+    const invoiceItems = await attachInvoiceItemSnapshots(items.map(item => {
       const shipQty = Number(item.allocated_qty !== undefined ? item.allocated_qty : (item.qty || 0));
       let taxRate = Number(item.tax_rate);
       if (isNaN(taxRate)) taxRate = 0.10;
       if (taxRate >= 1) taxRate = taxRate / 100;
       if (!isIva) taxRate = 0;
       return { ...item, qty: shipQty, original_qty: item.qty, tax_rate: taxRate };
-    });
+    }));
     
     // Calculate total
-    const total = invoiceItems.reduce((sum, item) => {
+    const total = roundMoneyValue(invoiceItems.reduce((sum, item) => {
       const qty = Number(item.qty || 0);
       const price = Number(item.price || 0);
       const taxRate = Number(item.tax_rate) || 0;
       return sum + (qty * price * (1 + taxRate));
-    }, 0);
+    }, 0));
 
     const now = Date.now();
     const invoiceDate = new Date().toISOString().slice(0, 10);
@@ -2070,6 +2861,332 @@ app.put('/api/daily-orders/:id/ship', authRequired, async (req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/api/logistics/companies', authRequired, async (req, res) => {
+  const r = await query('select id, name, phone, contact, enabled, created_at, created_by from logistics_companies order by enabled desc, id asc');
+  res.json(r.rows);
+});
+app.post('/api/logistics/companies', authRequired, ensureAllow('daily_orders','edit'), async (req, res) => {
+  const x = req.body || {};
+  const name = String(x.name || '').trim();
+  const phone = String(x.phone || '').trim();
+  const contact = String(x.contact || '').trim();
+  if (!name) return res.status(400).json({ error: 'bad_request' });
+  const now = Date.now();
+  const r = await query(
+    'insert into logistics_companies(name, phone, contact, enabled, created_at, created_by) values($1,$2,$3,true,$4,$5) returning id',
+    [name, phone, contact, now, req.user?.name || '']
+  );
+  res.json({ id: r.rows[0].id });
+});
+app.post('/api/logistics/records', authRequired, ensureAllow('daily_orders','edit'), async (req, res) => {
+  const x = req.body || {};
+  const companyId = Number(x.logistics_company_id || 0);
+  const from = String(x.logistics_from || '').trim();
+  const to = String(x.logistics_to || '').trim();
+  const shipDate = String(x.logistics_ship_date || '').trim();
+  const palletCount = String(x.logistics_pallet_count || '').trim();
+  const boxCount = String(x.logistics_box_count || '').trim();
+  const totalWeight = String(x.logistics_total_weight || '').trim();
+  if (!companyId) return res.status(400).json({ error: 'logistics_company_required' });
+  if (!from) return res.status(400).json({ error: 'logistics_from_required' });
+  if (!to) return res.status(400).json({ error: 'logistics_to_required' });
+  if (!shipDate) return res.status(400).json({ error: 'logistics_ship_date_required' });
+  if (!palletCount) return res.status(400).json({ error: 'logistics_pallet_count_required' });
+  if (!boxCount) return res.status(400).json({ error: 'logistics_box_count_required' });
+  if (!totalWeight) return res.status(400).json({ error: 'logistics_total_weight_required' });
+  const comp = (await query('select id, enabled from logistics_companies where id=$1', [companyId])).rows[0];
+  if (!comp || comp.enabled !== true) return res.status(400).json({ error: 'bad_logistics_company' });
+  const now = Date.now();
+  const r = await query(
+    `insert into daily_orders(
+      customer, sales, items, status, created_by, created_at, date, notes, shipped_by,
+      logistics_company_id, logistics_status, logistics_updated_at, logistics_from, logistics_to,
+      logistics_ship_date, logistics_pallet_count, logistics_box_count, logistics_total_weight,
+      is_manual_logistics
+    ) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning id`,
+    [to, '', '[]', 'shipped', req.user?.name || '', now, shipDate, '', req.user?.name || '', companyId, 'ongoing', now, from, to, shipDate, palletCount, boxCount, totalWeight, true]
+  );
+  res.json({ ok: true, id: r.rows[0].id });
+});
+app.put('/api/logistics/companies/:id', authRequired, ensureAllow('daily_orders','edit'), async (req, res) => {
+  if ((req.user?.role || '') !== '超级管理员') return res.status(403).json({ error:'forbidden' });
+  const id = parseInt(req.params.id, 10);
+  const enabled = !!(req.body && req.body.enabled);
+  await query('update logistics_companies set enabled=$1 where id=$2', [enabled, id]);
+  res.json({ ok: true });
+});
+app.get('/api/logistics/records', authRequired, async (req, res) => {
+  const statusRaw = String(req.query.status || 'ongoing').trim();
+  const status = (statusRaw === 'completed' || statusRaw === 'reviewed') ? statusRaw : 'ongoing';
+  const r = await query(
+    `
+    select 
+      d.id,
+      d.customer,
+      d.date,
+      d.notes,
+      d.created_at,
+      d.logistics_status,
+      d.logistics_updated_at,
+      d.shipped_by,
+      d.logistics_company_id,
+      d.logistics_from,
+      d.logistics_to,
+      d.logistics_ship_date,
+      d.logistics_pallet_count,
+      d.logistics_box_count,
+      d.logistics_total_weight,
+      d.logistics_arrival_date,
+      d.logistics_completed_by,
+      d.logistics_reviewed_by,
+      c.name as logistics_company,
+      c.phone as logistics_phone,
+      c.contact as logistics_contact,
+      i.invoice_no,
+      i.created_at as shipped_at
+    from daily_orders d
+    left join invoices i on d.invoice_id = i.id
+    left join logistics_companies c on d.logistics_company_id = c.id
+    where d.status='shipped' and coalesce(d.logistics_status,'')=$1
+    order by coalesce(d.logistics_updated_at, 0) desc, coalesce(i.created_at, 0) desc, d.id desc
+    `,
+    [status]
+  );
+  res.json(r.rows);
+});
+
+app.put('/api/logistics/records/:id', authRequired, ensureAllow('daily_orders','edit'), async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  const x = req.body || {};
+  const companyId = Number(x.logistics_company_id || 0);
+  const from = String(x.logistics_from || '').trim();
+  const to = String(x.logistics_to || '').trim();
+  const shipDate = String(x.logistics_ship_date || '').trim();
+  const palletCount = String(x.logistics_pallet_count || '').trim();
+  const boxCount = String(x.logistics_box_count || '').trim();
+  const totalWeight = String(x.logistics_total_weight || '').trim();
+  if (!id) return res.status(400).json({ error: 'bad_request' });
+  if (!companyId) return res.status(400).json({ error: 'logistics_company_required' });
+  if (!from) return res.status(400).json({ error: 'logistics_from_required' });
+  if (!to) return res.status(400).json({ error: 'logistics_to_required' });
+  if (!shipDate) return res.status(400).json({ error: 'logistics_ship_date_required' });
+  if (!palletCount) return res.status(400).json({ error: 'logistics_pallet_count_required' });
+  if (!boxCount) return res.status(400).json({ error: 'logistics_box_count_required' });
+  if (!totalWeight) return res.status(400).json({ error: 'logistics_total_weight_required' });
+  const comp = (await query('select id, enabled from logistics_companies where id=$1', [companyId])).rows[0];
+  if (!comp || comp.enabled !== true) return res.status(400).json({ error: 'bad_logistics_company' });
+  const r = await query(
+    `update daily_orders
+     set logistics_company_id=$1, logistics_updated_at=$2, logistics_from=$3, logistics_to=$4, logistics_ship_date=$5,
+         logistics_pallet_count=$6, logistics_box_count=$7, logistics_total_weight=$8
+     where id=$9 and status='shipped' and coalesce(logistics_status,'')='ongoing'`,
+    [companyId, Date.now(), from, to, shipDate, palletCount, boxCount, totalWeight, id]
+  );
+  if (r.rowCount === 0) return res.status(404).json({ error: 'not_found' });
+  res.json({ ok: true });
+});
+
+app.put('/api/logistics/records/:id/complete', authRequired, ensureAllow('daily_orders','edit'), async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  const x = req.body || {};
+  const arrivalDate = String(x.arrival_date || '').trim();
+  if (!id) return res.status(400).json({ error: 'bad_request' });
+  if (!arrivalDate) return res.status(400).json({ error: 'arrival_date_required' });
+  const r = await query(
+    `update daily_orders
+     set logistics_status=$1, logistics_updated_at=$2, logistics_arrival_date=$3, logistics_completed_by=$4
+     where id=$5 and status='shipped'`,
+    ['completed', Date.now(), arrivalDate, req.user?.name || '', id]
+  );
+  if (r.rowCount === 0) return res.status(404).json({ error: 'not_found' });
+  res.json({ ok: true });
+});
+
+app.put('/api/logistics/records/review', authRequired, ensureAllow('daily_orders','edit'), async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(x => parseInt(x, 10)).filter(Boolean) : [];
+  if (ids.length === 0) return res.status(400).json({ error: 'bad_request' });
+  await query(
+    `update daily_orders
+     set logistics_status=$1, logistics_updated_at=$2, logistics_reviewed_by=$3
+     where id = any($4::int[]) and status='shipped' and coalesce(logistics_status,'')='completed'`,
+    ['reviewed', Date.now(), req.user?.name || '', ids]
+  );
+  res.json({ ok: true });
+});
+
+app.get('/api/event-records', authRequired, ensureAllow('event_records','view'), async (req, res) => {
+  const status = String(req.query.status || 'ongoing').trim() === 'completed' ? 'completed' : 'ongoing';
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const size = Math.max(1, Math.min(200, parseInt(req.query.size, 10) || 50));
+  const q = String(req.query.q || '').trim();
+  const params = [status];
+  let where = ' where status=$1';
+  if (q) {
+    params.push(`%${q}%`);
+    where += ` and (coalesce(name,'') ilike $${params.length} or coalesce(created_by,'') ilike $${params.length})`;
+  }
+  const totalRes = await query(`select count(*)::int as count from event_records${where}`, params);
+  params.push(size, (page - 1) * size);
+  const listRes = await query(
+    `select * from event_records${where}
+     order by coalesce(record_date,'' ) desc, created_at desc
+     limit $${params.length - 1} offset $${params.length}`,
+    params
+  );
+  res.json({ list: listRes.rows, total: Number(totalRes.rows[0]?.count || 0) });
+});
+app.post('/api/event-records', authRequired, ensureAllow('event_records','edit'), async (req, res) => {
+  const x = req.body || {};
+  const r = await query(
+    `insert into event_records(name, record_date, due_date, notes, status, created_by, created_at)
+     values($1,$2,$3,$4,$5,$6,$7) returning id`,
+    [
+      String(x.name || '').trim(),
+      String(x.record_date || '').trim(),
+      String(x.due_date || '').trim(),
+      String(x.notes || '').trim(),
+      String(x.status || 'ongoing').trim() === 'completed' ? 'completed' : 'ongoing',
+      req.user.name,
+      Date.now()
+    ]
+  );
+  res.json({ id: r.rows[0].id });
+});
+app.put('/api/event-records/:id', authRequired, ensureAllow('event_records','edit'), async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  const x = req.body || {};
+  const status = String(x.status || 'ongoing').trim() === 'completed' ? 'completed' : 'ongoing';
+  await query(
+    `update event_records
+     set name=$1, record_date=$2, due_date=$3, notes=$4, status=$5, completed_at=$6, confirmed_by=$7
+     where id=$8`,
+    [
+      String(x.name || '').trim(),
+      String(x.record_date || '').trim(),
+      String(x.due_date || '').trim(),
+      String(x.notes || '').trim(),
+      status,
+      status === 'completed' ? Date.now() : null,
+      status === 'completed' ? (req.user?.name || '') : '',
+      id
+    ]
+  );
+  res.json({ ok: true });
+});
+app.get('/api/knowledge-base', authRequired, ensureAllow('knowledge_base','view'), async (req, res) => {
+  const category = String(req.query.category || 'internal').trim() === 'surrounding' ? 'surrounding' : 'internal';
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const size = Math.max(1, Math.min(200, parseInt(req.query.size, 10) || 50));
+  const q = String(req.query.q || '').trim();
+  const params = [category];
+  let where = ' where category=$1';
+  if (q) {
+    params.push(`%${q}%`);
+    where += ` and (coalesce(title,'') ilike $${params.length} or coalesce(content,'') ilike $${params.length})`;
+  }
+  const totalRes = await query(`select count(*)::int as count from knowledge_base_entries${where}`, params);
+  params.push(size, (page - 1) * size);
+  const listRes = await query(
+    `select * from knowledge_base_entries${where}
+     order by created_at desc
+     limit $${params.length - 1} offset $${params.length}`,
+    params
+  );
+  res.json({ list: listRes.rows, total: Number(totalRes.rows[0]?.count || 0) });
+});
+app.post('/api/knowledge-base', authRequired, ensureAllow('knowledge_base','edit'), async (req, res) => {
+  const x = req.body || {};
+  const r = await query(
+    `insert into knowledge_base_entries(title, content, category, created_by, created_at)
+     values($1,$2,$3,$4,$5) returning id`,
+    [
+      String(x.title || '').trim(),
+      String(x.content || '').trim(),
+      String(x.category || 'internal').trim() === 'surrounding' ? 'surrounding' : 'internal',
+      req.user.name,
+      Date.now()
+    ]
+  );
+  res.json({ id: r.rows[0].id });
+});
+app.put('/api/knowledge-base/:id', authRequired, ensureAllow('knowledge_base','edit'), async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  const x = req.body || {};
+  await query(
+    `update knowledge_base_entries set title=$1, content=$2, category=$3 where id=$4`,
+    [
+      String(x.title || '').trim(),
+      String(x.content || '').trim(),
+      String(x.category || 'internal').trim() === 'surrounding' ? 'surrounding' : 'internal',
+      id
+    ]
+  );
+  res.json({ ok: true });
+});
+app.get('/api/production-entries', authRequired, ensureAllow('production_review','view'), async (req, res) => {
+  const status = String(req.query.status || 'pending').trim();
+  const allowedStatus = ['pending', 'approved', 'rejected'];
+  const finalStatus = allowedStatus.includes(status) ? status : 'pending';
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const size = Math.max(1, Math.min(200, parseInt(req.query.size, 10) || 50));
+  const q = String(req.query.q || '').trim();
+  const params = [finalStatus];
+  let where = ' where status=$1';
+  if (q) {
+    params.push(`%${q}%`);
+    where += ` and (
+      coalesce(product_name,'') ilike $${params.length}
+      or coalesce(product_name_cn,'') ilike $${params.length}
+      or coalesce(lote,'') ilike $${params.length}
+    )`;
+  }
+  const totalRes = await query(`select count(*)::int as count from production_entries${where}`, params);
+  params.push(size, (page - 1) * size);
+  const listRes = await query(
+    `select * from production_entries${where}
+     order by created_at desc, id desc
+     limit $${params.length - 1} offset $${params.length}`,
+    params
+  );
+  res.json({ list: listRes.rows, total: Number(totalRes.rows[0]?.count || 0) });
+});
+app.put('/api/production-entries/:id/review', authRequired, ensureAllow('production_review','edit'), async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  const action = String(req.body?.action || '').trim();
+  const reason = String(req.body?.reason || '').trim();
+  const entryRes = await query('select * from production_entries where id=$1', [id]);
+  const entry = entryRes.rows[0];
+  if (!entry) return res.status(404).json({ error: 'not_found' });
+  if (entry.status !== 'pending') return res.status(400).json({ error: 'already_reviewed' });
+  if (action === 'approve') {
+    await addFinishedInventoryItems([
+      {
+        productId: Number(entry.product_id || 0),
+        qty: Number(entry.box_count || 0),
+        expiry: String(entry.expiration_date || '').trim(),
+        lote: String(entry.lote || '').trim()
+      }
+    ], req.user.name || 'system', `生产审核通过 #${entry.id}`);
+    await query(
+      `update production_entries set status='approved', approved_at=$1, approved_by=$2 where id=$3`,
+      [Date.now(), req.user.name || '', id]
+    );
+    const fresh = await query('select * from production_entries where id=$1', [id]);
+    return res.json({ ok: true, entry: fresh.rows[0] || entry });
+  }
+  if (action === 'reject') {
+    await query(
+      `update production_entries
+       set status='rejected', rejected_at=$1, rejected_by=$2, reject_reason=$3
+       where id=$4`,
+      [Date.now(), req.user.name || '', reason, id]
+    );
+    const fresh = await query('select * from production_entries where id=$1', [id]);
+    return res.json({ ok: true, entry: fresh.rows[0] || entry });
+  }
+  return res.status(400).json({ error: 'bad_action' });
+});
+
 // Inventory (Finished)
 app.get('/api/inventory/finished', authRequired, async (req, res) => {
   const { page='1', size='50', q='' } = req.query;
@@ -2078,7 +3195,10 @@ app.get('/api/inventory/finished', authRequired, async (req, res) => {
   
   let countSql = 'select count(*)::int as c from products p';
   let dataSql = `
-    select p.id, p.sku, p.name, p.name_cn, p.image, p.stock as total_stock,
+    select p.id, p.sku, p.barcode, p.name, p.name_cn, p.image, p.spec,
+    p.price1, p.price2, p.price3, p.price4, p.tax_rate, p.cost_price,
+    p.description, p.notes, p.stock, p.dividend_enabled, p.dividend_users,
+    p.stock as total_stock, coalesce(p.remind_stock, 0) as remind_stock,
     (
       select json_agg(json_build_object('qty', quantity, 'expiry', expiration_date, 'lote', lote) order by expiration_date asc)
       from inventory_batches
@@ -2104,57 +3224,50 @@ app.get('/api/inventory/finished', authRequired, async (req, res) => {
   const r = await query(dataSql, pVals);
   res.json({ list: r.rows, total });
 });
-app.post('/api/inventory/finished', authRequired, async (req, res) => {
-  const items = req.body.items || [req.body]; // Support single or multiple
-  console.log("POST /api/inventory/finished received:", items);
-  
-  for (const item of items) {
-    const { productId, qty, expiry, lote } = item;
-    console.log("Processing item:", item);
-    // ensure qty is valid
-    if (!productId || !qty || isNaN(Number(qty))) {
-      console.log("Skipping invalid item:", item);
-      continue;
-    }
-    
-    const parsedQty = Number(qty);
-    
+async function addFinishedInventoryItems(items = [], actorName = 'system', notesText = '') {
+  for (const rawItem of Array.isArray(items) ? items : []) {
+    const item = rawItem || {};
+    const productId = Number(item.productId || 0);
+    const parsedQty = Number(item.qty || 0);
+    const expiry = String(item.expiry || '').trim();
+    const lote = String(item.lote || '').trim();
+    if (!productId || !Number.isFinite(parsedQty) || parsedQty <= 0) continue;
+
     const p = await query('select stock from products where id=$1', [productId]);
-    if (!p.rows[0]) {
-      console.log("Product not found:", productId);
-      continue;
-    }
+    if (!p.rows[0]) continue;
     const currentStock = Number(p.rows[0]?.stock || 0);
     let batchQty = parsedQty;
     const entryNow = Date.now();
-    
+
     if (currentStock <= 0) {
       await query('update inventory_batches set quantity = 0 where product_id=$1', [productId]);
     }
-    
+
     if (currentStock < 0) {
       const deficit = Math.abs(currentStock);
-      if (batchQty > deficit) {
-        batchQty -= deficit;
-      } else {
-        batchQty = 0;
-      }
+      batchQty = batchQty > deficit ? batchQty - deficit : 0;
     }
-    
+
     if (batchQty > 0) {
-      await query('insert into inventory_batches(product_id, quantity, expiration_date, lote, created_at) values($1,$2,$3,$4,$5)',
-        [productId, batchQty, expiry || '', lote || '', entryNow]);
+      await query(
+        'insert into inventory_batches(product_id, quantity, expiration_date, lote, created_at) values($1,$2,$3,$4,$5)',
+        [productId, batchQty, expiry, lote, entryNow]
+      );
     }
-    
+
     await query('update products set stock = stock + $1 where id=$2', [parsedQty, productId]);
-    
-    await query('insert into inventory_logs(product_id, quantity, type, created_at, created_by, notes, lote) values($1,$2,$3,$4,$5,$6,$7)',
-      [productId, parsedQty, 'in', entryNow, req.user.name || 'system', '', lote || '']);
+    await query(
+      'insert into inventory_logs(product_id, quantity, type, created_at, created_by, notes, lote) values($1,$2,$3,$4,$5,$6,$7)',
+      [productId, parsedQty, 'in', entryNow, actorName || 'system', notesText || '', lote]
+    );
   }
-    
+}
+app.post('/api/inventory/finished', authRequired, ensureAllow('finished_stock','edit'), async (req, res) => {
+  const items = req.body.items || [req.body];
+  await addFinishedInventoryItems(items, req.user.name || 'system', '');
   res.json({ ok: true });
 });
-app.put('/api/inventory/finished/adjust', authRequired, ensureAllow('finished_stock_adjust','view'), async (req, res) => {
+app.put('/api/inventory/finished/adjust', authRequired, ensureAllow('finished_stock_adjust','edit'), async (req, res) => {
   const { productId, qty, lote = '', expiry = '', notes = '' } = req.body || {};
   const pid = Number(productId || 0);
   const delta = Number(qty || 0);
@@ -2323,75 +3436,219 @@ app.get('/api/inventory/finished/:id/logs', authRequired, async (req, res) => {
 });
 
 // Inventory (Raw)
+async function resolveMaterial({ materialId = null, name = '' }) {
+  const mid = Number(materialId || 0);
+  if (mid > 0) {
+    const byId = await query('select id, name, stock from materials where id=$1', [mid]);
+    if (byId.rows[0]) return byId.rows[0];
+  }
+  const materialName = String(name || '').trim();
+  if (!materialName) return null;
+  const byName = await query('select id, name, stock from materials where lower(name)=lower($1) limit 1', [materialName]);
+  if (byName.rows[0]) return byName.rows[0];
+  return null;
+}
+async function syncMaterialStock(materialId) {
+  const stockR = await query('select coalesce(sum(case when quantity > 0 then quantity else 0 end), 0) as stock from material_batches where material_id=$1', [materialId]);
+  const stock = Number(stockR.rows[0]?.stock || 0);
+  await query('update materials set stock=$1 where id=$2', [stock, materialId]);
+  return stock;
+}
 app.get('/api/inventory/raw', authRequired, async (req, res) => {
-  const r = await query(`
-    select m.*,
+  const { page='1', size='50', q='' } = req.query;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const pageSize = Math.max(1, Math.min(500, parseInt(size, 10) || 50));
+  let countSql = 'select count(*)::int as c from materials m';
+  let dataSql = `
+    select m.id, m.name, m.image, m.stock,
     (
-      select json_agg(json_build_object('qty', quantity, 'expiry', expiration_date) order by expiration_date asc)
+      select json_agg(json_build_object('qty', quantity, 'expiry', expiration_date, 'lote', lote) order by expiration_date asc, id asc)
       from material_batches
       where material_id=m.id and quantity>0
     ) as batches
     from materials m
-    order by m.stock desc
-  `);
-  res.json(r.rows);
+  `;
+  const params = [];
+  if (q && q.trim()) {
+    countSql += ' where m.name ilike $1';
+    dataSql += ' where m.name ilike $1';
+    params.push('%' + q.trim() + '%');
+  }
+  const countR = await query(countSql, params);
+  const total = countR.rows[0]?.c || 0;
+  dataSql += ` order by m.id desc limit $${params.length + 1} offset $${params.length + 2}`;
+  params.push(pageSize, (pageNum - 1) * pageSize);
+  const r = await query(dataSql, params);
+  res.json({ list: r.rows, total });
 });
-app.post('/api/inventory/raw', authRequired, async (req, res) => {
-  const { name, qty, expiry } = req.body;
-  // Check if material exists
-  let mid;
-  const exist = await query('select id, stock from materials where name=$1', [name]);
-  
-  let currentStock = 0;
-  if (exist.rows[0]) {
-    mid = exist.rows[0].id;
-    currentStock = Number(exist.rows[0].stock || 0);
-    await query('update materials set stock = stock + $1 where id=$2', [qty, mid]);
-  } else {
-    const n = await query('insert into materials(name, stock) values($1,$2) returning id', [name, qty]);
-    mid = n.rows[0].id;
-  }
-  
-  let batchQty = Number(qty);
-  
-  if (currentStock <= 0) {
-    // Clean up ghost batches
-    if (mid) await query('update material_batches set quantity = 0 where material_id=$1', [mid]);
-  }
-  
-  if (currentStock < 0) {
-    const deficit = Math.abs(currentStock);
-    if (batchQty > deficit) {
-      batchQty -= deficit;
-    } else {
-      batchQty = 0;
-    }
-  }
-  
-  if (batchQty > 0) {
-    await query('insert into material_batches(material_id, quantity, expiration_date, created_at) values($1,$2,$3,$4)',
-      [mid, batchQty, expiry, Date.now()]);
-  }
-  
+app.post('/api/inventory/raw/materials', authRequired, ensureAllow('raw_stock','edit'), async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  const image = String(req.body?.image || '').trim();
+  if (!name) return res.status(400).json({ error: 'bad_request' });
+  const exist = await query('select id from materials where lower(name)=lower($1) limit 1', [name]);
+  if (exist.rows[0]) return res.status(400).json({ error: 'duplicate' });
+  const created = await query('insert into materials(name, image, stock) values($1, $2, 0) returning id, name, image, stock', [name, image]);
+  res.json({ ok: true, material: created.rows[0] });
+});
+app.put('/api/inventory/raw/materials/:id', authRequired, ensureAllow('raw_stock','edit'), async (req, res) => {
+  const mid = Number(req.params.id || 0);
+  const name = String(req.body?.name || '').trim();
+  const image = String(req.body?.image || '').trim();
+  if (!mid || !name) return res.status(400).json({ error: 'bad_request' });
+  const material = await query('select id from materials where id=$1 limit 1', [mid]);
+  if (!material.rows[0]) return res.status(404).json({ error: 'not_found' });
+  const exist = await query('select id from materials where lower(name)=lower($1) and id<>$2 limit 1', [name, mid]);
+  if (exist.rows[0]) return res.status(400).json({ error: 'duplicate' });
+  const updated = await query('update materials set name=$1, image=$2 where id=$3 returning id, name, image, stock', [name, image, mid]);
+  res.json({ ok: true, material: updated.rows[0] });
+});
+app.delete('/api/inventory/raw/materials/:id', authRequired, ensureAllow('raw_stock','edit'), async (req, res) => {
+  const mid = Number(req.params.id || 0);
+  if (!mid) return res.status(400).json({ error: 'bad_request' });
+  const material = await query('select id, stock from materials where id=$1 limit 1', [mid]);
+  if (!material.rows[0]) return res.status(404).json({ error: 'not_found' });
+  if (Number(material.rows[0].stock || 0) !== 0) return res.status(400).json({ error: 'has_stock' });
+  const logCount = await query('select count(*)::int as c from material_logs where material_id=$1', [mid]);
+  if (Number(logCount.rows[0]?.c || 0) > 0) return res.status(400).json({ error: 'has_logs' });
+  await query('delete from material_batches where material_id=$1', [mid]);
+  await query('delete from materials where id=$1', [mid]);
   res.json({ ok: true });
 });
-app.put('/api/inventory/raw/audit', authRequired, async (req, res) => {
-  const { name, qty } = req.body; // Overwrite
-  // Clear batches
-  let mid;
-  const exist = await query('select id from materials where name=$1', [name]);
-  if (exist.rows[0]) {
-    mid = exist.rows[0].id;
-    await query('delete from material_batches where material_id=$1', [mid]);
-    await query('update materials set stock=$1 where id=$2', [qty, mid]);
-  } else {
-    const n = await query('insert into materials(name, stock) values($1,$2) returning id', [name, qty]);
-    mid = n.rows[0].id;
+app.post('/api/inventory/raw', authRequired, ensureAllow('raw_stock','edit'), async (req, res) => {
+  const items = Array.isArray(req.body?.items) ? req.body.items : [req.body || {}];
+  for (const item of items) {
+    const { materialId = null, name = '', qty, expiry = '', lote = '' } = item || {};
+    const delta = Number(qty || 0);
+    const expiryText = String(expiry || '').trim();
+    const loteText = String(lote || '').trim();
+    if (!Number.isFinite(delta) || delta <= 0 || !expiryText || !loteText) {
+      return res.status(400).json({ error: 'bad_request' });
+    }
+    let material = await resolveMaterial({ materialId, name });
+    if (!material) {
+      const materialName = String(name || '').trim();
+      if (!materialName) return res.status(400).json({ error: 'bad_request' });
+      const created = await query('insert into materials(name, stock) values($1, 0) returning id, name, stock', [materialName]);
+      material = created.rows[0];
+    }
+    const now = Date.now();
+    const currentStock = Number(material.stock || 0);
+    let batchQty = delta;
+    if (currentStock <= 0) {
+      await query('update material_batches set quantity = 0 where material_id=$1', [material.id]);
+    }
+    if (currentStock < 0) {
+      const deficit = Math.abs(currentStock);
+      batchQty = batchQty > deficit ? (batchQty - deficit) : 0;
+    }
+    if (batchQty > 0) {
+      const existBatch = await query('select id from material_batches where material_id=$1 and coalesce(expiration_date, \'\')=$2 and coalesce(lote, \'\')=$3 order by id desc limit 1', [material.id, expiryText, loteText]);
+      if (existBatch.rows[0]) {
+        await query('update material_batches set quantity = quantity + $1 where id=$2', [batchQty, existBatch.rows[0].id]);
+      } else {
+        await query('insert into material_batches(material_id, quantity, expiration_date, lote, created_at) values($1,$2,$3,$4,$5)', [material.id, batchQty, expiryText, loteText, now]);
+      }
+    }
+    await syncMaterialStock(material.id);
+    await query('insert into material_logs(material_id, quantity, type, created_at, created_by, notes, expiration_date, lote) values($1,$2,$3,$4,$5,$6,$7,$8)', [material.id, delta, 'in', now, req.user.name || 'system', '', expiryText, loteText]);
   }
-  // Create a single batch for current audit
+  res.json({ ok: true });
+});
+app.put('/api/inventory/raw/adjust', authRequired, ensureAllow('raw_stock','edit'), async (req, res) => {
+  const { materialId, qty, expiry = '', notes = '' } = req.body || {};
+  const mid = Number(materialId || 0);
+  const delta = Number(qty || 0);
+  const expiryText = String(expiry || '').trim();
+  const noteText = String(notes || '').trim();
+  if (!mid || !Number.isFinite(delta) || delta === 0 || !noteText) return res.status(400).json({ error: 'bad_request' });
+  const material = await query('select id from materials where id=$1', [mid]);
+  if (!material.rows[0]) return res.status(404).json({ error: 'not_found' });
+  const now = Date.now();
+  const batchR = await query('select id, quantity, expiration_date from material_batches where material_id=$1 order by quantity desc, id desc', [mid]);
+  const matchBatch = (x) => String(x.expiration_date || '').trim() === expiryText;
+  const positiveBatch = batchR.rows.find(x => Number(x.quantity || 0) > 0 && matchBatch(x));
+  const anyPositiveBatch = batchR.rows.find(x => Number(x.quantity || 0) > 0);
+  const anyBatch = batchR.rows.find(matchBatch);
+  const batch = expiryText ? (delta < 0 ? positiveBatch : (positiveBatch || anyBatch)) : (delta < 0 ? anyPositiveBatch : anyPositiveBatch);
+  if (delta > 0) {
+    if (batch && (!expiryText || matchBatch(batch))) {
+      await query('update material_batches set quantity=quantity+$1, expiration_date=$2 where id=$3', [delta, expiryText || String(batch.expiration_date || ''), batch.id]);
+    } else {
+      await query('insert into material_batches(material_id, quantity, expiration_date, created_at) values($1,$2,$3,$4)', [mid, delta, expiryText, now]);
+    }
+  } else {
+    if (!batch) return res.status(400).json({ error: 'batch_not_found' });
+    const remaining = Number(batch.quantity || 0) + delta;
+    await query('update material_batches set quantity=$1 where id=$2', [Math.max(remaining, 0), batch.id]);
+  }
+  await syncMaterialStock(mid);
+  await query('insert into material_logs(material_id, quantity, type, created_at, created_by, notes, expiration_date) values($1,$2,$3,$4,$5,$6,$7)', [mid, delta, 'adjust', now, req.user.name || 'system', noteText, expiryText]);
+  res.json({ ok: true });
+});
+app.get('/api/inventory/raw/logs', authRequired, async (req, res) => {
+  const { page='1', size='100', q='' } = req.query;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const pageSize = Math.max(1, Math.min(500, parseInt(size, 10) || 100));
+  const params = [];
+  let filter = '';
+  if (q && q.trim()) {
+    params.push('%' + q.trim() + '%');
+    filter = ` where m.name ilike $${params.length}`;
+  }
+  params.push(pageSize, (pageNum - 1) * pageSize);
+  const limitIdx = params.length - 1;
+  const offsetIdx = params.length;
+  const r = await query(`
+    with records as (
+      select
+        ml.created_at,
+        m.name,
+        ml.quantity::numeric as qty,
+        ml.type::text as type,
+        ml.created_by as user,
+        coalesce(ml.notes, '') as notes,
+        coalesce(ml.expiration_date, '') as expiry,
+        coalesce(ml.lote, '') as lote
+      from material_logs ml
+      join materials m on m.id = ml.material_id
+      ${filter}
+    )
+    select *, count(*) over()::int as total_count
+    from records
+    order by created_at desc, name asc
+    limit $${limitIdx} offset $${offsetIdx}
+  `, params);
+  res.json({
+    list: r.rows.map(x => ({
+      date: Number(x.created_at),
+      name: x.name || '',
+      qty: Number(x.qty || 0),
+      type: x.type || '',
+      user: x.user || '',
+      notes: x.notes || '',
+      expiry: x.expiry || '',
+      lote: x.lote || ''
+    })),
+    total: r.rows[0]?.total_count || 0
+  });
+});
+app.put('/api/inventory/raw/audit', authRequired, ensureAllow('raw_stock','edit'), async (req, res) => {
+  const { name, qty } = req.body || {};
+  const materialName = String(name || '').trim();
+  const totalQty = Number(qty || 0);
+  if (!materialName || !Number.isFinite(totalQty) || totalQty < 0) return res.status(400).json({ error: 'bad_request' });
+  let material = await resolveMaterial({ name: materialName });
+  if (!material) {
+    const created = await query('insert into materials(name, stock) values($1, 0) returning id, name, stock', [materialName]);
+    material = created.rows[0];
+  }
+  await query('delete from material_batches where material_id=$1', [material.id]);
   const today = new Date().toISOString().slice(0,10);
-  await query('insert into material_batches(material_id, quantity, expiration_date, created_at) values($1,$2,$3,$4)',
-    [mid, qty, today, Date.now()]);
+  if (totalQty > 0) {
+    await query('insert into material_batches(material_id, quantity, expiration_date, created_at) values($1,$2,$3,$4)', [material.id, totalQty, today, Date.now()]);
+  }
+  await query('update materials set stock=$1 where id=$2', [totalQty, material.id]);
+  await query('insert into material_logs(material_id, quantity, type, created_at, created_by, notes, expiration_date) values($1,$2,$3,$4,$5,$6,$7)', [material.id, totalQty, 'adjust', Date.now(), req.user.name || 'system', '盘点覆盖', today]);
   res.json({ ok: true });
 });
 

@@ -1,6 +1,7 @@
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
+const net = require('net');
 const path = require('path');
 const { spawn } = require('child_process');
 const { URL } = require('url');
@@ -8,13 +9,17 @@ const { URL } = require('url');
 const rootDir = __dirname;
 const port = 8000;
 const targetUrl = new URL(process.env.TS_PROXY_TARGET || 'http://127.0.0.1:18080');
-const fallbackTargetUrl = process.env.TS_PROXY_FALLBACK_TARGET
+const enableFallback = process.env.TS_PROXY_ENABLE_FALLBACK === '1';
+const fallbackTargetUrl = enableFallback && process.env.TS_PROXY_FALLBACK_TARGET
   ? new URL(process.env.TS_PROXY_FALLBACK_TARGET)
-  : (targetUrl.origin === 'http://8.220.74.149:18080' ? null : new URL('http://8.220.74.149:18080'));
+  : null;
 const tunnelHost = process.env.TS_PROXY_TUNNEL_HOST || 'root@8.220.74.149';
 const tunnelRemoteHost = process.env.TS_PROXY_TUNNEL_REMOTE_HOST || '127.0.0.1';
 const tunnelRemotePort = String(process.env.TS_PROXY_TUNNEL_REMOTE_PORT || '18080');
 const canAutoTunnel = ['127.0.0.1', 'localhost'].includes(targetUrl.hostname);
+const preferTunnel = process.env.TS_PROXY_PREFER_TUNNEL !== '0';
+const requestTimeoutMs = Math.max(500, parseInt(process.env.TS_PROXY_TIMEOUT_MS || '6500', 10) || 6500);
+const localTunnelPort = Number(targetUrl.port || (targetUrl.protocol === 'https:' ? 443 : 80));
 let tunnelProcess = null;
 let tunnelPromise = null;
 
@@ -32,6 +37,23 @@ const mimeTypes = {
   '.pdf': 'application/pdf',
   '.ico': 'image/x-icon'
 };
+
+function checkPortOpen(host, port, timeoutMs = 600) {
+  return new Promise(resolve => {
+    const socket = net.connect({ host, port }, () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.setTimeout(timeoutMs);
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on('error', () => {
+      resolve(false);
+    });
+  });
+}
 
 function send404(res) {
   res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -60,11 +82,30 @@ function getRequestLib(target) {
 
 function ensureTunnel() {
   if (!canAutoTunnel) return Promise.resolve(false);
-  if (tunnelProcess && !tunnelProcess.killed) return Promise.resolve(true);
+  return checkPortOpen('127.0.0.1', localTunnelPort, 300).then(alreadyOpen => {
+    if (alreadyOpen) return true;
+  if (tunnelProcess && !tunnelProcess.killed) {
+    return checkPortOpen('127.0.0.1', localTunnelPort, 300).then(ok => {
+      if (ok) return true;
+      try { tunnelProcess.kill(); } catch {}
+      tunnelProcess = null;
+      return ensureTunnel();
+    });
+  }
   if (tunnelPromise) return tunnelPromise;
   tunnelPromise = new Promise(resolve => {
-    const localPort = String(targetUrl.port || (targetUrl.protocol === 'https:' ? 443 : 80));
-    const child = spawn('ssh', ['-N', '-L', `${localPort}:${tunnelRemoteHost}:${tunnelRemotePort}`, tunnelHost], {
+    const localPort = String(localTunnelPort);
+    const child = spawn('ssh', [
+      '-N',
+      '-o', 'BatchMode=yes',
+      '-o', 'ConnectTimeout=3',
+      '-o', 'ServerAliveInterval=3',
+      '-o', 'ServerAliveCountMax=1',
+      '-o', 'ExitOnForwardFailure=yes',
+      '-o', 'StrictHostKeyChecking=no',
+      '-L', `${localPort}:${tunnelRemoteHost}:${tunnelRemotePort}`,
+      tunnelHost
+    ], {
       stdio: 'ignore'
     });
     tunnelProcess = child;
@@ -82,10 +123,17 @@ function ensureTunnel() {
       finish(false);
     });
     child.once('spawn', () => {
-      setTimeout(() => finish(true), 1200);
+      setTimeout(async () => {
+        const ok = await checkPortOpen('127.0.0.1', localTunnelPort, 1500);
+        if (!ok) {
+          try { child.kill(); } catch {}
+        }
+        finish(ok);
+      }, 2200);
     });
   });
-  return tunnelPromise;
+    return tunnelPromise;
+  });
 }
 
 function forwardProxy(target, req, res, bodyBuffer, allowFallback = true) {
@@ -108,11 +156,21 @@ function forwardProxy(target, req, res, bodyBuffer, allowFallback = true) {
       forwardProxy(fallbackTargetUrl, req, res, bodyBuffer, false);
       return;
     }
-    res.writeHead(proxyRes.statusCode || 500, proxyRes.headers);
+    const headers = { ...(proxyRes.headers || {}), 'x-ts-proxy-target': target.origin };
+    res.writeHead(proxyRes.statusCode || 500, headers);
     proxyRes.pipe(res);
   });
 
+  proxyReq.setTimeout(requestTimeoutMs, () => {
+    proxyReq.destroy(new Error('proxy_timeout'));
+  });
+
   proxyReq.on('error', async () => {
+    if (!preferTunnel && allowFallback && fallbackTargetUrl && target.origin !== fallbackTargetUrl.origin) {
+      console.warn(`Proxy fallback by error: ${target.origin} -> ${fallbackTargetUrl.origin}`);
+      forwardProxy(fallbackTargetUrl, req, res, bodyBuffer, false);
+      return;
+    }
     if (allowFallback && target.origin === targetUrl.origin) {
       const tunnelReady = await ensureTunnel();
       if (tunnelReady) {
@@ -138,7 +196,17 @@ function proxyRequest(req, res) {
   const chunks = [];
   req.on('data', chunk => chunks.push(chunk));
   req.on('end', () => {
-    forwardProxy(targetUrl, req, res, Buffer.concat(chunks));
+    (async () => {
+      if (canAutoTunnel) {
+        const ok = await ensureTunnel();
+        if (!ok) {
+          res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify({ error: 'proxy_tunnel_unavailable' }));
+          return;
+        }
+      }
+      forwardProxy(targetUrl, req, res, Buffer.concat(chunks), true);
+    })();
   });
   req.on('error', () => {
     res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -148,6 +216,21 @@ function proxyRequest(req, res) {
 
 http.createServer((req, res) => {
   const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+
+  if (urlPath === '/__proxy_status') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({
+      ok: true,
+      proxyTarget: targetUrl.origin,
+      canAutoTunnel,
+      preferTunnel,
+      fallbackEnabled: !!fallbackTargetUrl,
+      fallbackTarget: fallbackTargetUrl ? fallbackTargetUrl.origin : null,
+      tunnelPort: localTunnelPort,
+      tunnelRunning: !!(tunnelProcess && !tunnelProcess.killed)
+    }));
+    return;
+  }
 
   if (urlPath.startsWith('/uploads/')) {
     const uploadPath = path.join(rootDir, urlPath.replace(/^\/+/, ''));
@@ -194,4 +277,5 @@ http.createServer((req, res) => {
   console.log(`Proxy target: ${targetUrl.origin}`);
   if (fallbackTargetUrl) console.log(`Proxy fallback target: ${fallbackTargetUrl.origin}`);
   if (canAutoTunnel) console.log(`Proxy auto tunnel: ${targetUrl.port || 80} -> ${tunnelRemoteHost}:${tunnelRemotePort} via ${tunnelHost}`);
+  if (canAutoTunnel) ensureTunnel().then(ok => console.log(`Proxy tunnel ready: ${ok ? 'yes' : 'no'}`)).catch(() => {});
 });

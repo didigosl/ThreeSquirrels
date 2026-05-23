@@ -85,11 +85,14 @@ if (ledgerImportCommit) {
       }
       
       const now = new Date();
+      const importBaseCreatedAt = Date.now();
+      const importTotal = ledgerImportData.length;
       const defaultDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
       const dateTime = `${defaultDate} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
       const defaultMethod = entryMethod.value || '微信'; // Fallback if not selected
       
-      for (let d of ledgerImportData) {
+      for (let i = 0; i < ledgerImportData.length; i++) {
+        const d = ledgerImportData[i];
         const type = d.amount >= 0 ? '收入' : '开支';
         let cat = d.subcat;
         if (!cat) {
@@ -99,6 +102,7 @@ if (ledgerImportCommit) {
         const absAmount = Math.abs(d.amount);
         const rowDate = d.date || defaultDate;
         const method = d.method || defaultMethod;
+        const createdAt = importBaseCreatedAt + (importTotal - i);
         
         try {
           await apiFetchJSON('/api/ledger', {
@@ -107,7 +111,7 @@ if (ledgerImportCommit) {
             body: JSON.stringify({ 
               type, category: cat, doc: d.doc, client: d.partner, 
               amount: absAmount, method, file: '', notes: d.notes, 
-              date: rowDate, dateTime, createdBy: (getAuthUser()?.name || ''), confirmed: false 
+              date: rowDate, dateTime, createdAt, createdBy: (getAuthUser()?.name || ''), confirmed: false 
             })
           });
         } catch (e) {
@@ -760,6 +764,16 @@ const clientCancel = document.getElementById('client-cancel');
 let clientModalTab = 'customers';
 const fileViewer = document.getElementById('file-viewer');
 const fileViewerBox = document.getElementById('file-viewer-box');
+function showFileViewer(url) {
+  if (!fileViewer || !fileViewerBox || !url) return;
+  fileViewerBox.innerHTML = '';
+  const full = document.createElement('img');
+  full.src = String(url);
+  full.alt = '预览图片';
+  fileViewerBox.appendChild(full);
+  fileViewer.style.display = 'flex';
+}
+window.showFileViewer = showFileViewer;
 function allContacts() {
   return [...contactsData.customers, ...contactsData.merchants, ...contactsData.others];
 }
@@ -829,7 +843,7 @@ document.querySelectorAll('.pill[data-target]').forEach(p => {
 clientCancel?.addEventListener('click', () => {
   clientModal.style.display = 'none';
 });
-clientModalForm?.addEventListener('submit', e => {
+clientModalForm?.addEventListener('submit', async e => {
   e.preventDefault();
   const name = document.getElementById('m-name').value.trim();
   const company = document.getElementById('m-company').value.trim();
@@ -845,11 +859,20 @@ clientModalForm?.addEventListener('submit', e => {
   const now = new Date();
   const created = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
   const ownerLabel = clientModalTab==='customers'?'客户':clientModalTab==='merchants'?'商家':'其它';
-  contactsData[clientModalTab].push({ name, contact, phone, city, remark, owner: ownerLabel, created, company, code, country, address, zip });
+  const payload = { name, contact, phone, city, remark, owner: ownerLabel, created, company, code, country, address, zip };
+  try {
+    const id = await apiContactsCreate(payload);
+    contactsData[clientModalTab].push({ id, ...payload });
+    await apiContactsList(clientModalTab, '', 1, 5000);
+  } catch {
+    alert('保存失败，请刷新后重试');
+    return;
+  }
   ['m-name','m-company','m-code','m-contact','m-phone','m-country','m-address','m-zip','m-city','m-remark'].forEach(id => document.getElementById(id).value='');
   clientModal.style.display = 'none';
   entryClient.value = name;
   renderClientDropdown();
+  if (location.hash === '#contacts') renderContacts();
   saveJSON('contactsData', contactsData);
 });
 fileViewer.addEventListener('click', (e) => {
@@ -1030,12 +1053,14 @@ let ledgerEditingId = null;
 let ledgerEditingFile = '';
 let ledgerEditingDate = '';
 let ledgerEditingDateTime = '';
+let ledgerEditingCreatedBy = '';
 
 function setLedgerEdit(rec) {
   ledgerEditingId = rec.id || null;
   ledgerEditingFile = rec.file || '';
   ledgerEditingDate = rec.date || '';
   ledgerEditingDateTime = rec.dateTime || '';
+  ledgerEditingCreatedBy = rec.createdBy || '';
   if (entryType) entryType.value = rec.type || '';
   setCategories();
   if (entryCategory) entryCategory.value = rec.category || '';
@@ -1053,12 +1078,16 @@ function clearLedgerEdit() {
   ledgerEditingFile = '';
   ledgerEditingDate = '';
   ledgerEditingDateTime = '';
+  ledgerEditingCreatedBy = '';
   if (entrySubmitBtn) entrySubmitBtn.textContent = '提交';
 }
 async function uploadLedgerAttachment(fileObj) {
   if (!fileObj) throw new Error('missing_file');
-  const extOk = /(\.jpe?g|\.png|\.pdf)$/i.test(fileObj.name || '');
-  if (!extOk) throw new Error('bad_type');
+  const fileName = String(fileObj.name || '').trim().toLowerCase();
+  const mimeType = String(fileObj.type || '').trim().toLowerCase();
+  const extOk = ['.jpg', '.jpeg', '.png', '.pdf'].some(ext => fileName.endsWith(ext));
+  const mimeOk = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'].includes(mimeType);
+  if (!(extOk || mimeOk)) throw new Error('bad_type');
   const fd = new FormData();
   fd.append('file', fileObj);
   const token = getAuthToken();
@@ -1280,14 +1309,18 @@ function render(data) {
     const uploadDate = r.dateTime ? r.dateTime.split(' ')[0] : (r.createdAt ? new Date(r.createdAt).toISOString().split('T')[0] : '');
     tr.appendChild(makeTd(uploadDate));
     const tdOps = document.createElement('td');
+    tdOps.style.textAlign = 'center';
     if (canEdit) {
-      const editBtn = document.createElement('a'); editBtn.href = '#'; editBtn.textContent = '修改'; editBtn.className = 'link-blue';
-      const okBtn = document.createElement('a'); okBtn.href = '#'; okBtn.textContent = '确认'; okBtn.className = 'link-green';
-      const delBtn = document.createElement('a'); delBtn.href = '#'; delBtn.textContent = '删除'; delBtn.className = 'link-red';
-      
-      const space = () => document.createTextNode(' ');
-      tdOps.append(editBtn, space(), okBtn, space(), delBtn);
-      
+      const opsWrap = document.createElement('div');
+      opsWrap.style.display = 'inline-flex';
+      opsWrap.style.alignItems = 'center';
+      opsWrap.style.justifyContent = 'center';
+      opsWrap.style.gap = '8px';
+      const editBtn = document.createElement('button'); editBtn.type = 'button'; editBtn.textContent = '修改'; editBtn.className = 'btn-sm btn-outline-blue';
+      const okBtn = document.createElement('button'); okBtn.type = 'button'; okBtn.textContent = '确认'; okBtn.className = 'btn-sm btn-outline-green';
+      const delBtn = document.createElement('button'); delBtn.type = 'button'; delBtn.textContent = '删除'; delBtn.className = 'btn-sm btn-outline-red';
+      opsWrap.append(editBtn, okBtn, delBtn);
+      tdOps.appendChild(opsWrap);
       editBtn.addEventListener('click', e => {
         e.preventDefault();
         setLedgerEdit(r);
@@ -1304,18 +1337,19 @@ function render(data) {
       });
       delBtn.addEventListener('click', async e => {
         e.preventDefault();
-        if (!confirm('确定要彻底删除这条记录吗？删除后相关的统计将被抹除且不可恢复。')) return;
-        try {
-          await apiFetchJSON('/api/ledger/' + String(r.id), { method: 'DELETE' });
-          loadLedgerFromServer(true);
-          if (document.getElementById('page-home')?.style.display === 'block') {
-            renderHomeChart(homePeriodSel?.value || 'month');
-            renderSalesChart(salesPeriodSel?.value || 'month');
+        openConfirm('确定要彻底删除这条记录吗？删除后相关的统计将被抹除且不可恢复。', async () => {
+          try {
+            await apiFetchJSON('/api/ledger/' + String(r.id), { method: 'DELETE' });
+            loadLedgerFromServer(true);
+            if (document.getElementById('page-home')?.style.display === 'block') {
+              renderHomeChart(homePeriodSel?.value || 'month');
+              renderSalesChart(salesPeriodSel?.value || 'month');
+            }
+          } catch (err) {
+            console.error(err);
+            alert('删除失败');
           }
-        } catch (err) {
-          console.error(err);
-          alert('删除失败');
-        }
+        });
       });
     }
     tr.appendChild(tdOps);
@@ -1509,7 +1543,7 @@ document.getElementById('entry-form').addEventListener('submit', async e => {
       await apiFetchJSON('/api/ledger/' + String(ledgerEditingId), {
         method:'PUT',
         headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ type, category, doc, client: clientVal, amount, method, file: finalFile, notes: entryNotes.value.trim(), date: finalDate, dateTime: finalDateTime, createdBy: (getAuthUser()?.name || '') })
+        body: JSON.stringify({ type, category, doc, client: clientVal, amount, method, file: finalFile, notes: entryNotes.value.trim(), date: finalDate, dateTime: finalDateTime, createdBy: ledgerEditingCreatedBy })
       });
       clearLedgerEdit();
     } else {
@@ -1602,6 +1636,10 @@ const thType = document.getElementById('th-type');
 const thTypeDD = document.getElementById('th-type-dd');
 const thTypeList = document.getElementById('th-type-list');
 const thTypeLabel = document.getElementById('th-type-label');
+const thPartner = document.getElementById('th-partner');
+const thPartnerDD = document.getElementById('th-partner-dd');
+const thPartnerList = document.getElementById('th-partner-list');
+const thPartnerLabel = document.getElementById('th-partner-label');
 const thSales = document.getElementById('th-sales');
 const thSalesDD = document.getElementById('th-sales-dd');
 const thSalesList = document.getElementById('th-sales-list');
@@ -1614,10 +1652,16 @@ const thTrust = document.getElementById('th-trust');
 const thTrustDD = document.getElementById('th-trust-dd');
 const thTrustList = document.getElementById('th-trust-list');
 const thTrustLabel = document.getElementById('th-trust-label');
+const thAction = document.getElementById('th-action');
+const thActionDD = document.getElementById('th-action-dd');
+const thActionList = document.getElementById('th-action-list');
+const thActionLabel = document.getElementById('th-action-label');
+let payFilterPartnerName = '';
 let payFilterSalesName = '';
 let payFilterStatus = 'all';
 let payFilterType = 'all';
 let payFilterOverdue = 'all';
+let payFilterAction = 'all';
 let payPage = 1;
 const payPageSize = 100;
 function setLabel(el, text, active) {
@@ -1649,6 +1693,25 @@ function openSalesFilter() {
   addItem('无业务员', '__none__');
   (salesData || []).forEach(s => addItem(s.name, s.name));
 }
+function openPartnerFilter() {
+  thPartnerDD.style.display = 'block';
+  thPartnerList.innerHTML = '';
+  const addItem = (label, val) => {
+    const row = document.createElement('div'); row.className = 'dd-item'; row.textContent = label;
+    row.addEventListener('click', () => {
+      payFilterPartnerName = val;
+      thPartnerDD.style.display = 'none';
+      setLabel(thPartnerLabel, val || '往来单位', !!val);
+      payPage = 1;
+      renderPayables();
+    });
+    thPartnerList.appendChild(row);
+  };
+  addItem('全部', '');
+  [...new Set((payRecords || []).map(r => String(r.partner || '').trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+    .forEach(name => addItem(name, name));
+}
 function openArrearsFilter() {
   thArrearsDD.style.display = 'block';
   thArrearsList.innerHTML = '';
@@ -1673,10 +1736,30 @@ function openTrustFilter() {
   addItem('已逾期', 'overdue');
   addItem('未逾期', 'not');
 }
+function openActionFilter() {
+  thActionDD.style.display = 'block';
+  thActionList.innerHTML = '';
+  const addItem = (label, val) => {
+    const row = document.createElement('div'); row.className = 'dd-item'; row.textContent = label;
+    row.addEventListener('click', () => {
+      payFilterAction = val;
+      thActionDD.style.display = 'none';
+      setLabel(thActionLabel, val === 'all' ? '操作' : (val === 'confirmed' ? '已确认' : '未确认'), val !== 'all');
+      payPage = 1;
+      renderPayables();
+    });
+    thActionList.appendChild(row);
+  };
+  addItem('全部', 'all');
+  addItem('已确认', 'confirmed');
+  addItem('未确认', 'unconfirmed');
+}
 thType?.addEventListener('click', (e) => { e.stopPropagation(); openTypeFilter(); });
+thPartner?.addEventListener('click', (e) => { e.stopPropagation(); openPartnerFilter(); });
 thSales?.addEventListener('click', (e) => { e.stopPropagation(); openSalesFilter(); });
 thArrears?.addEventListener('click', (e) => { e.stopPropagation(); openArrearsFilter(); });
 thTrust?.addEventListener('click', (e) => { e.stopPropagation(); openTrustFilter(); });
+thAction?.addEventListener('click', (e) => { e.stopPropagation(); openActionFilter(); });
 const typeSwitch = document.getElementById('type-switch');
 const typeItems = typeSwitch ? typeSwitch.querySelectorAll('.type-item') : [];
 function setPayType(val) {
@@ -1760,9 +1843,11 @@ paySearch?.addEventListener('input', renderPayDropdown);
 document.addEventListener('click', (e) => {
   if (!payWrap?.contains(e.target) && !payDD?.contains(e.target)) payDD.style.display = 'none';
   if (!thType?.contains(e.target)) thTypeDD.style.display = 'none';
+  if (!thPartner?.contains(e.target)) thPartnerDD.style.display = 'none';
   if (!thSales?.contains(e.target)) thSalesDD.style.display = 'none';
   if (!thArrears?.contains(e.target)) thArrearsDD.style.display = 'none';
   if (!thTrust?.contains(e.target)) thTrustDD.style.display = 'none';
+  if (!thAction?.contains(e.target)) thActionDD.style.display = 'none';
   if (!ldType?.contains(e.target)) ldTypeDD.style.display = 'none';
   if (!ldCat?.contains(e.target)) ldCatDD.style.display = 'none';
   if (!ldOwner?.contains(e.target)) ldOwnerDD.style.display = 'none';
@@ -1961,6 +2046,9 @@ function renderPayables() {
   if (payFilterType !== 'all') {
     listAll = listAll.filter(r => (payFilterType === 'recv' ? /应收/.test(r.type) : /应付/.test(r.type)));
   }
+  if (payFilterPartnerName) {
+    listAll = listAll.filter(r => (r.partner || '') === payFilterPartnerName);
+  }
   if (payFilterSalesName) {
     listAll = listAll.filter(r => {
       if (payFilterSalesName === '__none__') return !(r.sales);
@@ -1986,6 +2074,13 @@ function renderPayables() {
       const arrears = Math.max(0, (r.amount || 0) - (r.paid || 0));
       if (payFilterStatus === 'arrears') return arrears > 0;
       if (payFilterStatus === 'done') return arrears === 0;
+      return true;
+    });
+  }
+  if (payFilterAction !== 'all') {
+    listAll = listAll.filter(r => {
+      if (payFilterAction === 'confirmed') return r.confirmed !== false;
+      if (payFilterAction === 'unconfirmed') return r.confirmed === false;
       return true;
     });
   }
@@ -2083,14 +2178,28 @@ function renderPayables() {
     const tdSales = document.createElement('td'); tdSales.textContent = r.sales || '-'; tr.appendChild(tdSales);
     const tdDate = document.createElement('td'); tdDate.textContent = safePayDate(r); tr.appendChild(tdDate);
     const ops = document.createElement('td');
+    ops.style.textAlign = 'center';
+    const opsWrap = document.createElement('div');
+    opsWrap.style.display = 'inline-flex';
+    opsWrap.style.alignItems = 'center';
+    opsWrap.style.justifyContent = 'center';
+    opsWrap.style.gap = '8px';
     if (canEdit) {
-      const editBtn = document.createElement('a'); editBtn.href='#'; editBtn.textContent='修改'; editBtn.className='link-blue';
-      const okBtn = document.createElement('a'); okBtn.href='#'; okBtn.textContent='确认'; okBtn.className='link-green';
-      ops.append(editBtn, document.createTextNode(' '), okBtn, document.createTextNode(' '));
+      const editBtn = document.createElement('button'); editBtn.type = 'button'; editBtn.textContent = '修改'; editBtn.className = 'btn-sm btn-outline-blue';
       editBtn.addEventListener('click', e => {
         e.preventDefault();
         setPayEdit(r);
       });
+      opsWrap.appendChild(editBtn);
+    }
+    const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = '详情'; btn.className = 'btn-sm btn-secondary';
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      openPayHistory(r);
+    });
+    opsWrap.appendChild(btn);
+    if (canEdit) {
+      const okBtn = document.createElement('button'); okBtn.type = 'button'; okBtn.textContent = '确认'; okBtn.className = 'btn-sm btn-outline-green';
       okBtn.addEventListener('click', async e => {
         e.preventDefault();
         try {
@@ -2100,14 +2209,10 @@ function renderPayables() {
           renderContacts();
         } catch {}
       });
+      opsWrap.appendChild(okBtn);
     }
-    const btn = document.createElement('a'); btn.href='#'; btn.textContent='详情'; btn.className='link-blue';
-    ops.appendChild(btn);
+    ops.appendChild(opsWrap);
     tr.appendChild(ops);
-    btn.addEventListener('click', e => {
-      e.preventDefault();
-      openPayHistory(r);
-    });
     if (r.settled) tr.classList.add('pay-row-settled');
     else if (typeDisplay === '应收') tr.classList.add('pay-row-recv');
     else tr.classList.add('pay-row-pay');
@@ -3730,7 +3835,10 @@ const permStructure = [
       { mod: 'daily_orders', label: '订单管理' },
       { mod: 'finished_stock', label: '商品库存' },
       { mod: 'finished_stock_adjust', label: '库存调整' },
-      { mod: 'raw_stock', label: '原材料库存' }
+      { mod: 'raw_stock', label: '原材料库存' },
+      { mod: 'production_review', label: '审核生产' },
+      { mod: 'event_records', label: '事件记录' },
+      { mod: 'knowledge_base', label: '知识库' }
     ]
   },
   {
@@ -3738,7 +3846,8 @@ const permStructure = [
     children: [
       { mod: 'sales_order', label: '出单系统' },
       { mod: 'sales_invoice', label: '发票' },
-      { mod: 'sales_products', label: '商品列表' }
+      { mod: 'sales_products', label: '商品列表' },
+      { mod: 'sales_stats', label: '商品销售统计', extra_actions: [{ act: 'assigned_only', label: '只可查看勾选的商品' }] }
     ]
   },
   { mod: 'ledger', label: '收支记账' },
@@ -3758,13 +3867,56 @@ const permStructure = [
   }
 ];
 
+const editablePermModules = new Set([
+  'tasks',
+  'daily_orders',
+  'finished_stock',
+  'finished_stock_adjust',
+  'raw_stock',
+  'production_review',
+  'event_records',
+  'knowledge_base',
+  'sales_order',
+  'sales_invoice',
+  'sales_products',
+  'ledger',
+  'payables',
+  'contacts',
+  'categories',
+  'accounts',
+  'sales_accounts',
+  'company_info',
+  'user_accounts',
+  'role_accounts',
+  'system'
+]);
+
+function moduleSupportsEdit(mod) {
+  return editablePermModules.has(String(mod || ''));
+}
+
+function hasLegacyModifyPerm(modPerms) {
+  if (!modPerms || typeof modPerms !== 'object') return false;
+  return Object.keys(modPerms).some(act => act !== 'view' && act !== 'assigned_only');
+}
+
+function hasModuleEditPerm(perms, mod) {
+  const modPerms = perms?.[mod] || {};
+  return !!(modPerms.edit || hasLegacyModifyPerm(modPerms));
+}
+
+function isModifyAction(action) {
+  const act = String(action || '').trim();
+  return !!act && act !== 'view' && act !== 'assigned_only';
+}
+
 function allTruePerms() {
   const p = {};
   permStructure.forEach(item => {
     if (item.group && item.children) {
-      item.children.forEach(c => p[c.mod] = { view: true });
+      item.children.forEach(c => p[c.mod] = moduleSupportsEdit(c.mod) ? { view: true, edit: true } : { view: true });
     } else if (item.mod) {
-      p[item.mod] = { view: true };
+      p[item.mod] = moduleSupportsEdit(item.mod) ? { view: true, edit: true } : { view: true };
     }
   });
   return p;
@@ -3788,7 +3940,10 @@ function can(module, action) {
   const role = rolesData.find(r => r.name === roleName);
   const perms = role?.perms || {};
   const m = perms[module] || {};
-  return !!m.view;
+  if (!action || action === 'view') return !!m.view;
+  if (action === 'assigned_only') return !!m.assigned_only;
+  if (isModifyAction(action) && m.edit) return true;
+  return !!m[action];
 }
 const rolePermsModal = document.getElementById('role-perms-modal');
 const rolePermsForm = document.getElementById('role-perms-form');
@@ -3799,6 +3954,69 @@ const rolePermsBack = document.getElementById('role-perms-back');
 const rolePermsFormPage = document.getElementById('role-perms-form-page');
 const permsPageWrap = document.getElementById('perms-page-wrap');
 let editingPermRole = null;
+function appendPermCheckbox(row, mod, act, checked, labelText) {
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.dataset.mod = mod;
+  cb.dataset.act = act;
+  cb.checked = !!checked;
+  cb.style.marginRight = '8px';
+  row.append(cb, document.createTextNode(labelText));
+  return cb;
+}
+
+function bindPermCheckboxDeps(viewCb, editCb) {
+  if (!viewCb || !editCb) return;
+  if (editCb.checked) viewCb.checked = true;
+  viewCb.addEventListener('change', () => {
+    if (!viewCb.checked) editCb.checked = false;
+  });
+  editCb.addEventListener('change', () => {
+    if (editCb.checked) viewCb.checked = true;
+  });
+}
+
+function createPermRow(item, perms) {
+  const row = document.createElement('label');
+  row.style.display = 'flex';
+  row.style.alignItems = 'center';
+  row.style.cursor = 'pointer';
+  row.style.flexWrap = 'wrap';
+  row.style.gap = '10px';
+  const viewCb = appendPermCheckbox(row, item.mod, 'view', !!(perms[item.mod] && perms[item.mod].view), item.label);
+  let editCb = null;
+  if (moduleSupportsEdit(item.mod)) {
+    const editWrap = document.createElement('span');
+    editWrap.style.display = 'inline-flex';
+    editWrap.style.alignItems = 'center';
+    editCb = appendPermCheckbox(editWrap, item.mod, 'edit', hasModuleEditPerm(perms, item.mod), '是否可修改');
+    row.appendChild(editWrap);
+  }
+  (item.extra_actions || []).forEach(extra => {
+    const extraRow = document.createElement('span');
+    extraRow.style.display = 'inline-flex';
+    extraRow.style.alignItems = 'center';
+    appendPermCheckbox(extraRow, item.mod, extra.act, !!(perms[item.mod] && perms[item.mod][extra.act]), extra.label);
+    row.appendChild(extraRow);
+  });
+  bindPermCheckboxDeps(viewCb, editCb);
+  return row;
+}
+function collectRolePerms(container) {
+  const newPerms = {};
+  permStructure.forEach(item => {
+    if (item.group && item.children) item.children.forEach(c => newPerms[c.mod] = {});
+    else if (item.mod) newPerms[item.mod] = {};
+  });
+  container?.querySelectorAll('input[type=checkbox]').forEach(cb => {
+    const mod = cb.dataset.mod;
+    const act = cb.dataset.act || 'view';
+    if (!mod || !cb.checked) return;
+    if (!newPerms[mod]) newPerms[mod] = {};
+    newPerms[mod][act] = true;
+  });
+  return newPerms;
+}
 function openPermsEditor(role) {
   editingPermRole = role;
   permsPageWrap.innerHTML = '';
@@ -3820,40 +4038,13 @@ function openPermsEditor(role) {
       cont.style.gap = '16px';
       
       item.children.forEach(c => {
-        const row = document.createElement('label'); 
-        row.style.display = 'flex'; 
-        row.style.alignItems = 'center'; 
-        row.style.cursor = 'pointer';
-        
-        const cb = document.createElement('input'); 
-        cb.type = 'checkbox'; 
-        cb.dataset.mod = c.mod; 
-        cb.dataset.act = 'view'; 
-        cb.checked = !!(perms[c.mod] && perms[c.mod].view);
-        cb.style.marginRight = '8px';
-        
-        row.append(cb, document.createTextNode(c.label));
-        cont.appendChild(row);
+        cont.appendChild(createPermRow(c, perms));
       });
       box.append(top, cont);
     } else {
       const cont = document.createElement('div'); 
       cont.style.padding = '12px 16px';
-      
-      const row = document.createElement('label'); 
-      row.style.display = 'flex'; 
-      row.style.alignItems = 'center'; 
-      row.style.cursor = 'pointer';
-      
-      const cb = document.createElement('input'); 
-      cb.type = 'checkbox'; 
-      cb.dataset.mod = item.mod; 
-      cb.dataset.act = 'view'; 
-      cb.checked = !!(perms[item.mod] && perms[item.mod].view);
-      cb.style.marginRight = '8px';
-      
-      row.append(cb, document.createTextNode(item.label));
-      cont.appendChild(row);
+      cont.appendChild(createPermRow(item, perms));
       box.appendChild(cont);
     }
     
@@ -3865,20 +4056,7 @@ rolePermsCancel?.addEventListener('click', () => { rolePermsModal.style.display=
 rolePermsForm?.addEventListener('submit', async e => {
   e.preventDefault();
   if (!editingPermRole) return;
-  const newPerms = {};
-  
-  permStructure.forEach(item => {
-    if (item.group && item.children) {
-      item.children.forEach(c => newPerms[c.mod] = {});
-    } else if (item.mod) {
-      newPerms[item.mod] = {};
-    }
-  });
-  
-  permsWrap.querySelectorAll('input[type=checkbox]').forEach(cb => {
-    const mod = cb.dataset.mod; 
-    if (cb.checked) newPerms[mod]['view'] = true;
-  });
+  const newPerms = collectRolePerms(permsWrap);
   editingPermRole.perms = newPerms;
   await apiRoleUpdatePerms(editingPermRole.id, newPerms);
   rolePermsModal.style.display='none';
@@ -3889,20 +4067,7 @@ rolePermsBack?.addEventListener('click', () => { location.hash = '#role-accounts
 rolePermsFormPage?.addEventListener('submit', async e => {
   e.preventDefault();
   if (!editingPermRole) return;
-  const newPerms = {};
-  
-  permStructure.forEach(item => {
-    if (item.group && item.children) {
-      item.children.forEach(c => newPerms[c.mod] = {});
-    } else if (item.mod) {
-      newPerms[item.mod] = {};
-    }
-  });
-
-  permsPageWrap.querySelectorAll('input[type=checkbox]').forEach(cb => {
-    const mod = cb.dataset.mod; const act = cb.dataset.act;
-    if (cb.checked) newPerms[mod][act] = true;
-  });
+  const newPerms = collectRolePerms(permsPageWrap);
   editingPermRole.perms = newPerms;
   await apiRoleUpdatePerms(editingPermRole.id, newPerms);
   
@@ -3929,7 +4094,10 @@ let rolePage = 1;
 async function apiRolesList() {
   try {
     const list = await apiFetchJSON('/api/roles');
-    if (Array.isArray(list)) rolesData.splice(0, rolesData.length, ...list.map(r => ({ id:r.id, name:r.name, desc:r.desc||'', created:r.created||'', immutable: !!r.immutable, perms: r.perms || {} })));
+    if (Array.isArray(list)) {
+      rolesData.splice(0, rolesData.length, ...list.map(r => ({ id:r.id, name:r.name, desc:r.desc||'', created:r.created||'', immutable: !!r.immutable, perms: r.perms || {} })));
+      saveJSON('rolesData', rolesData);
+    }
   } catch {}
 }
 async function apiRoleCreate(obj) {
@@ -4010,6 +4178,8 @@ const userCreate = document.getElementById('user-create');
 const userModal = document.getElementById('user-modal');
 const userForm = document.getElementById('user-form');
 const userCancel = document.getElementById('user-cancel');
+const userModalTitle = document.getElementById('user-modal-title');
+const userSaveBtn = document.getElementById('user-save');
 const userAccounts = [];
 (function syncInitialPasswords(){
   const m = getPwdMap();
@@ -4017,6 +4187,74 @@ const userAccounts = [];
   setPwdMap(m);
 })();
 let userPage = 1;
+let editingUserId = null;
+function fillUserRoleOptions(selectedRole = '') {
+  const roleSel = document.getElementById('u-role');
+  if (!roleSel) return;
+  roleSel.innerHTML = '<option value="">选择角色</option>';
+  rolesData.forEach(r => {
+    const opt = document.createElement('option'); opt.value = r.name; opt.textContent = r.name;
+    roleSel.appendChild(opt);
+  });
+  roleSel.value = selectedRole || '';
+}
+function openUserModalForCreate() {
+  editingUserId = null;
+  if (userModalTitle) userModalTitle.textContent = '创建账号';
+  if (userSaveBtn) userSaveBtn.textContent = '保存';
+  document.getElementById('u-name').value = '';
+  fillUserRoleOptions('');
+  userModal.style.display = 'flex';
+}
+function openUserModalForEdit(user) {
+  if (!user) return;
+  editingUserId = Number(user.id || 0) || null;
+  if (userModalTitle) userModalTitle.textContent = '编辑账号';
+  if (userSaveBtn) userSaveBtn.textContent = '保存修改';
+  document.getElementById('u-name').value = user.name || '';
+  fillUserRoleOptions(user.role || '');
+  userModal.style.display = 'flex';
+}
+async function submitUserAccountForm() {
+  const name = document.getElementById('u-name').value.trim();
+  const role = document.getElementById('u-role').value.trim() || '普通用户';
+  if (!name) return;
+  if (editingUserId != null) {
+    const existing = userAccounts.find(x => x.id === editingUserId);
+    const oldName = existing?.name || '';
+    const ok = await apiUserUpdate(editingUserId, { name, role, enabled: existing?.enabled });
+    if (!ok) return alert('保存失败，请检查账号名称是否重复或权限是否允许');
+    if (existing) {
+      existing.name = name;
+      existing.role = role;
+    }
+    const au = getAuthUser();
+    if (au && au.name === oldName) {
+      setAuthUser({ ...au, name, role });
+      try {
+        const remembered = JSON.parse(localStorage.getItem('rememberedUser') || 'null');
+        if (remembered && remembered.name === oldName) {
+          localStorage.setItem('rememberedUser', JSON.stringify({ ...remembered, name }));
+        }
+      } catch {}
+    }
+    const pwdMap = getPwdMap();
+    if (oldName && oldName !== name && Object.prototype.hasOwnProperty.call(pwdMap, oldName)) {
+      pwdMap[name] = pwdMap[oldName];
+      delete pwdMap[oldName];
+      setPwdMap(pwdMap);
+    }
+  } else {
+    const now = new Date();
+    const created = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+    await apiUserCreate({ name, role, created, password:'111111' });
+  }
+  await apiUsersList();
+  userModal.style.display = 'none';
+  editingUserId = null;
+  userPage = 1;
+  renderUserAccounts();
+}
 function renderUserAccounts() {
   const key = (userSearch?.value || '').trim();
   const size = parseInt(userPageSize?.value || '10', 10);
@@ -4036,27 +4274,7 @@ function renderUserAccounts() {
     const tdId = document.createElement('td'); tdId.textContent = String(u.id); tr.appendChild(tdId);
     const tdName = document.createElement('td'); tdName.textContent = u.name; tr.appendChild(tdName);
     const tdRole = document.createElement('td');
-    if (u.name === 'aaaaaa') {
-      tdRole.textContent = '超级管理员';
-    } else {
-      const sel = document.createElement('select');
-      rolesData.forEach(r => {
-        const opt = document.createElement('option'); opt.value = r.name; opt.textContent = r.name;
-        sel.appendChild(opt);
-      });
-      sel.value = u.role || '';
-      sel.addEventListener('change', async () => {
-        const newRole = sel.value || '';
-        await apiUserUpdate(u.id, { role: newRole, enabled: u.enabled });
-        u.role = newRole;
-        saveJSON('userAccounts', userAccounts);
-        const au = getAuthUser();
-        if (au && au.name === u.name) setAuthUser({ ...au, role: u.role });
-        renderUserAccounts();
-        alert('角色修改已保存');
-      });
-      tdRole.appendChild(sel);
-    }
+    tdRole.textContent = u.name === 'aaaaaa' ? '超级管理员' : (u.role || '');
     tr.appendChild(tdRole);
     const tdCreated = document.createElement('td'); tdCreated.textContent = u.created || ''; tr.appendChild(tdCreated);
     const tdStatus = document.createElement('td');
@@ -4068,7 +4286,14 @@ function renderUserAccounts() {
     if (u.name === 'aaaaaa') {
       tdOps.textContent = '请使用修改密码';
     } else {
+      const edit = document.createElement('a'); edit.href='#'; edit.textContent='编辑'; edit.className='link-blue';
+      edit.addEventListener('click', e => {
+        e.preventDefault();
+        openUserModalForEdit(u);
+      });
+      tdOps.appendChild(edit);
       const reset = document.createElement('a'); reset.href='#'; reset.textContent='重置密码'; reset.className='link-blue';
+      reset.style.marginLeft = '8px';
       reset.addEventListener('click', e => {
         e.preventDefault();
         pendingResetUser = u;
@@ -4108,28 +4333,16 @@ userNext?.addEventListener('click', () => {
   if (userPage < totalPages) { userPage++; renderUserAccounts(); }
 });
 userCreate?.addEventListener('click', () => {
-  userModal.style.display = 'flex';
-  document.getElementById('u-name').value='';
-  const roleSel = document.getElementById('u-role');
-  roleSel.innerHTML = '<option value="">选择角色</option>';
-  rolesData.forEach(r => {
-    const opt = document.createElement('option'); opt.value = r.name; opt.textContent = r.name;
-    roleSel.appendChild(opt);
-  });
+  openUserModalForCreate();
 });
-userCancel?.addEventListener('click', () => { userModal.style.display = 'none'; });
+userCancel?.addEventListener('click', () => { userModal.style.display = 'none'; editingUserId = null; });
 userForm?.addEventListener('submit', async e => {
   e.preventDefault();
-  const name = document.getElementById('u-name').value.trim();
-  const role = document.getElementById('u-role').value.trim() || '普通用户';
-  if (!name) return;
-  const now = new Date();
-  const created = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-  await apiUserCreate({ name, role, created, password:'111111' });
-  await apiUsersList();
-  userModal.style.display = 'none';
-  userPage = 1;
-  renderUserAccounts();
+  await submitUserAccountForm();
+});
+userSaveBtn?.addEventListener('click', async e => {
+  e.preventDefault();
+  await submitUserAccountForm();
 });
 const salesRows = document.getElementById('sales-rows');
 const salesSearch = document.getElementById('sales-search');
@@ -4516,7 +4729,12 @@ async function apiUserCreate(obj) {
   try { const r = await apiFetchJSON('/api/users', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(obj) }); return r?.id; } catch { return null; }
 }
 async function apiUserUpdate(id, obj) {
-  try { await apiFetchJSON('/api/users/'+String(id), { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(obj) }); } catch {}
+  try {
+    await apiFetchJSON('/api/users/'+String(id), { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(obj) });
+    return true;
+  } catch {
+    return false;
+  }
 }
 async function apiUserDelete(id) {
   try { await apiFetchJSON('/api/users/'+String(id), { method:'DELETE' }); return true; } catch { return false; }
@@ -6434,6 +6652,22 @@ async function loadCompanyInfo() {
       document.getElementById('ci-swift').value = data.swift || '';
     }
   } catch {}
+  syncCompanyInfoAccess();
+}
+function canEditCompanyInfo() {
+  const u = getAuthUser();
+  const roleName = (u?.role) || getUserRoleName(u?.name || '');
+  return roleName === '超级管理员';
+}
+function syncCompanyInfoAccess() {
+  const readOnly = !canEditCompanyInfo();
+  ['ci-name','ci-tax','ci-phone','ci-email','ci-street','ci-zip','ci-city','ci-country','ci-bank','ci-iban','ci-swift']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.readOnly = readOnly;
+    });
+  const saveBtn = document.querySelector('#company-info-form button[type="submit"]');
+  if (saveBtn) saveBtn.style.display = readOnly ? 'none' : '';
 }
 
 const companyInfoForm = document.getElementById('company-info-form');
@@ -6503,9 +6737,135 @@ const prodPager = document.getElementById('prod-pager');
 const prodModal = document.getElementById('product-modal');
 const prodForm = document.getElementById('prod-form');
 const prodCancel = document.getElementById('prod-cancel');
+const prodPrev = document.getElementById('prod-prev');
+const prodNext = document.getElementById('prod-next');
 const prodFile = document.getElementById('prod-file');
 const prodFileName = document.getElementById('prod-file-name');
 const prodPreview = document.getElementById('prod-preview');
+const prodDividendUsersWrap = document.getElementById('prod-dividend-users');
+const appToast = document.getElementById('app-toast');
+const appToastText = document.getElementById('app-toast-text');
+let productDividendUserOptions = [];
+let currentProductPageList = [];
+let currentProductModalIndex = -1;
+let currentProductModalStandaloneEdit = false;
+let appToastTimer = null;
+const salesStatsStart = document.getElementById('sales-stats-start');
+const salesStatsEnd = document.getElementById('sales-stats-end');
+const salesStatsSearch = document.getElementById('sales-stats-search');
+const salesStatsDividendUserWrap = document.getElementById('sales-stats-dividend-user-wrap');
+const salesStatsDividendUser = document.getElementById('sales-stats-dividend-user');
+const salesStatsRefresh = document.getElementById('sales-stats-refresh');
+const salesStatsRows = document.getElementById('sales-stats-rows');
+const salesStatsSummary = document.getElementById('sales-stats-summary');
+const salesStatsHeadRow = document.getElementById('sales-stats-head-row');
+let salesStatsDividendUsersLoaded = false;
+
+function formatMoney(val) {
+  return Number(val || 0).toFixed(2);
+}
+
+function formatOptionalMoney(val) {
+  if (val === undefined || val === null || val === '') return '-';
+  const num = Number(val);
+  if (!Number.isFinite(num) || num === 0) return '-';
+  return num.toFixed(2);
+}
+
+function showAppToast(message = '保存成功！') {
+  if (!appToast || !appToastText) return;
+  appToastText.textContent = message;
+  appToast.style.display = 'flex';
+  if (appToastTimer) clearTimeout(appToastTimer);
+  requestAnimationFrame(() => appToast.classList.add('show'));
+  appToastTimer = setTimeout(() => {
+    appToast.classList.remove('show');
+    setTimeout(() => {
+      if (!appToast.classList.contains('show')) appToast.style.display = 'none';
+    }, 220);
+  }, 1800);
+}
+
+function updateTopProductionReviewAlert(count = 0) {
+  productionPendingCount = Number(count || 0);
+  const alertBtn = document.getElementById('top-production-review-alert');
+  const badge = document.getElementById('top-production-review-alert-badge');
+  if (!alertBtn || !badge) return;
+  const canViewReview = typeof can !== 'function' ? true : can('production_review', 'view');
+  badge.textContent = String(productionPendingCount);
+  alertBtn.style.display = canViewReview && productionPendingCount > 0 ? 'inline-flex' : 'none';
+}
+window.updateTopProductionReviewAlert = updateTopProductionReviewAlert;
+
+function openProductionReviewCenter() {
+  pendingFinishedStockTab = 'review';
+  if (location.hash !== '#finished-stock') {
+    location.hash = '#finished-stock';
+    return;
+  }
+  const page = document.getElementById('page-finished-stock');
+  if (page) page.style.display = 'block';
+  switchFinishedStockTab('review', document.getElementById('fs-tab-review'));
+}
+window.openProductionReviewCenter = openProductionReviewCenter;
+
+function normalizeDividendUsers(val) {
+  if (Array.isArray(val)) return val.map(v => String(v || '').trim()).filter(Boolean);
+  if (typeof val === 'string') {
+    const text = val.trim();
+    if (!text) return [];
+    try {
+      const parsed = JSON.parse(text);
+      return Array.isArray(parsed) ? parsed.map(v => String(v || '').trim()).filter(Boolean) : [];
+    } catch {
+      return text.split(',').map(v => String(v || '').trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
+function isDividendProduct(item) {
+  return normalizeDividendUsers(item?.dividend_users).length > 0 || !!item?.dividend_enabled;
+}
+
+function isAssignedSalesStatsView() {
+  const u = getAuthUser();
+  const roleName = (u?.role) || getUserRoleName(u?.name || '');
+  return roleName !== '超级管理员' && can('sales_stats', 'assigned_only');
+}
+
+async function ensureProductDividendUsersLoaded() {
+  if (productDividendUserOptions.length) return productDividendUserOptions;
+  try {
+    const list = await apiFetchJSON('/api/auth/users');
+    productDividendUserOptions = (Array.isArray(list) ? list : [])
+      .map(x => ({ name: String(x.name || '').trim(), role: String(x.role || '').trim() }))
+      .filter(x => x.name);
+  } catch {
+    productDividendUserOptions = [];
+  }
+  return productDividendUserOptions;
+}
+
+function renderProductDividendUsers(selectedNames = []) {
+  if (!prodDividendUsersWrap) return;
+  const selectedSet = new Set((Array.isArray(selectedNames) ? selectedNames : []).map(v => String(v || '').trim()).filter(Boolean));
+  const merged = [...productDividendUserOptions];
+  selectedSet.forEach(name => {
+    if (!merged.some(user => user.name === name)) merged.push({ name, role: '已停用/缺失' });
+  });
+  if (!merged.length) {
+    prodDividendUsersWrap.innerHTML = '<div style="color:#64748b; font-size:12px">暂无可选账号</div>';
+    return;
+  }
+  prodDividendUsersWrap.innerHTML = merged.map(user => `
+    <label style="display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid #334155; border-radius:8px; background:#0f172a; color:#e2e8f0; font-size:12px; cursor:pointer">
+      <input type="checkbox" class="prod-dividend-user" value="${escapeHtml(user.name)}" ${selectedSet.has(user.name) ? 'checked' : ''}>
+      <span>${escapeHtml(user.name)}</span>
+      <span style="color:#64748b">${escapeHtml(user.role || '')}</span>
+    </label>
+  `).join('');
+}
 
 if (prodFile) {
   prodFile.addEventListener('change', () => {
@@ -6533,6 +6893,7 @@ async function loadProducts() {
   if (res.ok) {
     const data = await res.json();
     const list = data.list || [];
+    currentProductPageList = list;
     prodTotal = data.total || 0;
     renderProducts(list);
     renderProdPager();
@@ -6542,7 +6903,7 @@ async function loadProducts() {
 function renderProducts(list) {
   prodRows.innerHTML = '';
   if (list.length === 0) {
-    prodRows.innerHTML = '<tr class="empty"><td colspan="15">暂无商品数据</td></tr>';
+    prodRows.innerHTML = '<tr class="empty"><td colspan="17">暂无商品数据</td></tr>';
     return;
   }
   list.forEach((x, idx) => {
@@ -6556,13 +6917,11 @@ function renderProducts(list) {
       <td>${x.name||''}</td>
       <td>${x.name_cn||''}</td>
       <td>${x.spec||''}</td>
-      <td>${Number(x.price1||0).toFixed(2)}</td>
-      <td>${Number(x.price2||0).toFixed(2)}</td>
-      <td>${Number(x.price3||0).toFixed(2)}</td>
-      <td>${Number(x.price4||0).toFixed(2)}</td>
-      <td>${Number(x.tax_rate||0).toFixed(2)}%</td>
+      <td>${formatOptionalMoney(x.price1)}</td>
+      <td>${formatOptionalMoney(x.price2)}</td>
+      <td>${formatOptionalMoney(x.cost_price)}</td>
+      <td>${isDividendProduct(x) ? '是' : '-'}</td>
       <td>${Number(x.stock||0)}</td>
-      <td>${x.created_at ? new Date(Number(x.created_at)).toLocaleDateString() : ''}</td>
       <td>
         <button class="light-btn btn-blue prod-edit-btn" style="font-size:12px;padding:4px 8px;margin-right:4px">编辑</button>
         <button class="light-btn btn-red prod-del-btn" style="font-size:12px;padding:4px 8px">删除</button>
@@ -6570,7 +6929,7 @@ function renderProducts(list) {
     `;
     const editBtn = tr.querySelector('.prod-edit-btn');
     const delBtn = tr.querySelector('.prod-del-btn');
-    editBtn.addEventListener('click', () => openProdModal(x));
+    editBtn.addEventListener('click', () => openProdModal(x, idx));
     delBtn.addEventListener('click', () => deleteProduct(x));
     prodRows.appendChild(tr);
   });
@@ -6603,9 +6962,32 @@ function renderProdPager() {
   prodPager.appendChild(createBtn('下一页', prodPage+1, prodPage>=totalPages));
 }
 
-function openProdModal(x) {
+function updateProductModalNav() {
+  const total = currentProductPageList.length;
+  const canNavigate = currentProductModalIndex >= 0;
+  const subtitle = document.getElementById('prod-modal-subtitle');
+  if (subtitle) {
+    subtitle.textContent = currentProductModalStandaloneEdit
+      ? '当前商品详情，可直接修改提醒数量等信息'
+      : (canNavigate
+          ? `当前页第 ${currentProductModalIndex + 1} / ${total} 个商品，可直接连续切换`
+          : '新增商品');
+  }
+  if (prodPrev) {
+    prodPrev.disabled = !canNavigate || currentProductModalIndex <= 0;
+    prodPrev.style.display = currentProductModalStandaloneEdit ? 'none' : 'inline-flex';
+  }
+  if (prodNext) {
+    prodNext.disabled = !canNavigate || currentProductModalIndex < 0 || currentProductModalIndex >= total - 1;
+    prodNext.style.display = currentProductModalStandaloneEdit ? 'none' : 'inline-flex';
+  }
+}
+
+async function openProdModal(x, listIndex = -1) {
   if (!prodModal) return;
   const isEdit = !!x;
+  currentProductModalStandaloneEdit = isEdit && listIndex < 0;
+  currentProductModalIndex = isEdit && listIndex >= 0 ? listIndex : -1;
   const stockInput = document.getElementById('prod-stock');
   document.getElementById('prod-modal-title').textContent = isEdit ? '编辑商品' : '新增商品';
   document.getElementById('prod-id').value = isEdit ? x.id : '';
@@ -6614,12 +6996,17 @@ function openProdModal(x) {
   document.getElementById('prod-name').value = x?.name||'';
   document.getElementById('prod-name-cn').value = x?.name_cn||'';
   document.getElementById('prod-spec').value = x?.spec||'';
+  document.getElementById('prod-created-at').value = x?.created_at ? new Date(Number(x.created_at)).toLocaleString() : '';
   document.getElementById('prod-tax').value = x?.tax_rate||'10';
   document.getElementById('prod-p1').value = x?.price1||'';
   document.getElementById('prod-p2').value = x?.price2||'';
   document.getElementById('prod-p3').value = x?.price3||'';
   document.getElementById('prod-p4').value = x?.price4||'';
+  document.getElementById('prod-cost').value = x?.cost_price||'';
   document.getElementById('prod-stock').value = x?.stock||'0';
+  document.getElementById('prod-remind-stock').value = Math.max(0, Number(x?.remind_stock || 0));
+  await ensureProductDividendUsersLoaded();
+  renderProductDividendUsers(normalizeDividendUsers(x?.dividend_users));
   if (stockInput) {
     stockInput.readOnly = true;
     stockInput.title = '库存请在商品库存页面调整';
@@ -6643,7 +7030,22 @@ function openProdModal(x) {
   document.querySelectorAll('.invalid').forEach(el => el.classList.remove('invalid'));
   document.querySelectorAll('.invalid-label').forEach(el => el.classList.remove('invalid-label'));
   
+  updateProductModalNav();
   prodModal.style.display = 'flex';
+}
+
+async function openProdModalFromFinishedStock(encodedProduct) {
+  if (!can('sales_products', 'edit')) {
+    alert('当前角色无商品编辑权限');
+    return;
+  }
+  try {
+    const product = JSON.parse(decodeURIComponent(String(encodedProduct || '')));
+    await openProdModal(product, -1);
+  } catch (e) {
+    console.error(e);
+    alert('商品详情打开失败，请刷新后重试');
+  }
 }
 
 async function deleteProduct(x) {
@@ -6658,6 +7060,14 @@ async function deleteProduct(x) {
 
 if (prodAdd) prodAdd.addEventListener('click', () => openProdModal(null));
 if (prodCancel) prodCancel.addEventListener('click', () => prodModal.style.display = 'none');
+if (prodPrev) prodPrev.addEventListener('click', async () => {
+  if (currentProductModalIndex <= 0) return;
+  await openProdModal(currentProductPageList[currentProductModalIndex - 1], currentProductModalIndex - 1);
+});
+if (prodNext) prodNext.addEventListener('click', async () => {
+  if (currentProductModalIndex < 0 || currentProductModalIndex >= currentProductPageList.length - 1) return;
+  await openProdModal(currentProductPageList[currentProductModalIndex + 1], currentProductModalIndex + 1);
+});
 if (prodRefresh) prodRefresh.addEventListener('click', () => { prodPage=1; loadProducts(); });
 if (prodSearch) prodSearch.addEventListener('change', () => { prodPage=1; loadProducts(); });
 
@@ -6727,6 +7137,7 @@ if (prodForm) {
         }
       }
 
+      const dividendUsers = Array.from(document.querySelectorAll('.prod-dividend-user:checked')).map(el => String(el.value || '').trim()).filter(Boolean);
       const data = {
         sku: document.getElementById('prod-sku').value,
         barcode: document.getElementById('prod-barcode').value,
@@ -6738,7 +7149,11 @@ if (prodForm) {
         price2: document.getElementById('prod-p2').value,
         price3: document.getElementById('prod-p3').value,
         price4: document.getElementById('prod-p4').value,
+        cost_price: document.getElementById('prod-cost').value,
+        dividend_enabled: dividendUsers.length > 0,
+        dividend_users: dividendUsers,
         stock: id ? (document.getElementById('prod-stock').value || '0') : '0',
+        remind_stock: Math.max(0, Number(document.getElementById('prod-remind-stock').value || 0)),
         image: imageUrl,
         description: document.getElementById('prod-desc').value,
         notes: document.getElementById('prod-notes').value
@@ -6754,14 +7169,27 @@ if (prodForm) {
       });
       
       if (res.ok) {
-        prodModal.style.display = 'none';
-        loadProducts();
+        await loadProducts();
+        if (document.getElementById('page-finished-stock')?.style.display === 'block') {
+          await loadFinishedStock(fsPage);
+        }
+        salesStatsDividendUsersLoaded = false;
+        if (id) {
+          const savedId = Number(id);
+          const refreshedIndex = currentProductPageList.findIndex(item => Number(item?.id || 0) === savedId);
+          if (refreshedIndex >= 0) {
+            await openProdModal(currentProductPageList[refreshedIndex], refreshedIndex);
+          }
+        } else {
+          document.getElementById('prod-id').value = '';
+        }
+        showAppToast('保存成功！');
       } else {
         try {
           const err = await res.json();
           if (err.error === 'duplicate_sku') alert('货号已存在');
-          else alert('保存失败');
-        } catch { alert('保存失败'); }
+          else alert('保存失败：' + (err.error || '请刷新后重试'));
+        } catch { alert('保存失败，请刷新后重试'); }
       }
     } catch (e) {
       console.error(e);
@@ -6774,6 +7202,162 @@ if (prodForm) {
     }
   });
 }
+
+function initSalesStatsFilters() {
+  const now = new Date();
+  const end = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+  const start = `${startDate.getFullYear()}-${String(startDate.getMonth()+1).padStart(2,'0')}-${String(startDate.getDate()).padStart(2,'0')}`;
+  if (salesStatsStart && !salesStatsStart.value) salesStatsStart.value = start;
+  if (salesStatsEnd && !salesStatsEnd.value) salesStatsEnd.value = end;
+}
+
+function renderSalesStatsSummary(summary = {}, total = 0) {
+  if (!salesStatsSummary) return;
+  const assignedView = isAssignedSalesStatsView();
+  const selectedDividendUser = String(salesStatsDividendUser?.value || '').trim();
+  const cards = (assignedView || selectedDividendUser)
+    ? [
+        { label: '商品数', value: String(total || 0) },
+        { label: '销售量', value: String(Number(summary.qty || 0)) }
+      ]
+    : [
+        { label: '商品数', value: String(total || 0) },
+        { label: '总销量', value: String(Number(summary.qty || 0)) },
+        { label: '未税销售额', value: formatMoney(summary.sales_amount) },
+        { label: '税额', value: formatMoney(summary.tax_amount) },
+        { label: '总成本', value: formatMoney(summary.cost_amount) },
+        { label: '总利润', value: formatMoney(summary.profit_amount) }
+      ];
+  salesStatsSummary.style.gridTemplateColumns = (assignedView || selectedDividendUser)
+    ? 'repeat(2,minmax(140px,220px))'
+    : 'repeat(6,minmax(120px,1fr))';
+  salesStatsSummary.innerHTML = cards.map(card => `
+    <div style="background:#0f172a; border:1px solid #1e293b; border-radius:10px; padding:14px 16px">
+      <div style="font-size:12px; color:#94a3b8">${card.label}</div>
+      <div style="margin-top:6px; font-size:20px; font-weight:700; color:#e2e8f0">${card.value}</div>
+    </div>
+  `).join('');
+}
+
+async function ensureSalesStatsDividendUsersLoaded() {
+  if (!salesStatsDividendUser || salesStatsDividendUsersLoaded) return;
+  if (isAssignedSalesStatsView()) {
+    salesStatsDividendUsersLoaded = true;
+    salesStatsDividendUser.innerHTML = '<option value="">全部</option>';
+    return;
+  }
+  try {
+    const data = await apiFetchJSON('/api/sales-stats/dividend-users');
+    const list = Array.isArray(data?.list) ? data.list : [];
+    const currentValue = String(salesStatsDividendUser.value || '');
+    salesStatsDividendUser.innerHTML = `<option value="">全部</option>` + list.map(name => `
+      <option value="${escapeHtml(name)}">${escapeHtml(name)}</option>
+    `).join('');
+    if (list.includes(currentValue)) salesStatsDividendUser.value = currentValue;
+    salesStatsDividendUsersLoaded = true;
+  } catch {
+    salesStatsDividendUser.innerHTML = '<option value="">全部</option>';
+  }
+}
+
+function renderSalesStatsLayout() {
+  const assignedView = isAssignedSalesStatsView();
+  if (salesStatsDividendUserWrap) salesStatsDividendUserWrap.style.display = assignedView ? 'none' : 'flex';
+  if (salesStatsHeadRow) {
+    salesStatsHeadRow.innerHTML = assignedView ? `
+      <th>序号</th>
+      <th>货号</th>
+      <th>名称</th>
+      <th>中文名称</th>
+      <th>规格</th>
+      <th>分红商品</th>
+      <th>销量</th>
+      <th>发票数</th>
+    ` : `
+      <th>序号</th>
+      <th>货号</th>
+      <th>名称</th>
+      <th>中文名称</th>
+      <th>规格</th>
+      <th>分红商品</th>
+      <th>销量</th>
+      <th>销售额(未税)</th>
+      <th>税额</th>
+      <th>销售额(含税)</th>
+      <th>成本价</th>
+      <th>成本合计</th>
+      <th>利润</th>
+      <th>发票数</th>
+    `;
+  }
+}
+
+function renderSalesStats(list = []) {
+  if (!salesStatsRows) return;
+  const assignedView = isAssignedSalesStatsView();
+  if (!list.length) {
+    salesStatsRows.innerHTML = `<tr class="empty"><td colspan="${assignedView ? 8 : 14}">暂无统计数据</td></tr>`;
+    return;
+  }
+  salesStatsRows.innerHTML = list.map((x, idx) => assignedView ? `
+    <tr>
+      <td>${idx + 1}</td>
+      <td>${x.sku || ''}</td>
+      <td>${x.name || ''}</td>
+      <td>${x.name_cn || ''}</td>
+      <td>${x.spec || ''}</td>
+      <td>${isDividendProduct(x) ? '是' : '否'}</td>
+      <td>${Number(x.sales_qty || 0)}</td>
+      <td>${Number(x.invoice_count || 0)}</td>
+    </tr>
+  ` : `
+    <tr>
+      <td>${idx + 1}</td>
+      <td>${x.sku || ''}</td>
+      <td>${x.name || ''}</td>
+      <td>${x.name_cn || ''}</td>
+      <td>${x.spec || ''}</td>
+      <td>${isDividendProduct(x) ? '是' : '否'}</td>
+      <td>${Number(x.sales_qty || 0)}</td>
+      <td>${formatMoney(x.sales_amount)}</td>
+      <td>${formatMoney(x.tax_amount)}</td>
+      <td>${formatMoney(x.gross_amount)}</td>
+      <td>${formatMoney(x.cost_price)}</td>
+      <td>${formatMoney(x.cost_amount)}</td>
+      <td style="color:${Number(x.profit_amount || 0) >= 0 ? '#22c55e' : '#ef4444'}; font-weight:600">${formatMoney(x.profit_amount)}</td>
+      <td>${Number(x.invoice_count || 0)}</td>
+    </tr>
+  `).join('');
+}
+
+async function loadSalesStats() {
+  if (!salesStatsRows) return;
+  initSalesStatsFilters();
+  renderSalesStatsLayout();
+  await ensureSalesStatsDividendUsersLoaded();
+  salesStatsRows.innerHTML = `<tr class="empty"><td colspan="${isAssignedSalesStatsView() ? 8 : 14}">加载中...</td></tr>`;
+  const params = new URLSearchParams({
+    start: salesStatsStart?.value || '',
+    end: salesStatsEnd?.value || '',
+    q: salesStatsSearch?.value?.trim() || '',
+    dividend_user: isAssignedSalesStatsView() ? '' : (salesStatsDividendUser?.value || '')
+  });
+  const res = await fetchWithAuth(`/api/sales-stats/products?${params.toString()}`);
+  if (!res.ok) {
+    salesStatsRows.innerHTML = `<tr class="empty"><td colspan="${isAssignedSalesStatsView() ? 8 : 14}">加载失败</td></tr>`;
+    return;
+  }
+  const data = await res.json();
+  renderSalesStatsSummary(data.summary || {}, data.total || 0);
+  renderSalesStats(data.list || []);
+}
+
+salesStatsRefresh?.addEventListener('click', () => loadSalesStats());
+salesStatsSearch?.addEventListener('change', () => loadSalesStats());
+salesStatsDividendUser?.addEventListener('change', () => loadSalesStats());
+salesStatsStart?.addEventListener('change', () => loadSalesStats());
+salesStatsEnd?.addEventListener('change', () => loadSalesStats());
 
 // Init Route
 route();
@@ -7312,8 +7896,9 @@ async function handleRoute() {
   const u = getAuthUser(); 
   const roleName = (u?.role) || getUserRoleName(u?.name || '');
   
-  // Ensure roles are loaded before checking permissions
-  if (u && rolesData.length === 0 && roleName !== '超级管理员') {
+  // Non-admin accounts must refresh role permissions from server so old local cache
+  // cannot keep hiding newly granted modules after a deployment or DB permission update.
+  if (u && roleName !== '超级管理员') {
     try { await apiRolesList(); } catch(e) {}
   }
   
@@ -7339,6 +7924,7 @@ async function handleRoute() {
       const href = a.getAttribute('href');
       if (href && href.startsWith('#')) {
           let mod = href.slice(1).replace(/-/g, '_'); // e.g. 'sales-order' -> 'sales_order'
+          if (mod === 'logistics') mod = 'daily_orders';
           if (checkView(mod)) {
               a.style.display = 'block';
           } else {
@@ -7367,9 +7953,13 @@ async function handleRoute() {
         { mod: 'daily_orders', hash: 'daily-orders' },
         { mod: 'finished_stock', hash: 'finished-stock' },
         { mod: 'raw_stock', hash: 'raw-stock' },
+        { mod: 'production_review', hash: 'production-review' },
+        { mod: 'event_records', hash: 'event-records' },
+        { mod: 'knowledge_base', hash: 'knowledge-base' },
         { mod: 'sales_order', hash: 'sales-order' },
         { mod: 'sales_invoice', hash: 'sales-invoice' },
         { mod: 'sales_products', hash: 'sales-products' },
+        { mod: 'sales_stats', hash: 'sales-stats' },
         { mod: 'ledger', hash: 'ledger' },
         { mod: 'payables', hash: 'payables' },
         { mod: 'contacts', hash: 'contacts' },
@@ -7435,12 +8025,14 @@ async function handleRoute() {
     document.getElementById('page-payables').style.display = 'block';
     if (gp) gp.style.display = 'flex';
     try {
-      if (typeof payFilterType !== 'undefined') { payFilterType = 'all'; payFilterSalesName = ''; payFilterStatus = 'all'; payFilterOverdue = 'all'; payPage = 1; }
+      if (typeof payFilterType !== 'undefined') { payFilterType = 'all'; payFilterPartnerName = ''; payFilterSalesName = ''; payFilterStatus = 'all'; payFilterOverdue = 'all'; payFilterAction = 'all'; payPage = 1; }
       const reset = (el, text) => { if (el) { el.textContent = text + ' ▾'; el.style.color = ''; } };
       reset(document.getElementById('th-type-label'), '款项类型');
+      reset(document.getElementById('th-partner-label'), '往来单位');
       reset(document.getElementById('th-sales-label'), '业务员');
       reset(document.getElementById('th-arrears-label'), '欠款');
       reset(document.getElementById('th-trust-label'), '信任天数');
+      reset(document.getElementById('th-action-label'), '操作');
     } catch {}
     loadPayablesFromServer().then(() => {
       if (typeof renderPayables === 'function') renderPayables();
@@ -7486,6 +8078,11 @@ async function handleRoute() {
     document.getElementById('page-sales-products').style.display = 'block';
     if (typeof prodPage !== 'undefined') prodPage = 1;
     loadProducts();
+  }
+  else if (hash === 'sales-stats') {
+    if (!ensureView('sales_stats')) return;
+    document.getElementById('page-sales-stats').style.display = 'block';
+    loadSalesStats();
   }
   else if (hash.startsWith('partner-orders')) {
     if (!ensureView('contacts')) return;
@@ -7559,6 +8156,7 @@ async function handleRoute() {
   else if (hash === 'company-info') {
     if (!ensureView('company_info')) return;
     document.getElementById('page-company-info').style.display = 'block';
+    syncCompanyInfoAccess();
     loadCompanyInfo();
   }
   else if (hash === 'daily-orders') {
@@ -7566,15 +8164,40 @@ async function handleRoute() {
     document.getElementById('page-daily-orders').style.display = 'block';
     loadDailyOrders();
   }
+  else if (hash === 'logistics') {
+    if (!ensureView('daily_orders')) return;
+    document.getElementById('page-logistics').style.display = 'block';
+    loadLogistics();
+  }
   else if (hash === 'finished-stock') {
-    if (!ensureView('finished_stock')) return;
+    if (pendingFinishedStockTab === 'review') {
+      if (!ensureView('production_review')) return;
+    } else if (!ensureView('finished_stock')) return;
     document.getElementById('page-finished-stock').style.display = 'block';
-    switchFinishedStockTab('stock');
+    const targetTab = pendingFinishedStockTab || 'stock';
+    pendingFinishedStockTab = '';
+    switchFinishedStockTab(targetTab);
   }
   else if (hash === 'raw-stock') {
     if (!ensureView('raw_stock')) return;
     document.getElementById('page-raw-stock').style.display = 'block';
-    loadRawStock();
+    switchRawStockTab('stock');
+  }
+  else if (hash === 'production-review') {
+    if (!ensureView('production_review')) return;
+    pendingFinishedStockTab = 'review';
+    location.hash = '#finished-stock';
+    return;
+  }
+  else if (hash === 'event-records') {
+    if (!ensureView('event_records')) return;
+    document.getElementById('page-event-records').style.display = 'block';
+    loadEventRecords('ongoing');
+  }
+  else if (hash === 'knowledge-base') {
+    if (!ensureView('knowledge_base')) return;
+    document.getElementById('page-knowledge-base').style.display = 'block';
+    loadKnowledgeBase('internal');
   }
   else if (hash.startsWith('stock-history')) {
     if (!ensureView('finished_stock') && !ensureView('raw_stock')) return;
@@ -7610,10 +8233,104 @@ async function handleRoute() {
 let currentTaskTab = 'new';
 let currentTaskPage = 1;
 let currentTasksList = [];
+let currentAutoTaskList = [];
+
+function formatTaskTimeLimit(limitDays) {
+  const val = Number(limitDays || 0);
+  if (!val) return '-';
+  if (val === 7) return '一周内';
+  if (val === 30) return '一个月内';
+  return `${val}天内`;
+}
+
+function formatDateTimeSafe(ts) {
+  const num = Number(ts || 0);
+  if (!num) return '-';
+  return new Date(num).toLocaleString();
+}
+
+function formatDateTimeTwoLines(ts) {
+  const num = Number(ts || 0);
+  if (!num) return '-';
+  const d = new Date(num);
+  const dateText = d.toLocaleDateString();
+  const timeText = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return `<div>${escapeHtml(dateText)}</div><div style="font-size:12px; color:#94a3b8; line-height:1.2; margin-top:2px">${escapeHtml(timeText)}</div>`;
+}
+
+function formatDateTimeLocalInput(ts) {
+  const num = Number(ts || 0);
+  if (!num) return '';
+  const d = new Date(num);
+  const pad = v => String(v).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function readDateTimeLocalInput(id) {
+  const raw = String(document.getElementById(id)?.value || '').trim();
+  if (!raw) return 0;
+  const ts = new Date(raw).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function formatAutoTaskInterval(months) {
+  const val = Number(months || 0);
+  return val > 0 ? `每${val}个月` : '-';
+}
+
+function syncTaskModeUI(tab) {
+  const manualPanel = document.getElementById('task-manual-panel');
+  const manualTableWrap = document.getElementById('task-manual-table-wrap');
+  const manualPager = document.getElementById('task-pager');
+  const autoPanel = document.getElementById('auto-task-panel');
+  const createBtn = document.getElementById('task-create-btn');
+  const autoCreateBtn = document.getElementById('auto-task-create-btn');
+  const isAuto = tab === 'auto';
+  if (manualPanel) manualPanel.style.display = 'block';
+  if (manualTableWrap) manualTableWrap.style.display = isAuto ? 'none' : 'block';
+  if (manualPager) manualPager.style.display = isAuto ? 'none' : 'flex';
+  if (autoPanel) autoPanel.style.display = isAuto ? 'block' : 'none';
+  if (createBtn) createBtn.style.display = isAuto ? 'none' : 'inline-flex';
+  if (autoCreateBtn) autoCreateBtn.style.display = isAuto ? 'inline-flex' : 'none';
+}
+
+async function loadAutoTasks() {
+  const res = await fetchWithAuth(`/api/auto-tasks?_t=${Date.now()}`);
+  if (!res.ok) return;
+  const list = await res.json();
+  currentAutoTaskList = Array.isArray(list) ? list : [];
+  const tbody = document.getElementById('auto-task-rows');
+  if (!tbody) return;
+  if (!currentAutoTaskList.length) {
+    tbody.innerHTML = '<tr class="empty"><td colspan="11">暂无自动任务</td></tr>';
+    return;
+  }
+  tbody.innerHTML = currentAutoTaskList.map((t, idx) => `
+    <tr>
+      <td>${currentAutoTaskList.length - idx}</td>
+      <td style="white-space:normal; word-break:break-word; line-height:1.5; font-weight:600">${escapeHtml(t.title || '')}</td>
+      <td style="white-space:pre-wrap; word-break:break-word; line-height:1.5; color:#cbd5e1">${escapeHtml(t.description || '')}</td>
+      <td style="white-space:normal; word-break:break-word">${escapeHtml(t.assigned_to || '')}</td>
+      <td style="white-space:normal">${escapeHtml(formatAutoTaskInterval(t.interval_months))}</td>
+      <td style="white-space:normal">${escapeHtml(formatTaskTimeLimit(t.time_limit))}</td>
+      <td style="white-space:normal; line-height:1.25">${formatDateTimeTwoLines(t.start_at)}</td>
+      <td style="white-space:normal; line-height:1.25">${formatDateTimeTwoLines(t.next_generate_at)}</td>
+      <td style="white-space:normal; line-height:1.25"><div style="word-break:break-word">${escapeHtml(t.created_by || '')}</div><div style="font-size:12px; color:#94a3b8; margin-top:2px">${formatDateTimeTwoLines(t.created_at)}</div></td>
+      <td style="white-space:normal"><span class="tag ${t.active ? 'green' : 'orange'}">${t.active ? '启用中' : '已停用'}</span></td>
+      <td style="white-space:normal">
+        <div style="display:flex; flex-direction:column; gap:8px; align-items:stretch">
+          <button class="btn-sm btn-secondary" style="width:100%; margin:0" onclick="editAutoTask(${t.id})">编辑</button>
+          <button class="btn-sm" style="width:100%; margin:0" onclick="toggleAutoTask(${t.id}, ${t.active ? 'false' : 'true'})">${t.active ? '停用' : '启用'}</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
 
 async function loadTasks(tab = 'new', btn = null, page = 1) {
   currentTaskTab = tab;
   currentTaskPage = page;
+  syncTaskModeUI(tab);
 
   if (btn) {
     document.querySelectorAll('#page-tasks .tab').forEach(b => b.classList.remove('active'));
@@ -7625,6 +8342,10 @@ async function loadTasks(tab = 'new', btn = null, page = 1) {
       document.querySelectorAll('#page-tasks .tab').forEach(b => b.classList.remove('active'));
       tBtn.classList.add('active');
     }
+  }
+  if (tab === 'auto') {
+    await loadAutoTasks();
+    return;
   }
   
   // Map tab to status
@@ -7768,60 +8489,77 @@ function renderTaskPager(total, page, size) {
   pager.innerHTML = html;
 }
 
+function fallbackTaskUsers() {
+  return [
+    { name: '超级管理员', role: '超级管理员' },
+    { name: 'shuangqun', role: '股东' },
+    { name: 'caiwu', role: '财务' },
+    { name: 'kefu', role: '客服' }
+  ];
+}
+
+async function loadAssignableUsers(listId, inputId) {
+  const listDiv = document.getElementById(listId);
+  if (!listDiv) return;
+  listDiv.innerHTML = '加载中...';
+  try {
+    const r = await fetchWithAuth('/api/auth/users');
+    if (!r.ok) throw new Error('API Error: ' + r.status);
+    const users = await r.json();
+    renderAssignableUsers(Array.isArray(users) && users.length ? users : fallbackTaskUsers(), listId, inputId);
+  } catch (e) {
+    console.warn('Failed to load users, using fallback:', e);
+    renderAssignableUsers(fallbackTaskUsers(), listId, inputId);
+  }
+}
+
+function renderAssignableUsers(users, listId, inputId) {
+  const listDiv = document.getElementById(listId);
+  const currentAssign = document.getElementById(inputId)?.value || '';
+  if (!listDiv) return;
+  listDiv.innerHTML = users.map(u => {
+    const selected = u.name === currentAssign;
+    return `
+      <div class="user-chip" onclick="selectTaskAssignee('${listId}', '${inputId}', '${encodeURIComponent(u.name)}')"
+           style="border:1px solid ${selected ? '#1a73e8' : '#334155'}; padding:8px; border-radius:6px; cursor:pointer; text-align:center; background:${selected ? '#1a73e8' : '#0f172a'}; color:${selected ? '#fff' : '#cbd5e1'}; user-select:none; display:flex; flex-direction:column; align-items:center; gap:4px">
+        <span style="font-weight:600">${escapeHtml(u.name || '')}</span>
+        <span style="font-size:10px; opacity:0.7; background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px">${escapeHtml(u.role || '员工')}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+window.selectTaskAssignee = function(listId, inputId, encodedName) {
+  const name = decodeURIComponent(encodedName || '');
+  const input = document.getElementById(inputId);
+  if (input) input.value = name;
+  const listDiv = document.getElementById(listId);
+  if (!listDiv) return;
+  Array.from(listDiv.querySelectorAll('.user-chip')).forEach(chip => {
+    chip.style.borderColor = '#334155';
+    chip.style.background = '#0f172a';
+    chip.style.color = '#cbd5e1';
+  });
+  const target = Array.from(listDiv.querySelectorAll('.user-chip')).find(chip => chip.textContent.includes(name));
+  if (target) {
+    target.style.borderColor = '#1a73e8';
+    target.style.background = '#1a73e8';
+    target.style.color = '#fff';
+  }
+};
+
 function openTaskModal() {
   const m = document.getElementById('task-modal');
-  if (m) {
-    m.style.display = 'flex';
-    document.getElementById('task-modal-title').textContent = '创建任务';
-    document.getElementById('task-id').value = '';
-    document.getElementById('task-title').value = '';
-    document.getElementById('task-desc').value = '';
-    document.getElementById('task-assign').value = '';
-    const tl = document.getElementById('task-time-limit');
-    if (tl) tl.value = '1';
-    const listDiv = document.getElementById('task-assign-list');
-    if (listDiv) {
-      listDiv.innerHTML = '加载中...';
-      fetchWithAuth('/api/auth/users')
-        .then(async r => {
-          if (!r.ok) throw new Error('API Error: ' + r.status);
-          const text = await r.text();
-          try {
-            return JSON.parse(text);
-          } catch (e) {
-            console.error('JSON Parse Error:', text.slice(0, 100));
-            throw new Error('Invalid JSON response');
-          }
-        })
-        .then(users => {
-          if (!Array.isArray(users)) throw new Error('Data format error');
-          renderUserChips(users);
-        })
-        .catch(e => {
-          console.warn('Failed to load users, using fallback:', e);
-          // Fallback data for dev/demo purposes or when API fails
-          const fallbackUsers = [
-            { name: '超级管理员', role: '超级管理员' },
-            { name: 'shuangqun', role: '股东' },
-            { name: 'caiwu', role: '财务' },
-            { name: 'kefu', role: '客服' }
-          ];
-          if (!users || users.length === 0) users = fallbackUsers;
-          renderUserChips(users);
-        });
-        
-        function renderUserChips(users) {
-           const currentAssign = document.getElementById('task-assign').value;
-           listDiv.innerHTML = users.map(u => `
-            <div class="user-chip" onclick="selectTaskUser(this, '${u.name}')" 
-                 style="border:1px solid ${u.name === currentAssign ? '#1a73e8' : '#334155'}; padding:8px; border-radius:6px; cursor:pointer; text-align:center; background:${u.name === currentAssign ? '#1a73e8' : '#0f172a'}; color:${u.name === currentAssign ? '#fff' : '#cbd5e1'}; user-select:none; display:flex; flex-direction:column; align-items:center; gap:4px">
-              <span style="font-weight:600">${u.name}</span>
-              <span style="font-size:10px; opacity:0.7; background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px">${u.role||'员工'}</span>
-            </div>
-          `).join('');
-        }
-    }
-  }
+  if (!m) return;
+  m.style.display = 'flex';
+  document.getElementById('task-modal-title').textContent = '创建任务';
+  document.getElementById('task-id').value = '';
+  document.getElementById('task-title').value = '';
+  document.getElementById('task-desc').value = '';
+  document.getElementById('task-assign').value = '';
+  const tl = document.getElementById('task-time-limit');
+  if (tl) tl.value = '1';
+  loadAssignableUsers('task-assign-list', 'task-assign');
 }
 window.editTask = function(id) {
     const t = currentTasksList.find(x => x.id === id);
@@ -7835,6 +8573,7 @@ window.editTask = function(id) {
     if (document.getElementById('task-time-limit')) {
         document.getElementById('task-time-limit').value = t.time_limit || '1';
     }
+    loadAssignableUsers('task-assign-list', 'task-assign');
 }
 window.openTaskDetailsModal = function(id) {
     const t = currentTasksList.find(x => x.id === id);
@@ -7877,17 +8616,6 @@ window.openTaskDetailsModal = function(id) {
         m.style.display = 'flex';
     }
 }
-window.selectTaskUser = function(el, name) {
-    document.getElementById('task-assign').value = name;
-    document.querySelectorAll('.user-chip').forEach(d => {
-        d.style.borderColor = '#334155';
-        d.style.background = '#0f172a';
-        d.style.color = '#cbd5e1';
-    });
-    el.style.borderColor = '#1a73e8';
-    el.style.background = '#1a73e8';
-    el.style.color = '#fff';
-}
 function closeTaskModal() {
   const m = document.getElementById('task-modal');
   if (m) m.style.display = 'none';
@@ -7924,6 +8652,81 @@ async function saveTask() {
     }
   }
 }
+
+function openAutoTaskModal() {
+  const m = document.getElementById('auto-task-modal');
+  if (!m) return;
+  m.style.display = 'flex';
+  document.getElementById('auto-task-modal-title').textContent = '添加自动任务';
+  document.getElementById('auto-task-id').value = '';
+  document.getElementById('auto-task-title').value = '';
+  document.getElementById('auto-task-desc').value = '';
+  document.getElementById('auto-task-assign').value = '';
+  document.getElementById('auto-task-interval').value = '6';
+  document.getElementById('auto-task-time-limit').value = '1';
+  document.getElementById('auto-task-start-at').value = formatDateTimeLocalInput(Date.now());
+  document.getElementById('auto-task-active').checked = true;
+  loadAssignableUsers('auto-task-assign-list', 'auto-task-assign');
+}
+window.editAutoTask = function(id) {
+  const t = currentAutoTaskList.find(x => Number(x.id) === Number(id));
+  if (!t) return;
+  openAutoTaskModal();
+  document.getElementById('auto-task-modal-title').textContent = '修改自动任务';
+  document.getElementById('auto-task-id').value = t.id;
+  document.getElementById('auto-task-title').value = t.title || '';
+  document.getElementById('auto-task-desc').value = t.description || '';
+  document.getElementById('auto-task-assign').value = t.assigned_to || '';
+  document.getElementById('auto-task-interval').value = String(t.interval_months || 6);
+  document.getElementById('auto-task-time-limit').value = String(t.time_limit || 1);
+  document.getElementById('auto-task-start-at').value = formatDateTimeLocalInput(t.start_at || t.created_at || 0);
+  document.getElementById('auto-task-active').checked = !!t.active;
+  loadAssignableUsers('auto-task-assign-list', 'auto-task-assign');
+};
+function closeAutoTaskModal() {
+  const m = document.getElementById('auto-task-modal');
+  if (m) m.style.display = 'none';
+}
+async function saveAutoTask() {
+  const id = document.getElementById('auto-task-id').value;
+  const title = document.getElementById('auto-task-title').value.trim();
+  const description = document.getElementById('auto-task-desc').value.trim();
+  const assigned_to = document.getElementById('auto-task-assign').value.trim();
+  const interval_months = document.getElementById('auto-task-interval').value;
+  const time_limit = document.getElementById('auto-task-time-limit').value;
+  const start_at = readDateTimeLocalInput('auto-task-start-at');
+  const active = document.getElementById('auto-task-active').checked;
+  if (!title) return alert('请输入标题');
+  if (!assigned_to) return alert('请选择指派人员');
+  if (!start_at) return alert('请选择开始时间');
+  const payload = { title, description, assigned_to, interval_months, time_limit, start_at, active };
+  const res = await fetchWithAuth(id ? `/api/auto-tasks/${id}` : '/api/auto-tasks', {
+    method: id ? 'PUT' : 'POST',
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) return alert('保存失败');
+  closeAutoTaskModal();
+  loadTasks('auto');
+}
+window.saveAutoTask = saveAutoTask;
+window.toggleAutoTask = async function(id, active) {
+  const t = currentAutoTaskList.find(x => Number(x.id) === Number(id));
+  if (!t) return;
+  const res = await fetchWithAuth(`/api/auto-tasks/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      title: t.title || '',
+      description: t.description || '',
+      assigned_to: t.assigned_to || '',
+      interval_months: t.interval_months || 1,
+      time_limit: t.time_limit || 0,
+      start_at: t.start_at || t.created_at || Date.now(),
+      active: !!active
+    })
+  });
+  if (!res.ok) return alert('操作失败');
+  loadTasks('auto');
+};
 function openCompleteTaskModal(id) {
   const m = document.getElementById('complete-task-modal');
   if (m) {
@@ -8068,13 +8871,72 @@ function openOrderDetailsModal(id) {
   }
 }
 
-function openOrderPreview(id) {
+function buildOrderPreviewAllocationDisplay(item, product) {
+  const itemDeductions = Array.isArray(item?.deductions) ? item.deductions : [];
+  if (itemDeductions.length > 0) {
+    const rows = itemDeductions.map(d => ({
+      lote: d?.lote ? formatFinishedLote(d.lote) : '无Lote',
+      stock: Number(d?.qty || 0)
+    }));
+    return {
+      loteHtml: `<div style="display:flex;flex-direction:column;gap:6px;font-size:18px;font-weight:700;color:#dc2626">` +
+        rows.map(row => `<div>${row.lote}</div>`).join('') + `</div>`,
+      stockHtml: `<div style="display:flex;flex-direction:column;gap:6px;font-size:18px;font-weight:700;color:#111827">` +
+        rows.map(row => `<div>${row.stock}</div>`).join('') + `</div>`
+    };
+  }
+  const needQty = Math.max(0, Number(item?.allocated_qty ?? item?.qty ?? 0));
+  const totalStock = Number(product?.stock || 0);
+  const rows = buildFinishedStockRows(totalStock, product?.batches || []);
+  if (needQty <= 0 || rows.length === 0) {
+    return {
+      loteHtml: '<span style="font-size:18px; font-weight:700; color:#dc2626">-</span>',
+      stockHtml: '<span style="font-size:18px; font-weight:700; color:#111827">-</span>'
+    };
+  }
+  let remaining = needQty;
+  const picked = [];
+  rows.forEach(row => {
+    if (remaining <= 0) return;
+    const take = Math.min(remaining, Number(row?.qty || 0));
+    if (take <= 0) return;
+    picked.push({ lote: row?.lote || '', stock: Number(row?.qty || 0) });
+    remaining -= take;
+  });
+  if (picked.length === 0) {
+    return {
+      loteHtml: '<span style="font-size:18px; font-weight:700; color:#dc2626">-</span>',
+      stockHtml: '<span style="font-size:18px; font-weight:700; color:#111827">-</span>'
+    };
+  }
+  return {
+    loteHtml: `<div style="display:flex;flex-direction:column;gap:6px;font-size:18px;font-weight:700;color:#dc2626">` +
+      picked.map(row => `<div>${row.lote ? formatFinishedLote(row.lote) : '无Lote'}</div>`).join('') + `</div>`,
+    stockHtml: `<div style="display:flex;flex-direction:column;gap:6px;font-size:18px;font-weight:700;color:#111827">` +
+      picked.map(row => `<div>${row.stock}</div>`).join('') + `</div>`
+  };
+}
+async function openOrderPreview(id) {
   const o = currentDailyOrders.find(x => x.id === id);
   if (!o) return;
   const m = document.getElementById('do-preview-modal');
   const content = document.getElementById('do-preview-content');
   if (m && content) {
     const items = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+    let products = [];
+    try {
+      const itemNames = items.map(i => i.name).filter(Boolean);
+      const itemIds = items.map(i => i.productId).filter(Boolean);
+      if (itemNames.length > 0 || itemIds.length > 0) {
+        const res = await fetchWithAuth('/api/products/batch-stock', {
+          method: 'POST',
+          body: JSON.stringify({ names: itemNames, ids: itemIds })
+        });
+        if (res.ok) products = await res.json();
+      }
+    } catch (e) {
+      console.warn('load preview lote failed', e);
+    }
     content.innerHTML = `
       <div style="font-family: Arial, sans-serif; color:#000; padding:20px">
         <h2 style="text-align:center; margin-bottom:20px">订单详情</h2>
@@ -8093,21 +8955,29 @@ function openOrderPreview(id) {
           <thead>
             <tr style="background:#f3f4f6">
               <th style="border:1px solid #ddd; padding:8px; text-align:left">商品</th>
-              <th style="border:1px solid #ddd; padding:8px; text-align:left">中文名</th>
-              <th style="border:1px solid #ddd; padding:8px; text-align:right">数量</th>
+              <th style="border:1px solid #ddd; padding:8px; text-align:left">中文名称</th>
+              <th style="border:1px solid #ddd; padding:8px; text-align:center; font-size:22px; color:#dc2626">Lote</th>
+              <th style="border:1px solid #ddd; padding:8px; text-align:center">商品库存</th>
+              <th style="border:1px solid #ddd; padding:8px; text-align:right">下单数量</th>
             </tr>
           </thead>
           <tbody>
-            ${items.map(i => `
+            ${items.map(i => {
+              const product = products.find(p => p.id == i.productId || p.name === i.name);
+              const allocationDisplay = buildOrderPreviewAllocationDisplay(i, product);
+              return `
               <tr>
                 <td style="border:1px solid #ddd; padding:8px">
                   ${i.image ? `<img src="${i.image}" style="width:32px;height:32px;object-fit:cover;margin-right:8px;vertical-align:middle">` : ''}
                   ${i.name}
                 </td>
                 <td style="border:1px solid #ddd; padding:8px">${i.cn_name || ''}</td>
+                <td style="border:1px solid #ddd; padding:8px; text-align:center">${allocationDisplay.loteHtml}</td>
+                <td style="border:1px solid #ddd; padding:8px; text-align:center">${allocationDisplay.stockHtml}</td>
                 <td style="border:1px solid #ddd; padding:8px; text-align:right">${i.qty}</td>
               </tr>
-            `).join('')}
+            `;
+            }).join('')}
           </tbody>
         </table>
         <div style="margin-top:40px; display:flex; justify-content:space-between">
@@ -8149,10 +9019,39 @@ function printOrderPreview() {
 }
 
 // Daily Orders
-let currentDailyOrders = [];
-let dailyOrdersAbortController = null;
+var currentDailyOrders = [];
+var dailyOrdersAbortController = null;
+var dailyOrdersAllocatedCount = 0;
+
+function updateDailyOrdersAllocatedBadge(count) {
+  const badge = document.getElementById('tab-order-alloc-badge');
+  if (!badge) return;
+  const total = Number(count || 0) || 0;
+  dailyOrdersAllocatedCount = total;
+  badge.textContent = String(total);
+  badge.style.display = total > 0 ? 'inline-block' : 'none';
+}
+
+async function refreshDailyOrdersAllocatedBadge() {
+  let total = dailyOrdersAllocatedCount;
+  try {
+    const res = await fetchWithAuth(`/api/daily-orders?status=allocated&_t=${Date.now()}`);
+    if (res.ok) {
+      const list = await res.json().catch(() => []);
+      total = Array.isArray(list) ? list.length : 0;
+    } else {
+      updateDailyOrdersAllocatedBadge(total);
+      return;
+    }
+  } catch {
+    updateDailyOrdersAllocatedBadge(total);
+    return;
+  }
+  updateDailyOrdersAllocatedBadge(total);
+}
 
 async function loadDailyOrders(status = 'new', btn = null) {
+  refreshDailyOrdersAllocatedBadge();
   // Update tabs style
   if (btn) {
     // Find parent .tabs container
@@ -8189,6 +9088,14 @@ async function loadDailyOrders(status = 'new', btn = null) {
     });
     if (!res.ok) return;
     list = await res.json();
+    if (status === 'shipped' && Array.isArray(list)) {
+      list.sort((a, b) => {
+        const at = Number(a?.logistics_updated_at || a?.shipped_at || 0) || 0;
+        const bt = Number(b?.logistics_updated_at || b?.shipped_at || 0) || 0;
+        if (bt !== at) return bt - at;
+        return Number(b?.id || 0) - Number(a?.id || 0);
+      });
+    }
     currentDailyOrders = list;
   } catch (err) {
     if (err.name === 'AbortError') return; // Ignore aborted requests
@@ -8210,11 +9117,7 @@ async function loadDailyOrders(status = 'new', btn = null) {
       navBadge.style.display = list.length > 0 ? 'inline-block' : 'none';
     }
   } else if (status === 'allocated') {
-    const badge = document.getElementById('tab-order-alloc-badge');
-    if (badge) {
-      badge.textContent = list.length;
-      badge.style.display = list.length > 0 ? 'inline-block' : 'none';
-    }
+    updateDailyOrdersAllocatedBadge(list.length);
   }
 
   if (!tbody) return;
@@ -8257,6 +9160,1322 @@ async function loadDailyOrders(status = 'new', btn = null) {
       </td>
     </tr>
   `).join('');
+}
+
+var currentLogisticsTab = 'ongoing';
+var logisticsCompanies = [];
+var logisticsCompaniesLoadedAt = 0;
+var logisticsAbortController = null;
+var allPartners = [];
+var allPartnersLoadedAt = 0;
+var partnerSelectTarget = '';
+var currentLogisticsRecords = [];
+var logisticsCompletedTotalCount = 0;
+var logisticsCompletedFilters = { from: '', company: '' };
+var logisticsCompletedFilterMenuKey = '';
+var logisticsReviewedFilters = { from: '', to: '', company: '', updated: '' };
+var logisticsReviewedFilterMenuKey = '';
+var logisticsReviewMode = false;
+var logisticsReviewSelectedIds = new Set();
+
+function loadLocalLogisticsCompanies() {
+  try {
+    const list = JSON.parse(localStorage.getItem('logisticsCompanies') || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+function saveLocalLogisticsCompanies(list) {
+  localStorage.setItem('logisticsCompanies', JSON.stringify(Array.isArray(list) ? list : []));
+}
+function loadLocalLogisticsRecords() {
+  try {
+    const list = JSON.parse(localStorage.getItem('logisticsRecords') || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+function saveLocalLogisticsRecords(list) {
+  localStorage.setItem('logisticsRecords', JSON.stringify(Array.isArray(list) ? list : []));
+}
+
+async function apiLogisticsCompaniesList(force = false) {
+  const now = Date.now();
+  if (!force && logisticsCompaniesLoadedAt && (now - logisticsCompaniesLoadedAt) < 15000 && Array.isArray(logisticsCompanies)) {
+    return logisticsCompanies;
+  }
+  const res = await fetchWithAuth('/api/logistics/companies?_t=' + now);
+  if (!res.ok) {
+    if (res.status === 404) {
+      logisticsCompanies = loadLocalLogisticsCompanies();
+      logisticsCompaniesLoadedAt = now;
+      return logisticsCompanies;
+    }
+    return logisticsCompanies;
+  }
+  const list = await res.json();
+  logisticsCompanies = Array.isArray(list) ? list : [];
+  logisticsCompaniesLoadedAt = now;
+  return logisticsCompanies;
+}
+
+async function apiLogisticsCompanyCreate(payload) {
+  const res = await fetchWithAuth('/api/logistics/companies', {
+    method: 'POST',
+    body: JSON.stringify(payload || {})
+  });
+  if (res.status === 404) {
+    const list = loadLocalLogisticsCompanies();
+    const id = Date.now();
+    const next = [{ id, enabled: true, created_at: Date.now(), created_by: (getAuthUser()?.name || ''), ...payload }, ...list];
+    saveLocalLogisticsCompanies(next);
+    logisticsCompanies = next;
+    logisticsCompaniesLoadedAt = Date.now();
+    return { ok: true, status: 200 };
+  }
+  return res;
+}
+
+async function apiLogisticsCompanySetEnabled(id, enabled) {
+  const res = await fetchWithAuth('/api/logistics/companies/' + String(id || 0), {
+    method: 'PUT',
+    body: JSON.stringify({ enabled: !!enabled })
+  });
+  if (res.status === 404) {
+    const list = loadLocalLogisticsCompanies().map(x => (String(x.id) === String(id) ? { ...x, enabled: !!enabled } : x));
+    saveLocalLogisticsCompanies(list);
+    logisticsCompanies = list;
+    logisticsCompaniesLoadedAt = Date.now();
+    return { ok: true, status: 200 };
+  }
+  return res;
+}
+
+async function loadLogisticsRecords(status) {
+  if (logisticsAbortController) logisticsAbortController.abort();
+  logisticsAbortController = new AbortController();
+  const res = await fetchWithAuth(`/api/logistics/records?status=${encodeURIComponent(status)}&_t=${Date.now()}`, {
+    signal: logisticsAbortController.signal
+  });
+  if (!res.ok) {
+    if (res.status === 404) {
+      const all = loadLocalLogisticsRecords();
+      const filtered = all.filter(x => String(x.status || '') === String(status || 'ongoing'));
+      try {
+        if (status === 'ongoing') {
+          const shippedRes = await fetchWithAuth(`/api/daily-orders?status=shipped&_t=${Date.now()}`);
+          if (shippedRes.ok) {
+            const shippedList = await shippedRes.json().catch(() => []);
+            const map = new Map((Array.isArray(shippedList) ? shippedList : []).map(o => [String(o?.id || ''), String(o?.invoice_no || '').trim()]));
+            let changed = false;
+            filtered.forEach(r => {
+              if (r && (!String(r.invoice_no || '').trim()) && (!String(r.orderNo || '').trim())) {
+                const inv = map.get(String(r.order_id || r.id || '')) || '';
+                if (inv) {
+                  r.orderNo = inv;
+                  changed = true;
+                }
+              }
+            });
+            if (changed) saveLocalLogisticsRecords(all);
+          }
+        }
+      } catch {}
+      return filtered;
+    }
+    return [];
+  }
+  const list = await res.json();
+  const arr = Array.isArray(list) ? list : [];
+  try {
+    if (status === 'ongoing') {
+      const missing = arr.some(r => r && (!String(r.invoice_no || '').trim()) && (!String(r.orderNo || '').trim()) && (r.order_id || r.id));
+      if (missing) {
+        const shippedRes = await fetchWithAuth(`/api/daily-orders?status=shipped&_t=${Date.now()}`);
+        if (shippedRes.ok) {
+          const shippedList = await shippedRes.json().catch(() => []);
+          const map = new Map((Array.isArray(shippedList) ? shippedList : []).map(o => [String(o?.id || ''), String(o?.invoice_no || '').trim()]));
+          arr.forEach(r => {
+            if (r && (!String(r.invoice_no || '').trim()) && (!String(r.orderNo || '').trim())) {
+              const inv = map.get(String(r.order_id || r.id || '')) || '';
+              if (inv) r.orderNo = inv;
+            }
+          });
+        }
+      }
+    }
+  } catch {}
+  try {
+    const localAll = loadLocalLogisticsRecords();
+    if (Array.isArray(localAll) && localAll.length > 0) {
+      const localMap = new Map(localAll.map(x => [String(x?.order_id || x?.id || ''), x]));
+      const want = String(status || 'ongoing');
+      const seen = new Set();
+      const merged = arr.map(r => {
+        const key = String(r?.id || r?.order_id || '');
+        if (key) seen.add(key);
+        const local = localMap.get(key);
+        if (!local) return r;
+        const localStatus = String(local?.status || '').trim();
+        if (localStatus && localStatus !== want) return null;
+        return {
+          ...r,
+          orderNo: String(local?.orderNo || '').trim() ? String(local.orderNo).trim() : r.orderNo,
+          shipped_by: String(local?.shipped_by || local?.created_by || '').trim() ? (local.shipped_by || local.created_by) : r.shipped_by,
+          logistics_from: String(local?.logistics_from || local?.from || '').trim() ? (local.logistics_from || local.from) : r.logistics_from,
+          logistics_to: String(local?.logistics_to || local?.to || '').trim() ? (local.logistics_to || local.to) : r.logistics_to,
+          logistics_ship_date: String(local?.logistics_ship_date || local?.ship_date || local?.shipDate || '').trim() ? (local.logistics_ship_date || local.ship_date || local.shipDate) : r.logistics_ship_date,
+          logistics_pallet_count: String(local?.logistics_pallet_count || local?.pallet_count || local?.palletCount || '').trim()
+            ? (local.logistics_pallet_count || local.pallet_count || local.palletCount)
+            : r.logistics_pallet_count,
+          logistics_box_count: String(local?.logistics_box_count || local?.box_count || local?.boxCount || '').trim()
+            ? (local.logistics_box_count || local.box_count || local.boxCount)
+            : r.logistics_box_count,
+          logistics_total_weight: String(local?.logistics_total_weight || local?.total_weight || local?.totalWeight || '').trim()
+            ? (local.logistics_total_weight || local.total_weight || local.totalWeight)
+            : r.logistics_total_weight,
+          logistics_arrival_date: String(local?.logistics_arrival_date || local?.arrival_date || local?.arrivalDate || '').trim()
+            ? (local.logistics_arrival_date || local.arrival_date || local.arrivalDate)
+            : r.logistics_arrival_date,
+          logistics_completed_by: String(local?.logistics_completed_by || local?.completed_by || '').trim()
+            ? (local.logistics_completed_by || local.completed_by)
+            : r.logistics_completed_by,
+          logistics_reviewed_by: String(local?.logistics_reviewed_by || local?.reviewed_by || '').trim()
+            ? (local.logistics_reviewed_by || local.reviewed_by)
+            : r.logistics_reviewed_by,
+          logistics_updated_at: Number(local?.updatedAt || 0) || r.logistics_updated_at
+        };
+      }).filter(Boolean);
+      const extras = localAll.filter(x => String(x?.status || '') === want).filter(x => {
+        const key = String(x?.order_id || x?.id || '');
+        return key && !seen.has(key);
+      }).map(x => ({
+        id: Number(x?.order_id || x?.id || 0) || 0,
+        customer: x?.customer || '',
+        notes: x?.notes || '',
+        logistics_status: want,
+        logistics_updated_at: Number(x?.updatedAt || 0) || Date.now(),
+        logistics_company: x?.company || '',
+        logistics_from: x?.logistics_from || x?.from || '',
+        logistics_to: x?.logistics_to || x?.to || '',
+        logistics_ship_date: x?.logistics_ship_date || x?.ship_date || x?.shipDate || '',
+        logistics_pallet_count: x?.logistics_pallet_count || x?.pallet_count || x?.palletCount || '',
+        logistics_box_count: x?.logistics_box_count || x?.box_count || x?.boxCount || '',
+        logistics_total_weight: x?.logistics_total_weight || x?.total_weight || x?.totalWeight || '',
+        logistics_arrival_date: x?.logistics_arrival_date || x?.arrival_date || x?.arrivalDate || '',
+        logistics_completed_by: x?.logistics_completed_by || x?.completed_by || '',
+        logistics_reviewed_by: x?.logistics_reviewed_by || x?.reviewed_by || '',
+        shipped_by: x?.shipped_by || x?.created_by || '',
+        invoice_no: x?.orderNo || '',
+        orderNo: x?.orderNo || '',
+        shipped_at: Number(x?.shippedAt || 0) || 0
+      }));
+      return [...extras, ...merged];
+    }
+  } catch {}
+  return arr;
+}
+
+async function loadLogisticsCompanies() {
+  const panel = document.getElementById('logistics-company-panel');
+  const tbody = document.getElementById('logistics-company-rows');
+  if (!panel || !tbody) return;
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8">加载中...</td></tr>';
+  let list = [];
+  try {
+    list = await apiLogisticsCompaniesList(true);
+  } catch {}
+  if (!Array.isArray(list) || list.length === 0) {
+    tbody.innerHTML = '<tr class="empty"><td colspan="6">暂无物流公司</td></tr>';
+    return;
+  }
+  const role = getUserRoleName(getAuthUser()?.name || '');
+  const canEdit = role === '超级管理员';
+  tbody.innerHTML = list.map((c, idx) => {
+    const enabled = c.enabled === true;
+    const statusTag = enabled ? `<span class="tag green">启用</span>` : `<span class="tag gray">禁用</span>`;
+    const action = canEdit
+      ? (enabled
+          ? `<button class="btn-sm btn-red" onclick="toggleLogisticsCompany(${c.id}, false)">禁用</button>`
+          : `<button class="btn-sm" onclick="toggleLogisticsCompany(${c.id}, true)">启用</button>`)
+      : `<span style="color:#64748b">-</span>`;
+    return `
+      <tr>
+        <td>${list.length - idx}</td>
+        <td>${escapeHtml(String(c.name || ''))}</td>
+        <td>${escapeHtml(String(c.contact || ''))}</td>
+        <td>${escapeHtml(String(c.phone || ''))}</td>
+        <td>${statusTag}</td>
+        <td>${action}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function toggleLogisticsCompany(id, enabled) {
+  const res = await apiLogisticsCompanySetEnabled(id, enabled);
+  if (!res.ok) {
+    if (res.status === 403) alert('没有权限执行此操作');
+    else alert('操作失败');
+    return;
+  }
+  await apiLogisticsCompaniesList(true);
+  loadLogistics('companies');
+}
+
+function updateLogisticsReviewButton() {
+  const btn = document.getElementById('logistics-review-btn');
+  if (!btn) return;
+  const selectedCount = logisticsReviewSelectedIds.size;
+  const isConfirm = logisticsReviewMode && selectedCount > 0;
+  btn.style.display = currentLogisticsTab === 'completed' ? 'inline-flex' : 'none';
+  btn.innerHTML = isConfirm
+    ? `已选中 <span style="font-size:18px; color:#f97316; font-weight:700; line-height:1">${selectedCount}</span> 确认审核`
+    : '审核物流';
+  btn.style.background = isConfirm ? '#2563eb' : '#f97316';
+  btn.style.borderColor = isConfirm ? '#2563eb' : '#ea580c';
+  btn.style.color = '#fff';
+}
+
+function updateLogisticsCompletedTabCount(count) {
+  const el = document.getElementById('tab-logistics-completed-count');
+  const total = Number(count || 0) || 0;
+  logisticsCompletedTotalCount = total;
+  if (el) {
+    el.style.display = 'inline';
+    el.textContent = String(total);
+  }
+  const navBadge = document.getElementById('nav-logistics-completed-badge');
+  if (navBadge) {
+    navBadge.textContent = String(total);
+    navBadge.style.display = total > 0 ? 'inline-block' : 'none';
+  }
+}
+
+function updateLogisticsOngoingBadgeCount(count) {
+  const total = Number(count || 0) || 0;
+  const navBadge = document.getElementById('nav-logistics-badge');
+  if (navBadge) {
+    navBadge.textContent = String(total);
+    navBadge.style.display = total > 0 ? 'inline-block' : 'none';
+  }
+  const tabBadge = document.getElementById('tab-logistics-ongoing-badge');
+  if (tabBadge) {
+    tabBadge.textContent = String(total);
+    tabBadge.style.display = total > 0 ? 'inline-block' : 'none';
+  }
+}
+
+async function refreshLogisticsCompletedTabCount() {
+  const want = 'completed';
+  let remoteList = [];
+  try {
+    const res = await fetchWithAuth(`/api/logistics/records?status=${encodeURIComponent(want)}&_t=${Date.now()}`);
+    if (res.ok) {
+      const list = await res.json().catch(() => []);
+      remoteList = Array.isArray(list) ? list : [];
+    } else if (res.status === 404) {
+      remoteList = [];
+    } else {
+      updateLogisticsCompletedTabCount(logisticsCompletedTotalCount);
+      return;
+    }
+  } catch {
+    updateLogisticsCompletedTabCount(logisticsCompletedTotalCount);
+    return;
+  }
+  try {
+    const localAll = loadLocalLogisticsRecords();
+    if (Array.isArray(localAll) && localAll.length > 0) {
+      const localMap = new Map(localAll.map(x => [String(x?.order_id || x?.id || ''), x]));
+      const seen = new Set();
+      let total = 0;
+      remoteList.forEach(r => {
+        const key = String(r?.id || r?.order_id || '');
+        if (key) seen.add(key);
+        const local = localMap.get(key);
+        const localStatus = String(local?.status || '').trim();
+        if (localStatus && localStatus !== want) return;
+        total += 1;
+      });
+      localAll.forEach(x => {
+        const key = String(x?.order_id || x?.id || '');
+        if (!key || seen.has(key)) return;
+        if (String(x?.status || '').trim() !== want) return;
+        total += 1;
+      });
+      updateLogisticsCompletedTabCount(total);
+      return;
+    }
+  } catch {}
+  updateLogisticsCompletedTabCount(remoteList.length);
+}
+
+function getLogisticsCompletedFilterValue(item, key) {
+  if (key === 'from') return String(item?.logistics_from || item?.from || '').trim();
+  if (key === 'company') return String(item?.logistics_company || item?.company || '').trim();
+  return '';
+}
+
+function getLogisticsCompletedFilterOptions(sourceList, key) {
+  return Array.from(new Set((Array.isArray(sourceList) ? sourceList : []).map(item => getLogisticsCompletedFilterValue(item, key)).filter(Boolean)))
+    .sort((a, b) => String(a).localeCompare(String(b), 'zh-Hans-CN'));
+}
+
+function renderLogisticsCompletedFilterHeader(label, key, sourceList) {
+  const menuId = `logistics-completed-filter-menu-${key}`;
+  const arrowId = `logistics-completed-filter-arrow-${key}`;
+  const wrapId = `logistics-completed-filter-wrap-${key}`;
+  const options = getLogisticsCompletedFilterOptions(sourceList, key);
+  const currentValue = String(logisticsCompletedFilters?.[key] || '').trim();
+  const isOpen = logisticsCompletedFilterMenuKey === key;
+  const allLabel = key === 'company' ? '全部物流公司' : '全部发出地';
+  return `
+    <div id="${wrapId}" class="logistics-completed-filter-wrap" style="position:relative; display:inline-flex; align-items:center; gap:6px; cursor:pointer; user-select:none" onclick="toggleLogisticsCompletedFilterMenu('${key}')">
+      <span>${label}</span>
+      <span id="${arrowId}" style="font-size:12px; color:#94a3b8">${isOpen ? '▼' : '▾'}</span>
+      <div id="${menuId}" class="dropdown" style="display:${isOpen ? 'block' : 'none'}; left:0; right:auto; top:calc(100% + 8px); min-width:180px; max-width:260px; z-index:80" onclick="event.stopPropagation()">
+        <div class="dd-list" style="max-height:260px">
+          <div class="dd-item" onclick="setLogisticsCompletedFilter('${key}', '')" style="${!currentValue ? 'background:#132033; color:#fff' : ''}">${allLabel}</div>
+          ${options.map(value => `<div class="dd-item" onclick="setLogisticsCompletedFilter('${key}', '${encodeURIComponent(value)}')" style="${String(value) === currentValue ? 'background:#132033; color:#fff' : ''}">${escapeHtml(value)}</div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+function syncLogisticsCompletedFilterMenusUI() {
+  ['from', 'company'].forEach(key => {
+    const menu = document.getElementById(`logistics-completed-filter-menu-${key}`);
+    const arrow = document.getElementById(`logistics-completed-filter-arrow-${key}`);
+    const isOpen = logisticsCompletedFilterMenuKey === key;
+    if (menu) menu.style.display = isOpen ? 'block' : 'none';
+    if (arrow) arrow.textContent = isOpen ? '▼' : '▾';
+  });
+}
+
+function toggleLogisticsCompletedFilterMenu(key) {
+  if (currentLogisticsTab !== 'completed') return;
+  logisticsCompletedFilterMenuKey = logisticsCompletedFilterMenuKey === key ? '' : key;
+  syncLogisticsCompletedFilterMenusUI();
+}
+
+function setLogisticsCompletedFilter(key, encodedValue) {
+  logisticsCompletedFilters[key] = decodeURIComponent(String(encodedValue || ''));
+  logisticsCompletedFilterMenuKey = '';
+  renderLogisticsTable(currentLogisticsRecords);
+}
+
+function closeLogisticsCompletedFilterMenus() {
+  if (!logisticsCompletedFilterMenuKey) return;
+  logisticsCompletedFilterMenuKey = '';
+  syncLogisticsCompletedFilterMenusUI();
+}
+
+function getLogisticsReviewedFilterValue(item, key) {
+  if (key === 'from') return String(item?.logistics_from || item?.from || '').trim();
+  if (key === 'to') return String(item?.logistics_to || item?.to || '').trim();
+  if (key === 'company') return String(item?.logistics_company || item?.company || '').trim();
+  if (key === 'updated') return String(Number(item?.logistics_updated_at || 0) || Number(item?.updatedAt || 0) || Number(item?.shipped_at || 0) || 0);
+  return '';
+}
+
+function formatLogisticsReviewedUpdatedLabel(value) {
+  const ts = Number(value || 0) || 0;
+  return ts ? new Date(ts).toLocaleString() : '-';
+}
+
+function getLogisticsReviewedFilterOptions(sourceList, key) {
+  const values = Array.from(new Set((Array.isArray(sourceList) ? sourceList : []).map(item => getLogisticsReviewedFilterValue(item, key)).filter(Boolean)));
+  if (key === 'updated') return values.sort((a, b) => Number(b) - Number(a));
+  return values.sort((a, b) => String(a).localeCompare(String(b), 'zh-Hans-CN'));
+}
+
+function renderLogisticsReviewedFilterHeader(label, key, sourceList) {
+  const menuId = `logistics-reviewed-filter-menu-${key}`;
+  const arrowId = `logistics-reviewed-filter-arrow-${key}`;
+  const wrapId = `logistics-reviewed-filter-wrap-${key}`;
+  const options = getLogisticsReviewedFilterOptions(sourceList, key);
+  const currentValue = String(logisticsReviewedFilters?.[key] || '').trim();
+  const isOpen = logisticsReviewedFilterMenuKey === key;
+  return `
+    <div id="${wrapId}" class="logistics-reviewed-filter-wrap" style="position:relative; display:inline-flex; align-items:center; gap:6px; cursor:pointer; user-select:none" onclick="toggleLogisticsReviewedFilterMenu('${key}')">
+      <span>${label}</span>
+      <span id="${arrowId}" style="font-size:12px; color:#94a3b8">${isOpen ? '▼' : '▾'}</span>
+      <div id="${menuId}" class="dropdown" style="display:${isOpen ? 'block' : 'none'}; left:0; right:auto; top:calc(100% + 8px); min-width:180px; max-width:260px; z-index:40" onclick="event.stopPropagation()">
+        <div class="dd-list" style="max-height:260px">
+          <div class="dd-item" onclick="setLogisticsReviewedFilter('${key}', '')" style="${!currentValue ? 'background:#132033; color:#fff' : ''}">全部</div>
+          ${options.map(value => `<div class="dd-item" onclick="setLogisticsReviewedFilter('${key}', '${encodeURIComponent(value)}')" style="${String(value) === currentValue ? 'background:#132033; color:#fff' : ''}">${escapeHtml(key === 'updated' ? formatLogisticsReviewedUpdatedLabel(value) : value)}</div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+function syncLogisticsReviewedFilterMenusUI() {
+  ['from', 'to', 'company', 'updated'].forEach(key => {
+    const menu = document.getElementById(`logistics-reviewed-filter-menu-${key}`);
+    const arrow = document.getElementById(`logistics-reviewed-filter-arrow-${key}`);
+    const isOpen = logisticsReviewedFilterMenuKey === key;
+    if (menu) menu.style.display = isOpen ? 'block' : 'none';
+    if (arrow) arrow.textContent = isOpen ? '▼' : '▾';
+  });
+}
+
+function toggleLogisticsReviewedFilterMenu(key) {
+  if (currentLogisticsTab !== 'reviewed') return;
+  logisticsReviewedFilterMenuKey = logisticsReviewedFilterMenuKey === key ? '' : key;
+  syncLogisticsReviewedFilterMenusUI();
+}
+
+function setLogisticsReviewedFilter(key, encodedValue) {
+  logisticsReviewedFilters[key] = decodeURIComponent(String(encodedValue || ''));
+  logisticsReviewedFilterMenuKey = '';
+  renderLogisticsTable(currentLogisticsRecords);
+}
+
+function closeLogisticsReviewedFilterMenus() {
+  if (!logisticsReviewedFilterMenuKey) return;
+  logisticsReviewedFilterMenuKey = '';
+  syncLogisticsReviewedFilterMenusUI();
+}
+
+function renderLogisticsTable(rawList) {
+  const tbody = document.getElementById('logistics-rows');
+  if (!tbody) return;
+  const sourceList = Array.isArray(rawList) ? rawList : [];
+  const companyHead = document.getElementById('logistics-company-head');
+  const fromHead = document.getElementById('logistics-from-head');
+  const toHead = document.getElementById('logistics-to-head');
+  const updatedHead = document.getElementById('logistics-updated-head');
+  const personHead = document.getElementById('logistics-person-head');
+  const actionHead = document.getElementById('logistics-action-head');
+  const cargoHead = document.getElementById('logistics-cargo-head');
+  if (fromHead) {
+    fromHead.innerHTML = currentLogisticsTab === 'completed'
+      ? renderLogisticsCompletedFilterHeader('发出地', 'from', sourceList)
+      : (currentLogisticsTab === 'reviewed'
+          ? renderLogisticsReviewedFilterHeader('发出地', 'from', sourceList)
+          : '发出地');
+  }
+  if (toHead) {
+    toHead.innerHTML = currentLogisticsTab === 'reviewed'
+      ? renderLogisticsReviewedFilterHeader('目的地', 'to', sourceList)
+      : '目的地';
+  }
+  if (updatedHead) {
+    updatedHead.innerHTML = currentLogisticsTab === 'reviewed'
+      ? renderLogisticsReviewedFilterHeader('更新时间', 'updated', sourceList)
+      : '更新时间';
+  }
+  if (cargoHead) cargoHead.textContent = '货物信息';
+  if (personHead) personHead.textContent = currentLogisticsTab === 'ongoing' ? '操作人员' : '人员';
+  if (actionHead) actionHead.textContent = '操作';
+  if (companyHead) {
+    if (currentLogisticsTab === 'completed') {
+      companyHead.innerHTML = renderLogisticsCompletedFilterHeader('物流公司', 'company', sourceList);
+    } else if (currentLogisticsTab === 'reviewed') {
+      companyHead.innerHTML = renderLogisticsReviewedFilterHeader('物流公司', 'company', sourceList);
+    } else {
+      companyHead.textContent = '物流公司';
+    }
+  }
+  let list = sourceList;
+  if (currentLogisticsTab === 'completed') {
+    list = sourceList.filter(x => {
+      if (logisticsCompletedFilters.from && getLogisticsCompletedFilterValue(x, 'from') !== logisticsCompletedFilters.from) return false;
+      if (logisticsCompletedFilters.company && getLogisticsCompletedFilterValue(x, 'company') !== logisticsCompletedFilters.company) return false;
+      return true;
+    });
+  }
+  if (currentLogisticsTab === 'reviewed') {
+    list = sourceList.filter(x => {
+      if (logisticsReviewedFilters.from && getLogisticsReviewedFilterValue(x, 'from') !== logisticsReviewedFilters.from) return false;
+      if (logisticsReviewedFilters.to && getLogisticsReviewedFilterValue(x, 'to') !== logisticsReviewedFilters.to) return false;
+      if (logisticsReviewedFilters.company && getLogisticsReviewedFilterValue(x, 'company') !== logisticsReviewedFilters.company) return false;
+      if (logisticsReviewedFilters.updated && getLogisticsReviewedFilterValue(x, 'updated') !== logisticsReviewedFilters.updated) return false;
+      return true;
+    });
+  }
+  if (!Array.isArray(list) || list.length === 0) {
+    tbody.innerHTML = '<tr class="empty"><td colspan="9">暂无物流记录</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map((x, idx) => {
+    const rowId = Number(x.order_id || x.id || 0);
+    const rowSelected = currentLogisticsTab === 'completed' && logisticsReviewMode && logisticsReviewSelectedIds.has(String(rowId));
+    const rowTextColor = rowSelected ? '#f97316' : '#e2e8f0';
+    const rowSubTextColor = rowSelected ? '#fb923c' : '#94a3b8';
+    const updatedAt = Number(x.logistics_updated_at || 0) || Number(x.shipped_at || 0) || Number(x.updatedAt || 0) || 0;
+    const updatedText = updatedAt ? new Date(updatedAt).toLocaleString() : '-';
+    const orderNo = String(x.invoice_no || x.orderNo || (rowId ? `物流单-${String(rowId).padStart(6, '0')}` : '-'));
+    const fromText = String(x.logistics_from || x.from || '-');
+    const toText = String(x.logistics_to || x.to || '-');
+    const companyName = String(x.logistics_company || x.company || '-');
+    let shipDateText = String(x.logistics_ship_date || x.ship_date || x.shipDate || '').trim();
+    if (!shipDateText) {
+      const st = Number(x.shipped_at || x.shippedAt || 0) || 0;
+      if (st) shipDateText = new Date(st).toISOString().slice(0, 10);
+    }
+    if (shipDateText && shipDateText.length > 10) shipDateText = shipDateText.slice(0, 10);
+    let arrivalDateText = String(x.logistics_arrival_date || x.arrival_date || x.arrivalDate || '').trim();
+    if (arrivalDateText && arrivalDateText.length > 10) arrivalDateText = arrivalDateText.slice(0, 10);
+    const palletText = String(x.logistics_pallet_count || x.pallet_count || x.palletCount || '').trim();
+    const boxText = String(x.logistics_box_count || x.box_count || x.boxCount || '').trim();
+    const weightText = String(x.logistics_total_weight || x.total_weight || x.totalWeight || '').trim();
+    const timeMeta = [];
+    if (shipDateText) timeMeta.push(`发货日期: ${escapeHtml(shipDateText)}`);
+    if (arrivalDateText) timeMeta.push(`到货日期: ${escapeHtml(arrivalDateText)}`);
+    const updatedCell = timeMeta.length > 0
+      ? `<div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeHtml(updatedText)}</div>${timeMeta.map((text, metaIdx) => `<div style="color:${rowSubTextColor}; font-size:12px; margin-top:${metaIdx === 0 ? 4 : 2}px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${text}</div>`).join('')}`
+      : escapeHtml(updatedText);
+    const cargoCell = [
+      `托盘：${escapeHtml(palletText || '-')}`,
+      `总箱数：${escapeHtml(boxText || '-')}`,
+      `总重量kg：${escapeHtml(weightText || '-')}`
+    ].map((text, cargoIdx) => `<div style="color:${cargoIdx === 0 ? rowTextColor : rowSubTextColor}; font-size:${cargoIdx === 0 ? 13 : 12}px; margin-top:${cargoIdx === 0 ? 0 : 2}px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${text}</div>`).join('');
+    const shippedByText = String(x.shipped_by || x.created_by || '-');
+    const completedByText = String(x.logistics_completed_by || x.completed_by || x.shipped_by || '-');
+    const reviewedByText = String(x.logistics_reviewed_by || x.reviewed_by || '-');
+    const personCell = currentLogisticsTab === 'ongoing'
+      ? `${escapeHtml(shippedByText)}`
+      : (currentLogisticsTab === 'completed'
+          ? `<div style="height:21px"></div><div style="color:${rowSubTextColor}; font-size:12px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">发货人员：${escapeHtml(shippedByText)}</div><div style="color:${rowSubTextColor}; font-size:12px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">到货人员：${escapeHtml(completedByText)}</div>`
+          : (currentLogisticsTab === 'reviewed'
+              ? `<div style="height:21px"></div><div style="color:${rowSubTextColor}; font-size:12px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">发货人员：${escapeHtml(shippedByText)}</div><div style="color:${rowSubTextColor}; font-size:12px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">到货人员：${escapeHtml(completedByText)}</div><div style="color:${rowSubTextColor}; font-size:12px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">审核人员：${escapeHtml(reviewedByText)}</div>`
+              : '<span style="color:#64748b">-</span>'));
+    const actionCell = currentLogisticsTab === 'ongoing'
+      ? `<div class="logistics-action-cell"><button class="btn-sm btn-outline-blue" onclick="openLogisticsEditModal(${rowId})">编辑</button><button class="btn-sm btn-outline-green" onclick="openLogisticsCompleteModal(${rowId})">设为已签收</button></div>`
+      : (currentLogisticsTab === 'completed'
+          ? (logisticsReviewMode
+              ? `<label style="display:flex; justify-content:center"><input type="checkbox" ${logisticsReviewSelectedIds.has(String(rowId)) ? 'checked' : ''} onchange="toggleLogisticsReviewSelection(${rowId}, this.checked)"></label>`
+              : '<span style="color:#64748b">-</span>')
+          : escapeHtml(String(x.notes || '')));
+    return `
+      <tr style="color:${rowTextColor}">
+        <td style="color:${rowTextColor}">${list.length - idx}</td>
+        <td style="color:${rowTextColor}"><div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeHtml(orderNo)}</div><div style="color:${rowSubTextColor}; font-size:12px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeHtml(String(x.customer || '-'))}</div></td>
+        <td style="color:${rowTextColor}"><div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeHtml(fromText)}</div></td>
+        <td style="color:${rowTextColor}"><div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeHtml(toText)}</div></td>
+        <td style="color:${rowTextColor}"><div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeHtml(companyName)}</div></td>
+        <td style="color:${rowTextColor}">${cargoCell}</td>
+        <td style="color:${rowTextColor}">${updatedCell}</td>
+        <td style="color:${rowTextColor}">${personCell}</td>
+        <td>${actionCell}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function toggleLogisticsReviewSelection(id, checked) {
+  const key = String(id || '').trim();
+  if (!key) return;
+  if (checked) logisticsReviewSelectedIds.add(key);
+  else logisticsReviewSelectedIds.delete(key);
+  updateLogisticsReviewButton();
+  renderLogisticsTable(currentLogisticsRecords);
+}
+
+async function handleLogisticsReviewAction() {
+  if (currentLogisticsTab !== 'completed') return;
+  if (!logisticsReviewMode) {
+    logisticsReviewMode = true;
+    logisticsReviewSelectedIds.clear();
+    updateLogisticsReviewButton();
+    loadLogistics('completed');
+    return;
+  }
+  if (logisticsReviewSelectedIds.size === 0) {
+    alert('请先勾选要审核的物流');
+    return;
+  }
+  const ids = Array.from(logisticsReviewSelectedIds).map(x => Number(x)).filter(Boolean);
+  if (ids.length === 0) return;
+  const btn = document.getElementById('logistics-review-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetchWithAuth('/api/logistics/records/review', {
+      method: 'PUT',
+      body: JSON.stringify({ ids })
+    });
+    const userName = String(getAuthUser()?.name || '');
+    const now = Date.now();
+    if (!res.ok && res.status !== 404) {
+      alert('审核失败');
+      return;
+    }
+    const all = loadLocalLogisticsRecords();
+    const next = (Array.isArray(all) ? all : []).map(x => {
+      const key = String(x?.order_id || x?.id || '');
+      if (ids.some(id => String(id) === key)) {
+        return { ...x, status: 'reviewed', logistics_status: 'reviewed', logistics_reviewed_by: userName, reviewed_by: userName, updatedAt: now };
+      }
+      return x;
+    });
+    saveLocalLogisticsRecords(next);
+    logisticsReviewMode = false;
+    logisticsReviewSelectedIds.clear();
+    updateLogisticsReviewButton();
+    loadLogistics('completed');
+    updateGlobalBadges();
+  } catch (e) {
+    console.error(e);
+    alert('审核失败：后端不可用或网络异常');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function loadLogistics(status = 'ongoing', btn = null) {
+  currentLogisticsTab = status || 'ongoing';
+  refreshLogisticsCompletedTabCount();
+  if (currentLogisticsTab !== 'completed') {
+    logisticsCompletedFilterMenuKey = '';
+    logisticsReviewMode = false;
+    logisticsReviewSelectedIds.clear();
+  }
+  if (currentLogisticsTab !== 'reviewed') {
+    logisticsReviewedFilterMenuKey = '';
+  }
+  updateLogisticsReviewButton();
+  const createOrderBtn = document.getElementById('logistics-create-order-btn');
+  const companyAddBtn = document.getElementById('logistics-company-add-btn');
+  if (createOrderBtn) createOrderBtn.style.display = currentLogisticsTab === 'ongoing' ? 'inline-flex' : 'none';
+  if (companyAddBtn) companyAddBtn.style.display = currentLogisticsTab === 'companies' ? 'inline-flex' : 'none';
+  if (btn) {
+    const tabs = btn.closest('.tabs');
+    if (tabs) {
+      tabs.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+  } else {
+    const tabs = document.querySelector('#page-logistics .tabs');
+    if (tabs) {
+      tabs.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+      const target = tabs.querySelector(`[data-tab="${currentLogisticsTab}"]`);
+      if (target) target.classList.add('active');
+    }
+  }
+
+  const recordPanel = document.getElementById('logistics-record-panel');
+  const companyPanel = document.getElementById('logistics-company-panel');
+  const pager = document.getElementById('logistics-pager');
+  if (currentLogisticsTab === 'companies') {
+    if (recordPanel) recordPanel.style.display = 'none';
+    if (pager) pager.style.display = 'none';
+    if (companyPanel) companyPanel.style.display = 'block';
+    loadLogisticsCompanies();
+    return;
+  }
+
+  if (recordPanel) recordPanel.style.display = 'block';
+  if (pager) pager.style.display = 'flex';
+  if (companyPanel) companyPanel.style.display = 'none';
+
+  const tbody = document.getElementById('logistics-rows');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8">加载中...</td></tr>';
+  (async () => {
+    let list = [];
+    try {
+      list = await loadLogisticsRecords(currentLogisticsTab);
+    } catch (e) {
+      if (e?.name === 'AbortError') return;
+    }
+    currentLogisticsRecords = Array.isArray(list) ? list : [];
+    renderLogisticsTable(currentLogisticsRecords);
+  })();
+}
+
+document.addEventListener('click', e => {
+  const target = e.target;
+  if (target && typeof target.closest === 'function') {
+    if (currentLogisticsTab === 'completed' && target.closest('.logistics-completed-filter-wrap')) return;
+    if (currentLogisticsTab === 'reviewed' && target.closest('.logistics-reviewed-filter-wrap')) return;
+  }
+  if (currentLogisticsTab === 'completed') closeLogisticsCompletedFilterMenus();
+  if (currentLogisticsTab === 'reviewed') closeLogisticsReviewedFilterMenus();
+});
+
+function openLogisticsCompanyModal() {
+  const m = document.getElementById('logistics-company-modal');
+  if (!m) return;
+  const msg = document.getElementById('lgc-msg');
+  if (msg) msg.style.display = 'none';
+  const name = document.getElementById('lgc-name');
+  const phone = document.getElementById('lgc-phone');
+  const contact = document.getElementById('lgc-contact');
+  if (name) name.value = '';
+  if (phone) phone.value = '';
+  if (contact) contact.value = '';
+  m.style.display = 'flex';
+  if (name) name.focus();
+}
+
+function openLogisticsCompleteModal(orderId) {
+  const id = Number(orderId || 0);
+  if (!id) return;
+  const m = document.getElementById('logistics-complete-modal');
+  const idEl = document.getElementById('logistics-complete-order-id');
+  const dateEl = document.getElementById('logistics-complete-date');
+  const okBtn = document.getElementById('logistics-complete-ok');
+  if (!m || !idEl || !dateEl) return;
+  idEl.value = String(id);
+  dateEl.value = new Date().toISOString().slice(0, 10);
+  if (okBtn) okBtn.disabled = false;
+  m.style.display = 'flex';
+}
+
+function closeLogisticsCompleteModal() {
+  const m = document.getElementById('logistics-complete-modal');
+  if (m) m.style.display = 'none';
+}
+
+async function confirmLogisticsComplete() {
+  const id = Number(document.getElementById('logistics-complete-order-id')?.value || 0);
+  const date = String(document.getElementById('logistics-complete-date')?.value || '').trim();
+  if (!id) return;
+  if (!date) { alert('请选择货物到达日期'); return; }
+  const okBtn = document.getElementById('logistics-complete-ok');
+  if (okBtn) okBtn.disabled = true;
+  try {
+    const res = await fetchWithAuth(`/api/logistics/records/${id}/complete`, {
+      method: 'PUT',
+      body: JSON.stringify({ arrival_date: date })
+    });
+    if (!res.ok && res.status !== 404) {
+      alert('操作失败');
+      return;
+    }
+    const all = loadLocalLogisticsRecords();
+    const userName = String(getAuthUser()?.name || '');
+    const now = Date.now();
+    const next = (Array.isArray(all) ? all : []).map(x => {
+      if (String(x?.order_id || x?.id || '') === String(id)) {
+        return {
+          ...x,
+          status: 'completed',
+          logistics_status: 'completed',
+          logistics_arrival_date: date,
+          arrival_date: date,
+          logistics_completed_by: userName,
+          completed_by: userName,
+          updatedAt: now
+        };
+      }
+      return x;
+    });
+    saveLocalLogisticsRecords(next);
+    closeLogisticsCompleteModal();
+    if (currentLogisticsTab === 'ongoing') loadLogistics('ongoing');
+    updateGlobalBadges();
+  } catch (e) {
+    console.error(e);
+    alert('操作失败：后端不可用或网络异常');
+  } finally {
+    if (okBtn) okBtn.disabled = false;
+  }
+}
+
+function closeLogisticsCompanyModal() {
+  const m = document.getElementById('logistics-company-modal');
+  if (m) m.style.display = 'none';
+}
+
+async function submitLogisticsCompany() {
+  const msg = document.getElementById('lgc-msg');
+  const name = String(document.getElementById('lgc-name')?.value || '').trim();
+  const phone = String(document.getElementById('lgc-phone')?.value || '').trim();
+  const contact = String(document.getElementById('lgc-contact')?.value || '').trim();
+  if (!name) {
+    if (msg) { msg.textContent = '请填写公司名称'; msg.style.display = 'inline-block'; }
+    return;
+  }
+  const res = await apiLogisticsCompanyCreate({ name, phone, contact });
+  if (!res.ok) {
+    let text = '新增失败';
+    if (res.status === 409) text = '公司名称已存在';
+    if (msg) { msg.textContent = text; msg.style.display = 'inline-block'; }
+    return;
+  }
+  closeLogisticsCompanyModal();
+  await apiLogisticsCompaniesList(true);
+  loadLogistics('companies');
+  showToast('新增成功');
+}
+
+async function apiAllPartnersList(force = false) {
+  const now = Date.now();
+  if (!force && allPartnersLoadedAt && (now - allPartnersLoadedAt) < 15000 && Array.isArray(allPartners) && allPartners.length > 0) {
+    return allPartners;
+  }
+  const out = [];
+  const tabs = [
+    { tab: 'customers', owner: '客户' },
+    { tab: 'merchants', owner: '商家' },
+    { tab: 'others', owner: '其它' }
+  ];
+  for (const t of tabs) {
+    try {
+      const r = await fetchWithAuth(`/api/contacts?tab=${encodeURIComponent(t.tab)}&page=1&size=5000&_t=${now}`);
+      if (!r.ok) continue;
+      const list = await r.json().catch(() => []);
+      (Array.isArray(list) ? list : []).forEach(x => {
+        const name = String(x?.name || '').trim();
+        const company = String(x?.company || '').trim();
+        const label = name || company;
+        if (!label) return;
+        out.push({ label, name, company, owner: t.owner });
+      });
+    } catch {}
+  }
+  out.sort((a, b) => String(a.label).localeCompare(String(b.label)));
+  allPartners = out;
+  allPartnersLoadedAt = now;
+  return allPartners;
+}
+
+function closePartnerSelect() {
+  const m = document.getElementById('partner-select-modal');
+  if (m) m.style.display = 'none';
+  partnerSelectTarget = '';
+}
+
+function updateDoShipOkState() {
+  const okBtn = document.getElementById('do-ship-ok');
+  const sel = document.getElementById('do-ship-company');
+  const fromVal = String(document.getElementById('do-ship-from')?.value || '').trim();
+  const toVal = String(document.getElementById('do-ship-to')?.value || '').trim();
+  const shipDate = String(document.getElementById('do-ship-date')?.value || '').trim();
+  const palletCount = String(document.getElementById('do-ship-pallet-count')?.value || '').trim();
+  const boxCount = String(document.getElementById('do-ship-box-count')?.value || '').trim();
+  const totalWeight = String(document.getElementById('do-ship-total-weight')?.value || '').trim();
+  const companyId = String(sel?.value || '').trim();
+  const ok = !!(companyId && fromVal && toVal && shipDate && palletCount && boxCount && totalWeight);
+  if (okBtn) okBtn.disabled = !ok;
+  if (sel) sel.style.color = companyId ? '' : '#94a3b8';
+}
+
+function selectPartnerLabel(label) {
+  const v = String(label || '').trim();
+  const target = partnerSelectTarget;
+  if (!target) return;
+  const input = document.getElementById(target);
+  if (input) input.value = v;
+  updateDoShipOkState();
+  closePartnerSelect();
+}
+
+function renderPartnerSelectList(q = '') {
+  const listEl = document.getElementById('partner-select-list');
+  if (!listEl) return;
+  const kw = String(q || '').trim().toLowerCase();
+  const src = Array.isArray(allPartners) ? allPartners : [];
+  const filtered = kw
+    ? src.filter(x => (String(x.label || '') + ' ' + String(x.company || '') + ' ' + String(x.owner || '')).toLowerCase().includes(kw))
+    : src;
+  const show = filtered.slice(0, 200);
+  listEl.innerHTML = '';
+  if (show.length === 0) {
+    listEl.innerHTML = '<div style="padding:12px; color:#94a3b8">暂无匹配往来单位</div>';
+    return;
+  }
+  show.forEach(x => {
+    const row = document.createElement('div');
+    row.className = 'dd-item';
+    const left = document.createElement('div');
+    left.textContent = String(x.label || '');
+    const right = document.createElement('div');
+    right.style.color = '#94a3b8';
+    right.style.fontSize = '12px';
+    right.textContent = String(x.owner || '');
+    row.appendChild(left);
+    row.appendChild(right);
+    row.addEventListener('click', () => selectPartnerLabel(x.label));
+    listEl.appendChild(row);
+  });
+}
+
+async function openPartnerSelect(kind) {
+  const m = document.getElementById('partner-select-modal');
+  if (!m) return;
+  const title = document.getElementById('partner-select-title');
+  const search = document.getElementById('partner-select-search');
+  const listEl = document.getElementById('partner-select-list');
+  partnerSelectTarget = String(kind || '') === 'to' ? 'do-ship-to' : 'do-ship-from';
+  if (title) title.textContent = String(kind || '') === 'to' ? '选择目的地' : '选择出发地';
+  if (search) {
+    search.value = '';
+    search.oninput = () => renderPartnerSelectList(search.value);
+  }
+  if (listEl) listEl.innerHTML = '<div style="padding:12px; color:#94a3b8">加载中...</div>';
+  m.style.display = 'flex';
+  await apiAllPartnersList(true);
+  renderPartnerSelectList('');
+  if (search) search.focus();
+}
+
+function closeDoShipModal() {
+  const m = document.getElementById('do-ship-modal');
+  if (m) m.style.display = 'none';
+}
+
+let doShipModalMode = 'ship';
+
+function openDoShipDatePicker() {
+  const dateEl = document.getElementById('do-ship-date');
+  if (!dateEl || typeof dateEl.showPicker !== 'function') return;
+  try {
+    dateEl.showPicker();
+  } catch (_) {}
+}
+
+function updateDoShipCompanySelectColor() {
+  const sel = document.getElementById('do-ship-company');
+  if (!sel) return;
+  sel.style.color = sel.value ? '#e2e8f0' : '#94a3b8';
+}
+
+function setDoShipModalMode(mode = 'ship') {
+  doShipModalMode = mode === 'edit_logistics'
+    ? 'edit_logistics'
+    : (mode === 'create_logistics' ? 'create_logistics' : 'ship');
+  const titleEl = document.getElementById('do-ship-modal-title');
+  const hintEl = document.getElementById('do-ship-modal-hint');
+  const okBtn = document.getElementById('do-ship-ok');
+  if (doShipModalMode === 'edit_logistics') {
+    if (titleEl) titleEl.textContent = '编辑物流';
+    if (hintEl) hintEl.textContent = '修改当前物流信息';
+    if (okBtn) okBtn.textContent = '保存';
+  } else if (doShipModalMode === 'create_logistics') {
+    if (titleEl) titleEl.textContent = '创建订单';
+    if (hintEl) hintEl.textContent = '填写物流信息后创建新的物流订单';
+    if (okBtn) okBtn.textContent = '保存';
+  } else {
+    if (titleEl) titleEl.textContent = '确认发货';
+    if (hintEl) hintEl.textContent = '确认已发货？(发票将自动生成)';
+    if (okBtn) okBtn.textContent = '确定';
+  }
+}
+
+async function populateDoShipCompanyOptions(selectedCompanyId = '') {
+  const sel = document.getElementById('do-ship-company');
+  if (!sel) return [];
+  sel.innerHTML = '';
+  const list = await apiLogisticsCompaniesList(true);
+  const enabled = (Array.isArray(list) ? list : []).filter(x => x && x.enabled === true);
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = enabled.length === 0 ? '暂无可用物流公司（请先新增并启用）' : '请选择物流公司';
+  sel.appendChild(placeholder);
+  enabled.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = String(c.id);
+    opt.textContent = String(c.name || '');
+    sel.appendChild(opt);
+  });
+  sel.value = selectedCompanyId ? String(selectedCompanyId) : '';
+  updateDoShipCompanySelectColor();
+  sel.onchange = () => {
+    updateDoShipCompanySelectColor();
+    updateDoShipOkState();
+  };
+  return enabled;
+}
+
+async function openDoShipModal(orderId) {
+  const m = document.getElementById('do-ship-modal');
+  if (!m) return;
+  setDoShipModalMode('ship');
+  const order = currentDailyOrders.find(x => Number(x?.id) === Number(orderId)) || null;
+  const defaultTo = String(order?.customer || '').trim();
+  const idEl = document.getElementById('do-ship-id');
+  const sel = document.getElementById('do-ship-company');
+  const fromEl = document.getElementById('do-ship-from');
+  const toEl = document.getElementById('do-ship-to');
+  const dateEl = document.getElementById('do-ship-date');
+  const palletEl = document.getElementById('do-ship-pallet-count');
+  const boxEl = document.getElementById('do-ship-box-count');
+  const weightEl = document.getElementById('do-ship-total-weight');
+  const okBtn = document.getElementById('do-ship-ok');
+  if (idEl) idEl.value = String(orderId || '');
+  if (okBtn) okBtn.disabled = true;
+  if (fromEl) fromEl.value = '';
+  if (toEl) toEl.value = defaultTo;
+  if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
+  if (palletEl) palletEl.value = '';
+  if (boxEl) boxEl.value = '';
+  if (weightEl) weightEl.value = '';
+  m.style.display = 'flex';
+  if (!sel) return;
+  await populateDoShipCompanyOptions('');
+  updateDoShipOkState();
+  if (dateEl) {
+    dateEl.onchange = () => updateDoShipOkState();
+    dateEl.onclick = () => openDoShipDatePicker();
+    dateEl.onfocus = () => openDoShipDatePicker();
+  }
+  if (palletEl) palletEl.oninput = () => updateDoShipOkState();
+  if (boxEl) boxEl.oninput = () => updateDoShipOkState();
+  if (weightEl) weightEl.oninput = () => updateDoShipOkState();
+}
+
+async function openLogisticsCreateModal() {
+  const m = document.getElementById('do-ship-modal');
+  if (!m) return;
+  setDoShipModalMode('create_logistics');
+  const idEl = document.getElementById('do-ship-id');
+  const sel = document.getElementById('do-ship-company');
+  const fromEl = document.getElementById('do-ship-from');
+  const toEl = document.getElementById('do-ship-to');
+  const dateEl = document.getElementById('do-ship-date');
+  const palletEl = document.getElementById('do-ship-pallet-count');
+  const boxEl = document.getElementById('do-ship-box-count');
+  const weightEl = document.getElementById('do-ship-total-weight');
+  const okBtn = document.getElementById('do-ship-ok');
+  if (idEl) idEl.value = '';
+  if (okBtn) okBtn.disabled = true;
+  if (fromEl) fromEl.value = '';
+  if (toEl) toEl.value = '';
+  if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
+  if (palletEl) palletEl.value = '';
+  if (boxEl) boxEl.value = '';
+  if (weightEl) weightEl.value = '';
+  m.style.display = 'flex';
+  if (!sel) return;
+  await populateDoShipCompanyOptions('');
+  updateDoShipOkState();
+  if (dateEl) {
+    dateEl.onchange = () => updateDoShipOkState();
+    dateEl.onclick = () => openDoShipDatePicker();
+    dateEl.onfocus = () => openDoShipDatePicker();
+  }
+  if (palletEl) palletEl.oninput = () => updateDoShipOkState();
+  if (boxEl) boxEl.oninput = () => updateDoShipOkState();
+  if (weightEl) weightEl.oninput = () => updateDoShipOkState();
+}
+
+async function openLogisticsEditModal(orderId) {
+  const id = Number(orderId || 0);
+  if (!id) return;
+  const m = document.getElementById('do-ship-modal');
+  if (!m) return;
+  const rec = (Array.isArray(currentLogisticsRecords) ? currentLogisticsRecords : []).find(x => Number(x?.id || x?.order_id || 0) === id)
+    || (Array.isArray(loadLocalLogisticsRecords()) ? loadLocalLogisticsRecords() : []).find(x => Number(x?.id || x?.order_id || 0) === id)
+    || null;
+  if (!rec) { alert('未找到物流记录'); return; }
+  setDoShipModalMode('edit_logistics');
+  const idEl = document.getElementById('do-ship-id');
+  const sel = document.getElementById('do-ship-company');
+  const fromEl = document.getElementById('do-ship-from');
+  const toEl = document.getElementById('do-ship-to');
+  const dateEl = document.getElementById('do-ship-date');
+  const palletEl = document.getElementById('do-ship-pallet-count');
+  const boxEl = document.getElementById('do-ship-box-count');
+  const weightEl = document.getElementById('do-ship-total-weight');
+  const okBtn = document.getElementById('do-ship-ok');
+  if (idEl) idEl.value = String(id);
+  if (okBtn) okBtn.disabled = true;
+  if (fromEl) fromEl.value = String(rec.logistics_from || rec.from || '').trim();
+  if (toEl) toEl.value = String(rec.logistics_to || rec.to || '').trim();
+  if (dateEl) {
+    const shipDate = String(rec.logistics_ship_date || rec.ship_date || rec.shipDate || '').trim();
+    dateEl.value = shipDate ? shipDate.slice(0, 10) : new Date().toISOString().slice(0, 10);
+  }
+  if (palletEl) palletEl.value = String(rec.logistics_pallet_count || rec.pallet_count || rec.palletCount || '').trim();
+  if (boxEl) boxEl.value = String(rec.logistics_box_count || rec.box_count || rec.boxCount || '').trim();
+  if (weightEl) weightEl.value = String(rec.logistics_total_weight || rec.total_weight || rec.totalWeight || '').trim();
+  m.style.display = 'flex';
+  if (!sel) return;
+  await populateDoShipCompanyOptions(String(rec.logistics_company_id || rec.company_id || ''));
+  updateDoShipOkState();
+  if (dateEl) {
+    dateEl.onchange = () => updateDoShipOkState();
+    dateEl.onclick = () => openDoShipDatePicker();
+    dateEl.onfocus = () => openDoShipDatePicker();
+  }
+  if (palletEl) palletEl.oninput = () => updateDoShipOkState();
+  if (boxEl) boxEl.oninput = () => updateDoShipOkState();
+  if (weightEl) weightEl.oninput = () => updateDoShipOkState();
+}
+
+async function confirmShipSubmit() {
+  const id = Number(document.getElementById('do-ship-id')?.value || 0);
+  const sel = document.getElementById('do-ship-company');
+  const fromVal = String(document.getElementById('do-ship-from')?.value || '').trim();
+  const toVal = String(document.getElementById('do-ship-to')?.value || '').trim();
+  const shipDate = String(document.getElementById('do-ship-date')?.value || '').trim();
+  const palletCount = String(document.getElementById('do-ship-pallet-count')?.value || '').trim();
+  const boxCount = String(document.getElementById('do-ship-box-count')?.value || '').trim();
+  const totalWeight = String(document.getElementById('do-ship-total-weight')?.value || '').trim();
+  const companyId = Number(sel?.value || 0);
+  const isEditLogistics = doShipModalMode === 'edit_logistics';
+  const isCreateLogistics = doShipModalMode === 'create_logistics';
+  if ((!isCreateLogistics && !id) || !companyId) { alert('请选择物流公司'); return; }
+  if (!fromVal) { alert('请选择出发地'); return; }
+  if (!toVal) { alert('请选择目的地'); return; }
+  if (!shipDate) { alert('请选择发货日期'); return; }
+  if (!palletCount) { alert('请输入托盘数量'); return; }
+  if (!boxCount) { alert('请输入总箱数'); return; }
+  if (!totalWeight) { alert('请输入总重量'); return; }
+  const okBtn = document.getElementById('do-ship-ok');
+  if (okBtn) okBtn.disabled = true;
+  const reqBody = {
+    logistics_company_id: companyId,
+    logistics_from: fromVal,
+    logistics_to: toVal,
+    logistics_ship_date: shipDate,
+    logistics_pallet_count: palletCount,
+    logistics_box_count: boxCount,
+    logistics_total_weight: totalWeight
+  };
+  const res = await fetchWithAuth(isCreateLogistics ? '/api/logistics/records' : `/api/daily-orders/${id}/ship`, {
+    method: isCreateLogistics ? 'POST' : 'PUT',
+    body: JSON.stringify(reqBody)
+  });
+  if (okBtn) okBtn.disabled = false;
+  const createWithLocalFallback = isCreateLogistics && res.status === 404;
+  if (!res.ok && !createWithLocalFallback) {
+    const data = await res.json().catch(() => null);
+    if (data?.error === 'logistics_company_required') alert('请选择物流公司');
+    else if (data?.error === 'logistics_from_required') alert('请选择出发地');
+    else if (data?.error === 'logistics_to_required') alert('请选择目的地');
+    else if (data?.error === 'logistics_ship_date_required') alert('请选择发货日期');
+    else if (data?.error === 'logistics_pallet_count_required') alert('请输入托盘数量');
+    else if (data?.error === 'logistics_box_count_required') alert('请输入总箱数');
+    else if (data?.error === 'logistics_total_weight_required') alert('请输入总重量');
+    else if (data?.error === 'bad_logistics_company') alert('物流公司不可用，请选择启用的公司');
+    else alert(isCreateLogistics ? '创建物流订单失败' : (isEditLogistics ? '物流信息保存失败' : '发货失败'));
+    return;
+  }
+  if (isCreateLogistics) {
+    let newId = 0;
+    try {
+      const data = await res.json().catch(() => null);
+      newId = Number(data?.id || 0) || 0;
+    } catch {}
+    try {
+      const company = (Array.isArray(logisticsCompanies) ? logisticsCompanies : []).find(x => String(x.id) === String(companyId));
+      const now = Date.now();
+      const all = loadLocalLogisticsRecords();
+      const recordId = newId || now;
+      const next = [
+        {
+          id: recordId,
+          status: 'ongoing',
+          logistics_status: 'ongoing',
+          order_id: recordId,
+          customer: toVal,
+          shipped_by: String(getAuthUser()?.name || ''),
+          logistics_from: fromVal,
+          logistics_to: toVal,
+          logistics_ship_date: shipDate,
+          logistics_pallet_count: palletCount,
+          logistics_box_count: boxCount,
+          logistics_total_weight: totalWeight,
+          logistics_company_id: companyId,
+          company_id: companyId,
+          logistics_company: company?.name || '',
+          company: company?.name || '',
+          logistics_updated_at: now,
+          updatedAt: now,
+          orderNo: `物流单-${String(recordId).padStart(6, '0')}`,
+          notes: ''
+        },
+        ...all
+      ];
+      saveLocalLogisticsRecords(next);
+      updateLogisticsOngoingBadgeCount(next.filter(x => String(x?.status || x?.logistics_status || '') === 'ongoing').length);
+    } catch {}
+    closeDoShipModal();
+    if (currentLogisticsTab === 'ongoing') loadLogistics('ongoing');
+    updateGlobalBadges();
+    showAppToast('物流订单已创建');
+    return;
+  }
+  if (isEditLogistics) {
+    try {
+      const company = (Array.isArray(logisticsCompanies) ? logisticsCompanies : []).find(x => String(x.id) === String(companyId));
+      const now = Date.now();
+      const all = loadLocalLogisticsRecords();
+      const next = (Array.isArray(all) ? all : []).map(x => {
+        if (String(x?.order_id || x?.id || '') === String(id)) {
+          return {
+            ...x,
+            logistics_from: fromVal,
+            from: fromVal,
+            logistics_to: toVal,
+            to: toVal,
+            logistics_ship_date: shipDate,
+            ship_date: shipDate,
+            shipDate,
+            logistics_pallet_count: palletCount,
+            pallet_count: palletCount,
+            palletCount,
+            logistics_box_count: boxCount,
+            box_count: boxCount,
+            boxCount,
+            logistics_total_weight: totalWeight,
+            total_weight: totalWeight,
+            totalWeight,
+            logistics_company_id: companyId,
+            company_id: companyId,
+            logistics_company: company?.name || x?.logistics_company || '',
+            company: company?.name || x?.company || '',
+            updatedAt: now
+          };
+        }
+        return x;
+      });
+      saveLocalLogisticsRecords(next);
+    } catch {}
+    closeDoShipModal();
+    if (currentLogisticsTab === 'ongoing') loadLogistics('ongoing');
+    showAppToast('物流信息已更新');
+    return;
+  }
+  let shippedInvoiceNo = '';
+  try {
+    const shippedRes = await fetchWithAuth(`/api/daily-orders?status=shipped&_t=${Date.now()}`);
+    if (shippedRes.ok) {
+      const shippedList = await shippedRes.json().catch(() => []);
+      const shippedOrder = (Array.isArray(shippedList) ? shippedList : []).find(o => Number(o?.id || 0) === id);
+      shippedInvoiceNo = String(shippedOrder?.invoice_no || shippedOrder?.invoiceNo || '').trim();
+    }
+  } catch {}
+  try {
+    const company = (Array.isArray(logisticsCompanies) ? logisticsCompanies : []).find(x => String(x.id) === String(companyId));
+    const order = currentDailyOrders.find(o => Number(o.id) === id);
+    const all = loadLocalLogisticsRecords();
+    const next = [
+      {
+        status: 'ongoing',
+        order_id: id,
+        orderNo: shippedInvoiceNo || order?.invoice_no || '',
+        customer: order?.customer || '',
+        shipped_by: String(getAuthUser()?.name || ''),
+        logistics_from: fromVal,
+        logistics_to: toVal,
+        logistics_ship_date: shipDate,
+        logistics_pallet_count: palletCount,
+        logistics_box_count: boxCount,
+        logistics_total_weight: totalWeight,
+        company: company?.name || '',
+        company_id: companyId,
+        tracking_no: '',
+        updatedAt: Date.now(),
+        notes: order?.notes || ''
+      },
+      ...all
+    ];
+    saveLocalLogisticsRecords(next);
+    updateLogisticsOngoingBadgeCount(next.filter(x => String(x?.status || '') === 'ongoing').length);
+  } catch {}
+  closeDoShipModal();
+  loadDailyOrders('allocated');
+  if (currentLogisticsTab === 'ongoing') loadLogistics('ongoing');
+  updateGlobalBadges();
+  showAppToast('确认发货，发票已生成');
 }
 
 async function cancelDailyOrder(id) {
@@ -8559,7 +10778,7 @@ async function openAllocateModal(id) {
   const tbody = document.getElementById('do-allocate-rows');
   const items = Array.isArray(order.items) ? order.items : (typeof order.items === 'string' ? JSON.parse(order.items) : []);
   
-  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8">加载中...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8">加载中...</td></tr>';
   m.style.display = 'flex';
   
   try {
@@ -8579,7 +10798,14 @@ async function openAllocateModal(id) {
     tbody.innerHTML = items.map((item, idx) => {
       const p = products.find(p => p.id == item.productId || p.name === item.name);
       const nameCn = p ? (p.name_cn || item.name_cn || '') : (item.name_cn || '');
-      const stock = p ? (p.stock || 0) : '-';
+      const totalStock = p ? Number(p.stock || 0) : 0;
+      const displayRows = p ? buildFinishedStockRows(totalStock, p.batches) : [];
+      const stock = displayRows.length > 0
+        ? `<div style="display:flex;flex-direction:column;gap:4px">` + displayRows.map(b => `<div>${b.qty}</div>`).join('') + `</div>`
+        : (p ? String(totalStock) : '-');
+      const lote = displayRows.length > 0
+        ? `<div style="display:flex;flex-direction:column;gap:4px">` + displayRows.map(b => `<div>${b.lote ? formatFinishedLote(b.lote) : '无Lote'}</div>`).join('') + `</div>`
+        : '-';
       
       return `
         <tr>
@@ -8590,6 +10816,7 @@ async function openAllocateModal(id) {
             </div>
           </td>
           <td>${nameCn}</td>
+          <td>${lote}</td>
           <td>${stock}</td>
           <td>${item.qty}</td>
           <td><input type="number" class="alloc-qty" data-idx="${idx}" value="${item.allocated_qty !== undefined ? item.allocated_qty : item.qty}" style="width:80px"></td>
@@ -8598,13 +10825,15 @@ async function openAllocateModal(id) {
     }).join('');
   } catch (e) {
     console.error(e);
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#ef4444">加载失败</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ef4444">加载失败</td></tr>';
   }
 }
 async function confirmAllocate() {
   const id = Number(document.getElementById('do-allocate-id').value);
   const order = currentDailyOrders.find(o => o.id === id);
   if (!order) return;
+  const okBtn = document.getElementById('do-allocate-ok');
+  const prevOkText = okBtn ? okBtn.textContent : '';
   
   const items = Array.isArray(order.items) ? order.items : (typeof order.items === 'string' ? JSON.parse(order.items) : []);
   document.querySelectorAll('.alloc-qty').forEach(inp => {
@@ -8612,20 +10841,38 @@ async function confirmAllocate() {
     if (items[idx]) items[idx].allocated_qty = Number(inp.value);
   });
   
-  await fetchWithAuth(`/api/daily-orders/${id}/allocate`, {
-    method: 'PUT',
-    body: JSON.stringify({ items })
-  });
-  document.getElementById('do-allocate-modal').style.display = 'none';
-  loadDailyOrders('new');
-  alert('配货完成，请到已配货列表确认发货');
+  try {
+    if (okBtn) {
+      okBtn.disabled = true;
+      okBtn.textContent = '处理中...';
+    }
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 15000);
+    const res = await fetchWithAuth(`/api/daily-orders/${id}/allocate`, {
+      method: 'PUT',
+      body: JSON.stringify({ items }),
+      signal: ac.signal
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error ? `配货失败：${err.error}` : '配货失败');
+      return;
+    }
+    document.getElementById('do-allocate-modal').style.display = 'none';
+    loadDailyOrders('new');
+  } catch (e) {
+    console.error(e);
+    alert(e && e.name === 'AbortError' ? '配货超时：后端响应过慢' : '配货失败：后端不可用或网络异常');
+  } finally {
+    if (okBtn) {
+      okBtn.disabled = false;
+      okBtn.textContent = prevOkText || '确认配货完成';
+    }
+  }
 }
 async function confirmShip(id) {
-  openConfirm('确认已发货？(发票将自动生成)', async () => {
-    await fetchWithAuth(`/api/daily-orders/${id}/ship`, { method:'PUT' });
-    loadDailyOrders('allocated');
-    alert('发货完成，发票已生成');
-  });
+  openDoShipModal(id);
 }
 
 // Finished Stock
@@ -8639,6 +10886,74 @@ let fsRecordPage = 1;
 const fsRecordPageSize = 100;
 let fsRecordTotal = 0;
 let fsAdjustState = null;
+const fsRemindModal = document.getElementById('fs-remind-modal');
+const fsRemindForm = document.getElementById('fs-remind-form');
+const fsRemindInput = document.getElementById('fs-remind-input');
+const fsRemindCancel = document.getElementById('fs-remind-cancel');
+const fsRemindCancelTop = document.getElementById('fs-remind-cancel-top');
+let rsPage = 1;
+const rsPageSize = 50;
+let rsTotal = 0;
+let rsCurrentTab = 'stock';
+let rsAdjustPage = 1;
+let rsAdjustTotal = 0;
+let rsRecordPage = 1;
+const rsRecordPageSize = 100;
+let rsRecordTotal = 0;
+let rsAdjustState = null;
+let rsMaterialOptions = [];
+let rsMaterialEditId = null;
+let rsAddItems = [];
+let rsSelPage = 1;
+const rsSelPageSize = 100;
+let rsSelTotal = 0;
+const rsMaterialFile = document.getElementById('rs-material-file');
+const rsMaterialIdInput = document.getElementById('rs-material-id');
+const rsMaterialImage = document.getElementById('rs-material-image');
+const rsMaterialPreview = document.getElementById('rs-material-preview');
+const rsMaterialFileName = document.getElementById('rs-material-file-name');
+const rsNameModalTitle = document.getElementById('rs-name-modal-title');
+const rsNameModalSave = document.getElementById('rs-name-modal-save');
+const rsSelModal = document.getElementById('rs-selector-modal');
+const rsSelSearch = document.getElementById('rs-sel-search');
+const rsSelList = document.getElementById('rs-sel-list');
+let eventRecordPage = 1;
+const eventRecordPageSize = 50;
+let eventRecordTotal = 0;
+let eventRecordCurrentTab = 'ongoing';
+let currentEventRecordList = [];
+let productionReviewPage = 1;
+const productionReviewPageSize = 50;
+let productionReviewTotal = 0;
+let productionReviewCurrentTab = 'pending';
+let currentProductionEntryList = [];
+let knowledgeBasePage = 1;
+const knowledgeBasePageSize = 50;
+let knowledgeBaseTotal = 0;
+let knowledgeBaseCurrentTab = 'internal';
+let currentKnowledgeBaseList = [];
+let pendingFinishedStockTab = '';
+let productionPendingCount = 0;
+
+if (rsMaterialFile) {
+  rsMaterialFile.addEventListener('change', () => {
+    const fileObj = rsMaterialFile.files?.[0];
+    if (!fileObj) {
+      if (rsMaterialPreview) {
+        rsMaterialPreview.src = '';
+        rsMaterialPreview.style.display = 'none';
+      }
+      if (rsMaterialFileName) rsMaterialFileName.textContent = '未选择图片';
+      return;
+    }
+    if (rsMaterialFileName) rsMaterialFileName.textContent = fileObj.name;
+    const localUrl = URL.createObjectURL(fileObj);
+    if (rsMaterialPreview) {
+      rsMaterialPreview.src = localUrl;
+      rsMaterialPreview.style.display = 'block';
+    }
+  });
+}
 
 function renderLoteLines(loteValue = '') {
   const raw = String(loteValue || '').trim();
@@ -8672,38 +10987,72 @@ function mergeFinishedBatches(batches = []) {
     return ea.localeCompare(eb) || String(a.lote || '').localeCompare(String(b.lote || ''));
   });
 }
+function buildFinishedStockRows(totalStock, batches = []) {
+  const merged = mergeFinishedBatches(batches);
+  const batchedQty = merged.reduce((sum, row) => sum + Number(row.qty || 0), 0);
+  const unlottedQty = Math.max(0, Number(totalStock || 0) - batchedQty);
+  if (unlottedQty > 0) {
+    return [{ qty: unlottedQty, lote: '', expiry: '' }, ...merged];
+  }
+  return merged;
+}
 
 function switchFinishedStockTab(tab, btn) {
-  if (tab === 'adjust' && !can('finished_stock_adjust', 'view')) {
-    tab = 'stock';
-    btn = document.getElementById('fs-tab-stock');
+  const canStock = can('finished_stock', 'view');
+  const canAdjust = can('finished_stock_adjust', 'view');
+  const canReview = can('production_review', 'view');
+  if (tab === 'review' && !canReview) {
+    tab = canStock ? 'stock' : (canAdjust ? 'adjust' : 'stock');
+    btn = document.getElementById(tab === 'adjust' ? 'fs-tab-adjust' : 'fs-tab-stock');
   }
-  fsCurrentTab = tab === 'records' ? 'records' : (tab === 'adjust' ? 'adjust' : 'stock');
+  if ((tab === 'stock' || tab === 'records') && !canStock) {
+    tab = canReview ? 'review' : (canAdjust ? 'adjust' : 'stock');
+    btn = document.getElementById(tab === 'review' ? 'fs-tab-review' : (tab === 'adjust' ? 'fs-tab-adjust' : 'fs-tab-stock'));
+  }
+  if (tab === 'adjust' && !canAdjust) {
+    tab = canReview ? 'review' : (canStock ? 'stock' : 'stock');
+    btn = document.getElementById(tab === 'review' ? 'fs-tab-review' : 'fs-tab-stock');
+  }
+  fsCurrentTab = tab === 'records' ? 'records' : (tab === 'adjust' ? 'adjust' : (tab === 'review' ? 'review' : 'stock'));
   const stockPanel = document.getElementById('fs-stock-panel');
   const recordPanel = document.getElementById('fs-records-panel');
   const adjustPanel = document.getElementById('fs-adjust-panel');
+  const reviewPanel = document.getElementById('fs-review-panel');
   const stockToolbar = document.getElementById('fs-stock-toolbar');
   const addBtn = document.getElementById('fs-add-btn');
+  const stockTab = document.getElementById('fs-tab-stock');
+  const recordsTab = document.getElementById('fs-tab-records');
   const adjustTab = document.getElementById('fs-tab-adjust');
-  if (adjustTab) adjustTab.style.display = can('finished_stock_adjust', 'view') ? 'inline-flex' : 'none';
+  const reviewTab = document.getElementById('fs-tab-review');
+  if (stockTab) stockTab.style.display = canStock ? 'inline-flex' : 'none';
+  if (recordsTab) recordsTab.style.display = canStock ? 'inline-flex' : 'none';
+  if (adjustTab) adjustTab.style.display = canAdjust ? 'inline-flex' : 'none';
+  if (reviewTab) reviewTab.style.display = canReview ? 'inline-flex' : 'none';
   if (stockPanel) stockPanel.style.display = fsCurrentTab === 'stock' ? 'block' : 'none';
   if (recordPanel) recordPanel.style.display = fsCurrentTab === 'records' ? 'block' : 'none';
   if (adjustPanel) adjustPanel.style.display = fsCurrentTab === 'adjust' ? 'block' : 'none';
-  if (stockToolbar) stockToolbar.style.display = fsCurrentTab === 'records' ? 'none' : 'flex';
+  if (reviewPanel) reviewPanel.style.display = fsCurrentTab === 'review' ? 'block' : 'none';
+  if (stockToolbar) stockToolbar.style.display = fsCurrentTab === 'stock' || fsCurrentTab === 'adjust' ? 'flex' : 'none';
   if (addBtn) addBtn.style.display = fsCurrentTab === 'stock' ? 'inline-flex' : 'none';
   document.querySelectorAll('#page-finished-stock .tab').forEach(el => el.classList.remove('active'));
   if (btn) btn.classList.add('active');
   else {
-    const activeBtn = document.getElementById(fsCurrentTab === 'stock' ? 'fs-tab-stock' : (fsCurrentTab === 'records' ? 'fs-tab-records' : 'fs-tab-adjust'));
+    const activeBtn = document.getElementById(
+      fsCurrentTab === 'stock' ? 'fs-tab-stock'
+      : (fsCurrentTab === 'records' ? 'fs-tab-records'
+      : (fsCurrentTab === 'adjust' ? 'fs-tab-adjust' : 'fs-tab-review'))
+    );
     if (activeBtn) activeBtn.classList.add('active');
   }
   if (fsCurrentTab === 'stock') loadFinishedStock(1);
   else if (fsCurrentTab === 'records') loadFinishedStockRecords(1);
-  else loadFinishedStockAdjustments(1);
+  else if (fsCurrentTab === 'adjust') loadFinishedStockAdjustments(1);
+  else loadProductionEntries('pending');
 }
 window.switchFinishedStockTab = switchFinishedStockTab;
 function handleFsSearchInput() {
   if (fsCurrentTab === 'adjust') loadFinishedStockAdjustments(1);
+  else if (fsCurrentTab === 'review') loadProductionEntries(productionReviewCurrentTab, null, 1);
   else loadFinishedStock(1);
 }
 window.handleFsSearchInput = handleFsSearchInput;
@@ -8716,29 +11065,39 @@ async function loadFinishedStock(page = 1) {
   const data = await res.json();
   const list = data.list || [];
   fsTotal = data.total || 0;
+  const remindBtn = document.getElementById('fs-remind-btn');
+  if (remindBtn) {
+    remindBtn.dataset.currentValue = String(Number(list[0]?.remind_stock || 0));
+    remindBtn.style.display = 'none';
+  }
   
   const tbody = document.getElementById('finished-stock-rows');
   if (!tbody) return;
   
   if (list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#94a3b8">暂无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px; color:#94a3b8">暂无数据</td></tr>';
     renderFsPager();
     return;
   }
   
   tbody.innerHTML = list.map((p, idx) => {
     const totalStock = Number(p.total_stock || 0);
+    const remindStock = Math.max(0, Number(p.remind_stock || 0));
+    const isLowStock = remindStock > 0 && totalStock <= remindStock;
     let stockHtml = totalStock;
     let expiryHtml = '';
     let loteHtml = '';
-    const displayBatches = mergeFinishedBatches(p.batches);
+    const displayBatches = buildFinishedStockRows(totalStock, p.batches);
     if (displayBatches.length > 0) {
       stockHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => `<div>${b.qty}</div>`).join('') + `</div>`;
       expiryHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => `<div>${b.expiry || ''}</div>`).join('') + `</div>`;
-      loteHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => `<div>${formatFinishedLote(b.lote)}</div>`).join('') + `</div>`;
+      loteHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + displayBatches.map(b => `<div>${b.lote ? formatFinishedLote(b.lote) : '无Lote'}</div>`).join('') + `</div>`;
     } else if (p.batches && p.batches.length > 0) {
       stockHtml = 0;
     }
+    const stockCellHtml = `<div style="${isLowStock ? 'color:#ef4444;font-weight:700' : ''}">${stockHtml}</div>`;
+    const remindHtml = remindStock > 0 ? remindStock : '<span style="color:#94a3b8">未设置</span>';
+    const viewBtn = `<button class="btn-secondary" style="padding:4px 8px; font-size:12px" onclick="location.hash='#stock-history?id=${p.id}'">查看</button>`;
     return `
     <tr>
       <td>${fsTotal - (fsPage - 1) * fsPageSize - idx}</td>
@@ -8746,11 +11105,12 @@ async function loadFinishedStock(page = 1) {
       <td>${p.sku || ''}</td>
       <td>${p.name}</td>
       <td>${p.name_cn || ''}</td>
-      <td>${stockHtml}</td>
+      <td>${stockCellHtml}</td>
+      <td>${remindHtml}</td>
       <td>${loteHtml}</td>
       <td>${expiryHtml}</td>
       <td style="text-align:center">
-        <button class="btn-secondary" style="padding:4px 8px; font-size:12px" onclick="location.hash='#stock-history?id=${p.id}'">查看</button>
+        ${viewBtn}
       </td>
     </tr>
     `;
@@ -8758,6 +11118,59 @@ async function loadFinishedStock(page = 1) {
   
   renderFsPager();
 }
+function openAllFinishedStockReminderModal() {
+  const currentValue = Number(document.getElementById('fs-remind-btn')?.dataset.currentValue || 0);
+  if (!fsRemindModal || !fsRemindInput) return;
+  fsRemindInput.value = String(currentValue);
+  fsRemindModal.style.display = 'flex';
+  setTimeout(() => {
+    fsRemindInput.focus();
+    fsRemindInput.select();
+  }, 0);
+}
+function closeAllFinishedStockReminderModal() {
+  if (fsRemindModal) fsRemindModal.style.display = 'none';
+}
+async function setAllFinishedStockReminder() {
+  const remindStock = Math.max(0, Number(fsRemindInput?.value || 0));
+  if (!Number.isFinite(remindStock)) {
+    alert('请输入有效数字');
+    return;
+  }
+  const saveBtn = document.getElementById('fs-remind-save');
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = '保存中...';
+  }
+  const res = await fetchWithAuth('/api/products-remind-stock-all', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ remind_stock: remindStock })
+  });
+  if (saveBtn) {
+    saveBtn.disabled = false;
+    saveBtn.textContent = '保存';
+  }
+  if (!res.ok) {
+    alert('提醒数量保存失败');
+    return;
+  }
+  const btn = document.getElementById('fs-remind-btn');
+  if (btn) btn.dataset.currentValue = String(remindStock);
+  closeAllFinishedStockReminderModal();
+  showAppToast('已统一设置所有商品提醒数量');
+  await loadFinishedStock(fsPage);
+}
+if (fsRemindCancel) fsRemindCancel.addEventListener('click', closeAllFinishedStockReminderModal);
+if (fsRemindCancelTop) fsRemindCancelTop.addEventListener('click', closeAllFinishedStockReminderModal);
+if (fsRemindForm) {
+  fsRemindForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    await setAllFinishedStockReminder();
+  });
+}
+window.openAllFinishedStockReminderModal = openAllFinishedStockReminderModal;
+window.setAllFinishedStockReminder = setAllFinishedStockReminder;
 
 async function loadFinishedStockAdjustments(page = 1) {
   fsAdjustPage = page;
@@ -9155,69 +11568,1100 @@ async function saveFinishedStock() {
   loadFinishedStock();
 }
 
-// Raw Stock
-async function loadRawStock() {
-  const res = await fetchWithAuth('/api/inventory/raw');
+function getDefaultBatchDates() {
+  const loteDate = new Date();
+  const lote = `${loteDate.getFullYear()}-${String(loteDate.getMonth() + 1).padStart(2, '0')}-${String(loteDate.getDate()).padStart(2, '0')}`;
+  const expiryDate = new Date(loteDate.getTime());
+  expiryDate.setMonth(expiryDate.getMonth() + 6);
+  const expiry = `${expiryDate.getFullYear()}-${String(expiryDate.getMonth() + 1).padStart(2, '0')}-${String(expiryDate.getDate()).padStart(2, '0')}`;
+  return { lote, expiry };
+}
+
+function syncSelectedRawMaterialsFromItems() {
+  window.selectedRawMaterials = new Map(
+    rsAddItems
+      .filter(item => Number(item?.materialId || 0) > 0)
+      .map(item => [Number(item.materialId), { id: Number(item.materialId), name: item.name || '', image: item.image || '', stock: item.stock || 0 }])
+  );
+}
+
+function renderRawStockItems() {
+  const tbody = document.getElementById('rs-items-tbody');
+  if (!tbody) return;
+  if (rsAddItems.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:20px">请先选择原材料</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rsAddItems.map((item, idx) => `
+    <tr>
+      <td>${escapeHtml(item.name || '')}</td>
+      <td><input type="number" class="rs-item-qty" data-idx="${idx}" value="${item.qty || ''}" style="width:100%" placeholder="数量"></td>
+      <td>
+        <div style="display:flex; align-items:center; gap:4px">
+          <input type="text" class="rs-item-lote" data-idx="${idx}" value="${item.lote || ''}" style="width:100%; flex:1" placeholder="输入批次或选择日期" onchange="updateRsExpiry(${idx}, this.value)">
+          <div style="position:relative; width:24px; height:24px; display:flex; align-items:center; justify-content:center; cursor:pointer">
+            <span style="font-size:14px">📅</span>
+            <input type="date" style="position:absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer" onchange="const el=document.querySelector('.rs-item-lote[data-idx=\\'${idx}\\']'); if (el) el.value=this.value; updateRsExpiry(${idx}, this.value)">
+          </div>
+        </div>
+      </td>
+      <td><input type="date" class="rs-item-expiry" data-idx="${idx}" value="${item.expiry || ''}" style="width:100%"></td>
+      <td style="text-align:center"><button class="btn-sm btn-red" onclick="removeRsItem(${idx})">删除</button></td>
+    </tr>
+  `).join('');
+}
+
+function openRawStockModal(resetItems = true) {
+  const modal = document.getElementById('rs-add-modal');
+  if (!modal) return;
+  if (resetItems) rsAddItems = [];
+  renderRawStockItems();
+  modal.style.display = 'flex';
+}
+window.openRawStockModal = openRawStockModal;
+
+function startRawStockAdd() {
+  rsAddItems = [];
+  renderRawStockItems();
+  openRawMaterialSelector();
+}
+window.startRawStockAdd = startRawStockAdd;
+
+function updateRsExpiry(idx, loteDateStr) {
+  document.querySelectorAll('.rs-item-qty').forEach(el => {
+    if (rsAddItems[el.dataset.idx]) rsAddItems[el.dataset.idx].qty = el.value;
+  });
+  rsAddItems[idx].lote = loteDateStr;
+  if (!loteDateStr) return;
+  const parts = loteDateStr.split('-');
+  if (parts.length === 3) {
+    const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    if (!isNaN(d.getTime())) {
+      d.setMonth(d.getMonth() + 6);
+      rsAddItems[idx].expiry = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      renderRawStockItems();
+    }
+  }
+}
+window.updateRsExpiry = updateRsExpiry;
+
+function removeRsItem(idx) {
+  rsAddItems.splice(idx, 1);
+  renderRawStockItems();
+}
+window.removeRsItem = removeRsItem;
+
+async function loadRawMaterialSelector(page = 1) {
+  rsSelPage = page;
+  if (!rsSelList) return;
+  rsSelList.innerHTML = '<div style="padding:16px; color:#94a3b8">加载中...</div>';
+  const q = rsSelSearch?.value?.trim() || '';
+  const res = await fetchWithAuth(`/api/inventory/raw?page=${rsSelPage}&size=${rsSelPageSize}&q=${encodeURIComponent(q)}&_t=${Date.now()}`);
+  if (!res.ok) {
+    rsSelList.innerHTML = '<div style="padding:16px; color:#ef4444">加载失败</div>';
+    return;
+  }
+  const data = await res.json();
+  const list = data.list || [];
+  rsSelTotal = Number(data.total || 0);
+  const table = document.createElement('table');
+  table.style.width = '100%';
+  table.style.borderCollapse = 'collapse';
+  table.innerHTML = `
+    <thead>
+      <tr style="border-bottom:1px solid #334155; color:#94a3b8; font-size:12px; text-align:left">
+        <th style="padding:8px; width:40px; text-align:center"><input type="checkbox" id="rs-sel-select-all" onclick="toggleAllRawMaterialSelection(this)"></th>
+        <th style="padding:8px; width:72px">图片</th>
+        <th style="padding:8px">名称</th>
+        <th style="padding:8px; text-align:right">库存</th>
+      </tr>
+    </thead>
+    <tbody id="rs-sel-tbody"></tbody>
+  `;
+  const tbody = table.querySelector('tbody');
+  list.forEach(m => {
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid #1e293b';
+    tr.style.cursor = 'pointer';
+    tr.onmouseover = () => tr.style.background = '#1e293b';
+    tr.onmouseout = () => tr.style.background = 'transparent';
+    const isSelected = window.selectedRawMaterials && window.selectedRawMaterials.has(m.id);
+    tr.dataset.material = JSON.stringify(m);
+    tr.innerHTML = `
+      <td style="padding:8px; text-align:center">
+        <input type="checkbox" class="rs-sel-checkbox" value="${m.id}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleRawMaterialSelection(${m.id})">
+      </td>
+      <td style="padding:8px">
+        ${m.image ? `<img src="${m.image}" style="width:48px; height:48px; object-fit:cover; border-radius:4px; border:1px solid #334155">` : '<div style="width:48px; height:48px; background:#0f172a; border-radius:4px; border:1px solid #334155"></div>'}
+      </td>
+      <td style="padding:8px; color:#e2e8f0; font-weight:500">${escapeHtml(m.name || '')}</td>
+      <td style="padding:8px; text-align:right; color:#64748b">${Number(m.stock || 0)}</td>
+    `;
+    tr.addEventListener('click', (e) => {
+      if (e.target.tagName.toLowerCase() !== 'input') {
+        const cb = tr.querySelector('.rs-sel-checkbox');
+        cb.checked = !cb.checked;
+        toggleRawMaterialSelection(m.id, m);
+      }
+    });
+    tbody.appendChild(tr);
+  });
+  rsSelList.innerHTML = '';
+  rsSelList.appendChild(table);
+  const totalPages = Math.ceil(rsSelTotal / rsSelPageSize);
+  if (totalPages > 1) {
+    const pager = document.createElement('div');
+    pager.style.display = 'flex';
+    pager.style.justifyContent = 'center';
+    pager.style.gap = '12px';
+    pager.style.alignItems = 'center';
+    pager.style.padding = '12px 0';
+    pager.style.marginTop = '12px';
+    pager.style.borderTop = '1px solid #334155';
+    pager.innerHTML = `
+      <button class="btn-secondary" style="padding:4px 12px" ${rsSelPage <= 1 ? 'disabled' : ''} onclick="loadRawMaterialSelector(${rsSelPage - 1})">上一页</button>
+      <span style="color:#cbd5e1; font-size:13px">第 ${rsSelPage} / ${totalPages} 页</span>
+      <button class="btn-secondary" style="padding:4px 12px" ${rsSelPage >= totalPages ? 'disabled' : ''} onclick="loadRawMaterialSelector(${rsSelPage + 1})">下一页</button>
+    `;
+    rsSelList.appendChild(pager);
+  }
+  updateRawMaterialSelectAll();
+}
+window.loadRawMaterialSelector = loadRawMaterialSelector;
+
+window.selectedRawMaterials = new Map();
+
+window.toggleRawMaterialSelection = function(id, materialObj) {
+  if (!materialObj) {
+    const cb = document.querySelector(`.rs-sel-checkbox[value="${id}"]`);
+    if (cb && cb.closest('tr')) {
+      materialObj = JSON.parse(cb.closest('tr').dataset.material);
+      if (!cb.checked) window.selectedRawMaterials.delete(id);
+      else window.selectedRawMaterials.set(id, materialObj);
+    }
+  } else {
+    const cb = document.querySelector(`.rs-sel-checkbox[value="${id}"]`);
+    if (cb) {
+      if (cb.checked) window.selectedRawMaterials.set(id, materialObj);
+      else window.selectedRawMaterials.delete(id);
+    }
+  }
+  updateRawMaterialSelectAll();
+};
+
+window.toggleAllRawMaterialSelection = function(el) {
+  const checkboxes = document.querySelectorAll('.rs-sel-checkbox');
+  checkboxes.forEach(cb => {
+    cb.checked = el.checked;
+    const id = parseInt(cb.value, 10);
+    const materialObj = JSON.parse(cb.closest('tr').dataset.material);
+    if (el.checked) window.selectedRawMaterials.set(id, materialObj);
+    else window.selectedRawMaterials.delete(id);
+  });
+};
+
+function updateRawMaterialSelectAll() {
+  const selectAllCb = document.getElementById('rs-sel-select-all');
+  const checkboxes = document.querySelectorAll('.rs-sel-checkbox');
+  if (selectAllCb && checkboxes.length > 0) {
+    selectAllCb.checked = Array.from(checkboxes).every(cb => cb.checked);
+  }
+}
+
+function openRawMaterialSelector() {
+  if (!rsSelModal) return;
+  syncSelectedRawMaterialsFromItems();
+  rsSelModal.style.display = 'flex';
+  if (rsSelSearch) rsSelSearch.value = '';
+  loadRawMaterialSelector(1);
+}
+window.openRawMaterialSelector = openRawMaterialSelector;
+
+window.confirmRawMaterialSelection = function() {
+  if (!window.selectedRawMaterials || window.selectedRawMaterials.size === 0) {
+    alert('请先选择至少一个原材料');
+    return;
+  }
+  const defaults = getDefaultBatchDates();
+  Array.from(window.selectedRawMaterials.values()).forEach(m => {
+    if (!rsAddItems.some(item => Number(item.materialId) === Number(m.id))) {
+      rsAddItems.push({
+        materialId: Number(m.id),
+        name: m.name || '',
+        image: m.image || '',
+        stock: Number(m.stock || 0),
+        qty: '',
+        lote: defaults.lote,
+        expiry: defaults.expiry
+      });
+    }
+  });
+  if (rsSelModal) rsSelModal.style.display = 'none';
+  openRawStockModal(false);
+};
+
+if (rsSelSearch) rsSelSearch.addEventListener('input', () => loadRawMaterialSelector(1));
+const rsSelClose = document.getElementById('rs-sel-close');
+if (rsSelClose) {
+  rsSelClose.addEventListener('click', () => {
+    if (rsSelModal) rsSelModal.style.display = 'none';
+  });
+}
+
+function buildRawBatches(batches) {
+  if (!Array.isArray(batches)) return [];
+  return batches
+    .map(b => ({
+      qty: Number(b?.qty || 0),
+      expiry: String(b?.expiry || '').trim(),
+      lote: String(b?.lote || '').trim()
+    }))
+    .filter(b => b.qty > 0)
+    .sort((a, b) => {
+      const expCmp = (a.expiry || '9999-12-31').localeCompare(b.expiry || '9999-12-31');
+      if (expCmp !== 0) return expCmp;
+      return (a.lote || '').localeCompare(b.lote || '');
+    });
+}
+function renderRawStockLines(batches) {
+  const displayBatches = buildRawBatches(batches);
+  if (!displayBatches.length) return '-';
+  return `<div style="display:flex;flex-direction:column;gap:4px">${displayBatches.map(b => `<div>${escapeHtml(`${b.lote || '无Lote'} / ${b.qty}${b.expiry ? ` / 到期:${b.expiry}` : ''}`)}</div>`).join('')}</div>`;
+}
+function renderRawExpiryLines(batches) {
+  const displayBatches = buildRawBatches(batches);
+  if (!displayBatches.length) return '-';
+  return `<div style="display:flex;flex-direction:column;gap:4px">${displayBatches.map(b => `<div>${escapeHtml(b.expiry || '-')}</div>`).join('')}</div>`;
+}
+function formatRawRecordType(type) {
+  if (type === 'in') return '入库';
+  if (type === 'adjust') return '库存调整';
+  return '出库';
+}
+function syncRawMaterialOptions(list = []) {
+  rsMaterialOptions = list.map(x => ({
+    id: x.id,
+    name: String(x.name || '').trim(),
+    image: String(x.image || '').trim()
+  })).filter(x => x.name);
+  const datalist = document.getElementById('rs-name-options');
+  if (datalist) {
+    const uniqNames = Array.from(new Set(rsMaterialOptions.map(x => x.name)));
+    datalist.innerHTML = uniqNames.map(name => `<option value="${escapeHtml(name)}"></option>`).join('');
+  }
+}
+function switchRawStockTab(tab, btn) {
+  rsCurrentTab = tab === 'records' ? 'records' : (tab === 'adjust' ? 'adjust' : 'stock');
+  const stockPanel = document.getElementById('rs-stock-panel');
+  const recordPanel = document.getElementById('rs-records-panel');
+  const adjustPanel = document.getElementById('rs-adjust-panel');
+  const toolbar = document.getElementById('rs-stock-toolbar');
+  const addNameBtn = document.getElementById('rs-add-name-btn');
+  const addStockBtn = document.getElementById('rs-add-stock-btn');
+  if (stockPanel) stockPanel.style.display = rsCurrentTab === 'stock' ? 'block' : 'none';
+  if (recordPanel) recordPanel.style.display = rsCurrentTab === 'records' ? 'block' : 'none';
+  if (adjustPanel) adjustPanel.style.display = rsCurrentTab === 'adjust' ? 'block' : 'none';
+  if (toolbar) toolbar.style.display = 'flex';
+  if (addNameBtn) addNameBtn.style.display = rsCurrentTab === 'stock' ? 'inline-flex' : 'none';
+  if (addStockBtn) addStockBtn.style.display = rsCurrentTab === 'stock' ? 'inline-flex' : 'none';
+  document.querySelectorAll('#page-raw-stock .tab').forEach(el => el.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  else {
+    const activeBtn = document.getElementById(rsCurrentTab === 'stock' ? 'rs-tab-stock' : (rsCurrentTab === 'records' ? 'rs-tab-records' : 'rs-tab-adjust'));
+    if (activeBtn) activeBtn.classList.add('active');
+  }
+  if (rsCurrentTab === 'stock') loadRawStock(1);
+  else if (rsCurrentTab === 'records') loadRawStockRecords(1);
+  else loadRawStockAdjustments(1);
+}
+window.switchRawStockTab = switchRawStockTab;
+function handleRsSearchInput() {
+  if (rsCurrentTab === 'records') loadRawStockRecords(1);
+  else if (rsCurrentTab === 'adjust') loadRawStockAdjustments(1);
+  else loadRawStock(1);
+}
+window.handleRsSearchInput = handleRsSearchInput;
+async function loadRawStock(page = 1) {
+  rsPage = page;
+  const q = document.getElementById('rs-search')?.value?.trim() || '';
+  const res = await fetchWithAuth(`/api/inventory/raw?page=${rsPage}&size=${rsPageSize}&q=${encodeURIComponent(q)}&_t=${Date.now()}`);
   if (!res.ok) return;
-  const list = await res.json();
+  const data = await res.json();
+  const list = data.list || [];
+  rsTotal = data.total || 0;
+  syncRawMaterialOptions(list);
   const tbody = document.getElementById('raw-stock-rows');
   if (!tbody) return;
-  tbody.innerHTML = list.map(m => {
-    let stockHtml = m.stock;
-    let expiryHtml = '-';
-    if (m.batches && m.batches.length > 0) {
-      stockHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + m.batches.map(b => `<div>${b.qty}</div>`).join('') + `</div>`;
-      expiryHtml = `<div style="display:flex;flex-direction:column;gap:4px">` + m.batches.map(b => `<div>${b.expiry}</div>`).join('') + `</div>`;
-    }
-    return `
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
+    renderRsPager();
+    return;
+  }
+  tbody.innerHTML = list.map((m, idx) => `
     <tr>
-      <td>${m.name}</td>
-      <td>${stockHtml}</td>
-      <td>${expiryHtml}</td>
+      <td>${rsTotal - (rsPage - 1) * rsPageSize - idx}</td>
+      <td style="padding:8px; width:60px; height:60px; text-align:center">${m.image ? `<img src="${m.image}" class="thumb-img" onclick="showFileViewer('${m.image}')" style="width:44px; height:44px; object-fit:contain; display:inline-block; vertical-align:middle">` : ''}</td>
+      <td>${escapeHtml(m.name || '')}</td>
+      <td>${Number(m.stock || 0)}</td>
+      <td>${renderRawExpiryLines(m.batches)}</td>
+      <td>${renderRawStockLines(m.batches)}</td>
+      <td style="text-align:center">
+        <div style="display:flex; gap:8px; justify-content:center">
+          <button class="btn-secondary" style="padding:4px 8px; font-size:12px" onclick="openRawMaterialEdit('${encodeURIComponent(JSON.stringify({ id: m.id, name: m.name || '', image: m.image || '' }))}')">编辑</button>
+          <button class="btn-secondary" style="padding:4px 8px; font-size:12px; color:#fecaca; border-color:#7f1d1d; background:#450a0a" onclick="confirmDeleteRawMaterial('${encodeURIComponent(JSON.stringify({ id: m.id, name: m.name || '' }))}')">删除</button>
+        </div>
+      </td>
     </tr>
-    `;
-  }).join('');
+  `).join('');
+  renderRsPager();
 }
-function openRawStockModal() {
-  document.getElementById('rs-add-modal').style.display = 'flex';
+window.loadRawStock = loadRawStock;
+async function loadRawStockAdjustments(page = 1) {
+  rsAdjustPage = page;
+  const q = document.getElementById('rs-search')?.value?.trim() || '';
+  const res = await fetchWithAuth(`/api/inventory/raw?page=${rsAdjustPage}&size=${rsPageSize}&q=${encodeURIComponent(q)}&_t=${Date.now()}`);
+  if (!res.ok) return;
+  const data = await res.json();
+  const list = data.list || [];
+  rsAdjustTotal = data.total || 0;
+  syncRawMaterialOptions(list);
+  const tbody = document.getElementById('raw-stock-adjust-rows');
+  if (!tbody) return;
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
+    renderRsAdjustPager();
+    return;
+  }
+  tbody.innerHTML = list.map((m, idx) => `
+    <tr>
+      <td>${rsAdjustTotal - (rsAdjustPage - 1) * rsPageSize - idx}</td>
+      <td style="padding:8px; width:60px; height:60px; text-align:center">${m.image ? `<img src="${m.image}" class="thumb-img" onclick="showFileViewer('${m.image}')" style="width:44px; height:44px; object-fit:contain; display:inline-block; vertical-align:middle">` : ''}</td>
+      <td>${escapeHtml(m.name || '')}</td>
+      <td>${Number(m.stock || 0)}</td>
+      <td>${renderRawExpiryLines(m.batches)}</td>
+      <td>${renderRawStockLines(m.batches)}</td>
+      <td style="text-align:center"><button class="btn-secondary" style="padding:4px 8px; font-size:12px" onclick="openRawStockAdjustment('${encodeURIComponent(JSON.stringify(m))}')">调整</button></td>
+    </tr>
+  `).join('');
+  renderRsAdjustPager();
 }
-function openRawAuditModal() {
-  // Reuse modal but change title/action? Or create new?
-  // Let's reuse for simplicity, just change onclick handler or add flag
-  const m = document.getElementById('rs-add-modal');
-  m.querySelector('.modal-title').textContent = '盘点库存 (覆盖)';
-  m.querySelector('.btn').onclick = saveRawAudit;
-  m.style.display = 'flex';
+window.loadRawStockAdjustments = loadRawStockAdjustments;
+async function loadRawStockRecords(page = 1) {
+  rsRecordPage = page;
+  const q = document.getElementById('rs-search')?.value?.trim() || '';
+  const tbody = document.getElementById('raw-stock-record-rows');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="8" class="empty">加载中...</td></tr>';
+  try {
+    const res = await fetchWithAuth(`/api/inventory/raw/logs?page=${rsRecordPage}&size=${rsRecordPageSize}&q=${encodeURIComponent(q)}&_t=${Date.now()}`);
+    if (!res.ok) throw new Error('Failed to load raw stock logs');
+    const data = await res.json();
+    const list = data.list || [];
+    rsRecordTotal = data.total || 0;
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无记录</td></tr>';
+      renderRsRecordPager();
+      return;
+    }
+    tbody.innerHTML = list.map((row, idx) => {
+      const d = new Date(Number(row.date || 0));
+      const dateStr = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const qty = Number(row.qty || 0);
+      const qtyColor = qty >= 0 ? '#10b981' : '#f97316';
+      return `
+        <tr>
+          <td>${rsRecordTotal - (rsRecordPage - 1) * rsRecordPageSize - idx}</td>
+          <td>${escapeHtml(row.name || '')}</td>
+          <td>${dateStr}</td>
+          <td>${formatRawRecordType(row.type)}</td>
+          <td style="text-align:right; color:${qtyColor}; font-weight:600">${qty > 0 ? '+' : ''}${qty}</td>
+          <td>${escapeHtml(row.expiry || '-')}</td>
+          <td style="white-space:pre-wrap; word-break:break-word">${escapeHtml(row.notes || '-')}</td>
+          <td>${escapeHtml(row.user || '-')}</td>
+        </tr>
+      `;
+    }).join('');
+    renderRsRecordPager();
+  } catch (e) {
+    console.error(e);
+    tbody.innerHTML = '<tr><td colspan="8" class="empty" style="color:#ef4444">加载失败</td></tr>';
+  }
 }
-async function saveRawStock() {
-  const name = document.getElementById('rs-name').value;
-  const qty = document.getElementById('rs-qty').value;
-  const expiry = document.getElementById('rs-expiry').value;
-  if (!name || !qty || !expiry) return alert('请填写完整信息');
-  
-  await fetchWithAuth('/api/inventory/raw', {
-    method: 'POST',
-    body: JSON.stringify({ name, qty, expiry })
+function renderRsPager() {
+  const pager = document.getElementById('rs-pager');
+  if (!pager) return;
+  const totalPages = Math.ceil(rsTotal / rsPageSize);
+  if (totalPages <= 1) {
+    pager.style.display = 'none';
+    return;
+  }
+  pager.style.display = 'flex';
+  pager.innerHTML = `
+    <button class="btn-secondary" ${rsPage <= 1 ? 'disabled' : ''} onclick="loadRawStock(${rsPage - 1})">上一页</button>
+    <span style="font-size:14px; color:#cbd5e1">第 ${rsPage} / ${totalPages} 页</span>
+    <button class="btn-secondary" ${rsPage >= totalPages ? 'disabled' : ''} onclick="loadRawStock(${rsPage + 1})">下一页</button>
+  `;
+}
+function renderRsRecordPager() {
+  const pager = document.getElementById('rs-record-pager');
+  if (!pager) return;
+  const totalPages = Math.ceil(rsRecordTotal / rsRecordPageSize);
+  if (totalPages <= 1) {
+    pager.style.display = 'none';
+    return;
+  }
+  pager.style.display = 'flex';
+  pager.innerHTML = `
+    <button class="btn-secondary" ${rsRecordPage <= 1 ? 'disabled' : ''} onclick="loadRawStockRecords(${rsRecordPage - 1})">上一页</button>
+    <span style="font-size:14px; color:#cbd5e1">第 ${rsRecordPage} / ${totalPages} 页</span>
+    <button class="btn-secondary" ${rsRecordPage >= totalPages ? 'disabled' : ''} onclick="loadRawStockRecords(${rsRecordPage + 1})">下一页</button>
+  `;
+}
+function renderRsAdjustPager() {
+  const pager = document.getElementById('rs-adjust-pager');
+  if (!pager) return;
+  const totalPages = Math.ceil(rsAdjustTotal / rsPageSize);
+  if (totalPages <= 1) {
+    pager.style.display = 'none';
+    return;
+  }
+  pager.style.display = 'flex';
+  pager.innerHTML = `
+    <button class="btn-secondary" ${rsAdjustPage <= 1 ? 'disabled' : ''} onclick="loadRawStockAdjustments(${rsAdjustPage - 1})">上一页</button>
+    <span style="font-size:14px; color:#cbd5e1">第 ${rsAdjustPage} / ${totalPages} 页</span>
+    <button class="btn-secondary" ${rsAdjustPage >= totalPages ? 'disabled' : ''} onclick="loadRawStockAdjustments(${rsAdjustPage + 1})">下一页</button>
+  `;
+}
+function setRawMaterialModalPreview(imageUrl = '', fileName = '未选择图片') {
+  if (rsMaterialImage) rsMaterialImage.value = imageUrl || '';
+  if (rsMaterialPreview) {
+    rsMaterialPreview.src = imageUrl || '';
+    rsMaterialPreview.style.display = imageUrl ? 'block' : 'none';
+  }
+  if (rsMaterialFileName) rsMaterialFileName.textContent = fileName || (imageUrl ? '已保存图片' : '未选择图片');
+}
+function resetRawMaterialModal() {
+  const input = document.getElementById('rs-material-name');
+  if (input) input.value = '';
+  rsMaterialEditId = null;
+  if (rsMaterialIdInput) rsMaterialIdInput.value = '';
+  if (rsMaterialFile) rsMaterialFile.value = '';
+  setRawMaterialModalPreview('', '未选择图片');
+}
+function openRawMaterialNameModal() {
+  resetRawMaterialModal();
+  if (rsNameModalTitle) rsNameModalTitle.textContent = '添加原材料名称';
+  if (rsNameModalSave) rsNameModalSave.textContent = '保存';
+  document.getElementById('rs-name-modal').style.display = 'flex';
+}
+window.openRawMaterialNameModal = openRawMaterialNameModal;
+function openRawMaterialEdit(raw) {
+  let material = null;
+  try {
+    material = JSON.parse(decodeURIComponent(raw || ''));
+  } catch (e) {
+    console.warn('failed to decode raw material payload', e);
+    return;
+  }
+  resetRawMaterialModal();
+  rsMaterialEditId = Number(material?.id || 0) || null;
+  if (rsMaterialIdInput) rsMaterialIdInput.value = rsMaterialEditId || '';
+  const input = document.getElementById('rs-material-name');
+  if (input) input.value = String(material?.name || '').trim();
+  const imageUrl = String(material?.image || '').trim();
+  setRawMaterialModalPreview(imageUrl, imageUrl ? '已保存图片' : '未选择图片');
+  if (rsNameModalTitle) rsNameModalTitle.textContent = '编辑原材料名称';
+  if (rsNameModalSave) rsNameModalSave.textContent = '保存修改';
+  document.getElementById('rs-name-modal').style.display = 'flex';
+}
+window.openRawMaterialEdit = openRawMaterialEdit;
+async function saveRawMaterialName() {
+  const name = document.getElementById('rs-material-name').value.trim();
+  if (!name) return alert('请填写原材料名称');
+  const materialId = Number(rsMaterialEditId || rsMaterialIdInput?.value || 0);
+  let image = rsMaterialImage?.value || '';
+  const fileObj = rsMaterialFile?.files?.[0];
+  if (fileObj) {
+    const fd = new FormData();
+    fd.append('file', fileObj);
+    try {
+      const token = getAuthToken();
+      const r = await fetch(API_BASE + '/api/upload', {
+        method: 'POST',
+        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+        body: fd
+      });
+      if (!r.ok) {
+        alert('图片上传失败，请重试');
+        return;
+      }
+      const d = await r.json();
+      image = d.url || '';
+      if (rsMaterialImage) rsMaterialImage.value = image;
+    } catch (e) {
+      console.warn('raw material image upload failed', e);
+      alert('图片上传失败，请检查网络');
+      return;
+    }
+  }
+  const res = await fetchWithAuth(materialId ? `/api/inventory/raw/materials/${materialId}` : '/api/inventory/raw/materials', {
+    method: materialId ? 'PUT' : 'POST',
+    body: JSON.stringify({ name, image })
   });
-  document.getElementById('rs-add-modal').style.display = 'none';
-  loadRawStock();
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    if (err.error === 'duplicate') return alert('原材料名称已存在');
+    if (err.error === 'not_found') return alert('原材料不存在');
+    return alert(materialId ? '保存修改失败' : '保存失败');
+  }
+  document.getElementById('rs-name-modal').style.display = 'none';
+  if (rsCurrentTab === 'stock') loadRawStock(rsPage);
+  else if (rsCurrentTab === 'adjust') loadRawStockAdjustments(rsAdjustPage);
 }
-async function saveRawAudit() {
-  const name = document.getElementById('rs-name').value;
-  const qty = document.getElementById('rs-qty').value;
-  if (!name || !qty) return alert('请填写完整信息');
-  
-  await fetchWithAuth('/api/inventory/raw/audit', {
+window.saveRawMaterialName = saveRawMaterialName;
+function confirmDeleteRawMaterial(raw) {
+  let material = null;
+  try {
+    material = JSON.parse(decodeURIComponent(raw || ''));
+  } catch (e) {
+    console.warn('failed to decode raw material delete payload', e);
+    return;
+  }
+  const mid = Number(material?.id || 0);
+  if (!mid) return;
+  const name = String(material?.name || '').trim() || '该原材料';
+  openConfirm(`确定删除“${name}”吗？删除后不可恢复。`, async () => {
+    const res = await fetchWithAuth(`/api/inventory/raw/materials/${mid}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      if (err.error === 'has_stock') return alert('该原材料还有库存，不能删除');
+      if (err.error === 'has_logs') return alert('该原材料已有出入库记录，不能删除');
+      if (err.error === 'not_found') return alert('原材料不存在');
+      return alert('删除失败');
+    }
+    if (rsCurrentTab === 'stock') loadRawStock(1);
+    else if (rsCurrentTab === 'adjust') loadRawStockAdjustments(1);
+  });
+}
+window.confirmDeleteRawMaterial = confirmDeleteRawMaterial;
+
+async function loadEventRecords(tab = 'ongoing', btn = null, page = 1) {
+  eventRecordCurrentTab = tab === 'completed' ? 'completed' : 'ongoing';
+  eventRecordPage = page;
+  if (btn) {
+    document.querySelectorAll('#page-event-records .tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  } else {
+    const tBtn = document.querySelector(`#page-event-records .tab[data-tab="${eventRecordCurrentTab}"]`);
+    if (tBtn) {
+      document.querySelectorAll('#page-event-records .tab').forEach(b => b.classList.remove('active'));
+      tBtn.classList.add('active');
+    }
+  }
+  const q = document.getElementById('event-record-search')?.value?.trim() || '';
+  const res = await fetchWithAuth(`/api/event-records?status=${eventRecordCurrentTab}&page=${eventRecordPage}&size=${eventRecordPageSize}&q=${encodeURIComponent(q)}&_t=${Date.now()}`);
+  if (!res.ok) return;
+  const data = await res.json();
+  currentEventRecordList = data.list || [];
+  eventRecordTotal = data.total || 0;
+  const setEventBadge = (id, count) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.textContent = count;
+      el.style.display = count > 0 ? 'inline-block' : 'none';
+    }
+  };
+  if (eventRecordCurrentTab === 'ongoing') {
+    setEventBadge('tab-event-record-ongoing-badge', eventRecordTotal);
+    setEventBadge('nav-event-record-badge', eventRecordTotal);
+  }
+  const tbody = document.getElementById('event-record-rows');
+  if (!tbody) return;
+  if (!currentEventRecordList.length) {
+    tbody.innerHTML = '<tr class="empty"><td colspan="7">暂无数据</td></tr>';
+    renderEventRecordPager();
+    return;
+  }
+  tbody.innerHTML = currentEventRecordList.map((x, idx) => `
+    <tr>
+      <td>${eventRecordTotal - (eventRecordPage - 1) * eventRecordPageSize - idx}</td>
+      <td>${escapeHtml(x.name || '')}</td>
+      <td>${escapeHtml(x.record_date || '')}</td>
+      <td>${escapeHtml(x.due_date || '')}</td>
+      <td title="${escapeHtml(x.notes || '')}" style="max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeHtml((x.notes || '').length > 40 ? `${String(x.notes || '').slice(0, 40)}...` : (x.notes || '-'))}</td>
+      <td>
+        <div>${escapeHtml(x.created_by || '')}</div>
+        ${eventRecordCurrentTab === 'completed' ? `<div style="margin-top:4px; font-size:12px; color:#94a3b8">确认：${escapeHtml(x.confirmed_by || '-')}</div>` : ''}
+      </td>
+      <td>
+        ${eventRecordCurrentTab === 'ongoing'
+          ? `<button class="btn-secondary" style="padding:4px 10px; font-size:12px" onclick="openEventRecordModal(${x.id})">编辑</button><button class="btn-sm" style="margin-left:6px" onclick="markEventRecordCompleted(${x.id})">完成</button>`
+          : `<button class="btn-secondary" style="padding:4px 10px; font-size:12px" onclick="markEventRecordOngoing(${x.id})">恢复进行中</button>`}
+      </td>
+    </tr>
+  `).join('');
+  renderEventRecordPager();
+}
+window.loadEventRecords = loadEventRecords;
+function renderEventRecordPager() {
+  const pager = document.getElementById('event-record-pager');
+  if (!pager) return;
+  if (eventRecordTotal <= eventRecordPageSize) {
+    pager.style.display = 'none';
+    pager.innerHTML = '';
+    return;
+  }
+  const totalPages = Math.max(1, Math.ceil(eventRecordTotal / eventRecordPageSize));
+  pager.style.display = 'flex';
+  pager.innerHTML = `
+    <button class="btn-secondary" ${eventRecordPage <= 1 ? 'disabled' : ''} onclick="loadEventRecords('${eventRecordCurrentTab}', null, ${Math.max(1, eventRecordPage - 1)})">上一页</button>
+    <span>第 ${eventRecordPage} / ${totalPages} 页</span>
+    <button class="btn-secondary" ${eventRecordPage >= totalPages ? 'disabled' : ''} onclick="loadEventRecords('${eventRecordCurrentTab}', null, ${Math.min(totalPages, eventRecordPage + 1)})">下一页</button>
+  `;
+}
+function handleEventRecordSearchInput() { loadEventRecords(eventRecordCurrentTab, null, 1); }
+window.handleEventRecordSearchInput = handleEventRecordSearchInput;
+function openEventRecordModal(id = null) {
+  const modal = document.getElementById('event-record-modal');
+  const title = document.getElementById('event-record-modal-title');
+  const idInput = document.getElementById('event-record-id');
+  const nameInput = document.getElementById('event-record-name');
+  const dateInput = document.getElementById('event-record-date');
+  const dueInput = document.getElementById('event-record-due-date');
+  const notesInput = document.getElementById('event-record-notes');
+  if (!modal || !title || !idInput || !nameInput || !dateInput || !dueInput || !notesInput) return;
+  if (!id) {
+    title.textContent = '添加事件';
+    idInput.value = '';
+    nameInput.value = '';
+    dateInput.value = new Date().toISOString().slice(0, 10);
+    dueInput.value = '';
+    notesInput.value = '';
+  } else {
+    const item = currentEventRecordList.find(x => Number(x.id) === Number(id));
+    if (!item) return;
+    title.textContent = '编辑事件';
+    idInput.value = String(item.id);
+    nameInput.value = item.name || '';
+    dateInput.value = item.record_date || '';
+    dueInput.value = item.due_date || '';
+    notesInput.value = item.notes || '';
+  }
+  modal.style.display = 'flex';
+}
+window.openEventRecordModal = openEventRecordModal;
+function closeEventRecordModal() {
+  const modal = document.getElementById('event-record-modal');
+  if (modal) modal.style.display = 'none';
+}
+window.closeEventRecordModal = closeEventRecordModal;
+async function saveEventRecord() {
+  const id = Number(document.getElementById('event-record-id')?.value || 0);
+  const name = document.getElementById('event-record-name')?.value?.trim() || '';
+  const recordDate = document.getElementById('event-record-date')?.value || '';
+  const dueDate = document.getElementById('event-record-due-date')?.value || '';
+  const notes = document.getElementById('event-record-notes')?.value?.trim() || '';
+  if (!name) return alert('请输入事件名称');
+  const payload = {
+    name,
+    record_date: recordDate,
+    due_date: dueDate,
+    notes,
+    status: eventRecordCurrentTab
+  };
+  const res = await fetchWithAuth(id ? `/api/event-records/${id}` : '/api/event-records', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) return alert('保存失败');
+  closeEventRecordModal();
+  showAppToast('保存成功');
+  loadEventRecords(eventRecordCurrentTab, null, 1);
+}
+window.saveEventRecord = saveEventRecord;
+async function markEventRecordCompleted(id) {
+  const item = currentEventRecordList.find(x => Number(x.id) === Number(id));
+  if (!item) return;
+  const res = await fetchWithAuth(`/api/event-records/${id}`, {
     method: 'PUT',
-    body: JSON.stringify({ name, qty })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: item.name || '',
+      record_date: item.record_date || '',
+      due_date: item.due_date || '',
+      notes: item.notes || '',
+      status: 'completed'
+    })
   });
-  document.getElementById('rs-add-modal').style.display = 'none';
-  loadRawStock();
-  // Reset modal state
-  const m = document.getElementById('rs-add-modal');
-  m.querySelector('.modal-title').textContent = '添加原材料库存';
-  m.querySelector('.btn').onclick = saveRawStock;
+  if (!res.ok) return alert('操作失败');
+  showAppToast('已标记为完成');
+  loadEventRecords(eventRecordCurrentTab, null, 1);
 }
+window.markEventRecordCompleted = markEventRecordCompleted;
+async function markEventRecordOngoing(id) {
+  const item = currentEventRecordList.find(x => Number(x.id) === Number(id));
+  if (!item) return;
+  const res = await fetchWithAuth(`/api/event-records/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: item.name || '',
+      record_date: item.record_date || '',
+      due_date: item.due_date || '',
+      notes: item.notes || '',
+      status: 'ongoing'
+    })
+  });
+  if (!res.ok) return alert('操作失败');
+  showAppToast('已恢复为进行中');
+  loadEventRecords(eventRecordCurrentTab, null, 1);
+}
+window.markEventRecordOngoing = markEventRecordOngoing;
+
+async function loadProductionEntries(tab = 'pending', btn = null, page = 1) {
+  productionReviewCurrentTab = ['approved', 'rejected'].includes(tab) ? tab : 'pending';
+  productionReviewPage = page;
+  const reviewScope = document.getElementById('fs-review-panel') || document.getElementById('page-production-review');
+  if (btn) {
+    reviewScope?.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  } else {
+    const tBtn = reviewScope?.querySelector(`.tab[data-tab="${productionReviewCurrentTab}"]`);
+    if (tBtn) {
+      reviewScope?.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+      tBtn.classList.add('active');
+    }
+  }
+  const q = document.getElementById('production-review-search')?.value?.trim() || '';
+  const res = await fetchWithAuth(`/api/production-entries?status=${productionReviewCurrentTab}&page=${productionReviewPage}&size=${productionReviewPageSize}&q=${encodeURIComponent(q)}&_t=${Date.now()}`);
+  if (!res.ok) return;
+  const data = await res.json();
+  currentProductionEntryList = data.list || [];
+  productionReviewTotal = data.total || 0;
+  const tbody = document.getElementById('production-review-rows');
+  if (!tbody) return;
+  if (!currentProductionEntryList.length) {
+    tbody.innerHTML = '<tr class="empty"><td colspan="10">暂无数据</td></tr>';
+    renderProductionReviewPager();
+    return;
+  }
+  tbody.innerHTML = currentProductionEntryList.map((x, idx) => `
+    <tr>
+      <td>${productionReviewTotal - (productionReviewPage - 1) * productionReviewPageSize - idx}</td>
+      <td style="text-align:center">${x.photo_url ? `<img src="${x.photo_url}" class="thumb-img" onclick="showFileViewer('${x.photo_url}')" style="width:44px;height:44px;object-fit:cover;display:inline-block;cursor:zoom-in" title="点击放大">` : '-'}</td>
+      <td>${escapeHtml(x.product_name || '')}</td>
+      <td>${escapeHtml(x.product_name_cn || '')}</td>
+      <td>${productionReviewCurrentTab === 'pending'
+        ? `<span style="color:#ef4444; font-size:16px; font-weight:800">${escapeHtml(formatProductionReviewLote(x.lote || ''))}</span>`
+        : escapeHtml(formatProductionReviewLote(x.lote || ''))}</td>
+      <td>${productionReviewCurrentTab === 'pending'
+        ? `<span style="color:#ef4444; font-size:16px; font-weight:800">${escapeHtml(x.expiration_date || '')}</span>`
+        : escapeHtml(x.expiration_date || '')}</td>
+      <td>${productionReviewCurrentTab === 'pending'
+        ? `<span style="color:#ef4444; font-size:16px; font-weight:800">${Number(x.box_count || 0)}</span>`
+        : Number(x.box_count || 0)}</td>
+      <td>${formatDateTime(Number(x.created_at || 0))}</td>
+      <td>${escapeHtml(x.created_by || '')}</td>
+      <td>
+        ${productionReviewCurrentTab === 'pending'
+          ? `<button class="btn-sm" onclick="approveProductionEntry(${x.id})">审核</button>
+             <button class="btn-secondary" style="margin-left:6px; padding:4px 10px; font-size:12px" onclick="rejectProductionEntry(${x.id})">驳回</button>`
+          : productionReviewCurrentTab === 'rejected'
+            ? `<span title="${escapeHtml(x.reject_reason || '')}" style="color:#fca5a5">${escapeHtml(x.reject_reason || '已驳回')}</span>`
+            : `<div style="color:#10b981">已入库并打印</div><div style="margin-top:4px; font-size:12px; color:#94a3b8">审核人: ${escapeHtml(x.approved_by || '-')}</div>`}
+      </td>
+    </tr>
+  `).join('');
+  renderProductionReviewPager();
+}
+window.loadProductionEntries = loadProductionEntries;
+function formatProductionReviewLote(loteValue) {
+  let raw = String(loteValue || '').trim();
+  const parts = raw.split('-');
+  if (parts.length === 3) raw = parts[2] + parts[1];
+  return raw || '-';
+}
+function renderProductionReviewPager() {
+  const pager = document.getElementById('production-review-pager');
+  if (!pager) return;
+  const totalPages = Math.max(1, Math.ceil(productionReviewTotal / productionReviewPageSize));
+  pager.innerHTML = `
+    <button class="btn-secondary" ${productionReviewPage <= 1 ? 'disabled' : ''} onclick="loadProductionEntries('${productionReviewCurrentTab}', null, ${Math.max(1, productionReviewPage - 1)})">上一页</button>
+    <span>第 ${productionReviewPage} / ${totalPages} 页</span>
+    <button class="btn-secondary" ${productionReviewPage >= totalPages ? 'disabled' : ''} onclick="loadProductionEntries('${productionReviewCurrentTab}', null, ${Math.min(totalPages, productionReviewPage + 1)})">下一页</button>
+  `;
+}
+function handleProductionReviewSearchInput() { loadProductionEntries(productionReviewCurrentTab, null, 1); }
+window.handleProductionReviewSearchInput = handleProductionReviewSearchInput;
+function buildProductionLabelHtml(entry) {
+  const title = escapeHtml(entry.product_name || '');
+  const cnName = escapeHtml(entry.product_name_cn || '');
+  const lote = escapeHtml(entry.lote || '');
+  const expiry = escapeHtml(entry.expiration_date || '');
+  const boxCount = Number(entry.box_count || 0);
+  const image = entry.photo_url || entry.product_image || '';
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>生产标签</title>
+<style>
+  @page { size: 100mm 70mm; margin: 0; }
+  body { margin: 0; font-family: Arial, sans-serif; background: #fff; }
+  .label { width: 100mm; height: 70mm; box-sizing: border-box; padding: 8mm; display: flex; gap: 6mm; align-items: stretch; }
+  .photo { width: 28mm; height: 28mm; border: 1px solid #ccc; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .photo img { width:100%; height:100%; object-fit:cover; }
+  .main { flex:1; display:flex; flex-direction:column; justify-content:space-between; }
+  .name { font-size: 18px; font-weight: 700; line-height: 1.2; }
+  .cn { font-size: 14px; color: #333; margin-top: 2mm; }
+  .line { font-size: 16px; margin-top: 2mm; }
+  .key { font-weight: 700; }
+</style>
+</head>
+<body>
+  <div class="label">
+    <div class="photo">${image ? `<img src="${image}">` : ''}</div>
+    <div class="main">
+      <div>
+        <div class="name">${title || '-'}</div>
+        <div class="cn">${cnName || '&nbsp;'}</div>
+      </div>
+      <div>
+        <div class="line"><span class="key">Lote:</span> ${lote || '-'}</div>
+        <div class="line"><span class="key">到期:</span> ${expiry || '-'}</div>
+        <div class="line"><span class="key">箱数:</span> ${boxCount}</div>
+      </div>
+    </div>
+  </div>
+  <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 200); };</script>
+</body>
+</html>`;
+}
+async function approveProductionEntry(id) {
+  openConfirm('确认审核这条新生产记录吗？确认后会自动入库存并触发打印。', async () => {
+    const printWin = window.open('', '_blank', 'width=520,height=420');
+    const res = await fetchWithAuth(`/api/production-entries/${id}/review`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'approve' })
+    });
+    if (!res.ok) {
+      if (printWin) printWin.close();
+      return alert('审核失败');
+    }
+    const data = await res.json();
+    const entry = data.entry || currentProductionEntryList.find(x => Number(x.id) === Number(id));
+    if (printWin && entry) {
+      printWin.document.open();
+      printWin.document.write(buildProductionLabelHtml(entry));
+      printWin.document.close();
+    }
+    showAppToast('审核通过，已自动入库并触发打印');
+    loadProductionEntries(productionReviewCurrentTab, null, 1);
+    updateGlobalBadges();
+  });
+}
+window.approveProductionEntry = approveProductionEntry;
+async function rejectProductionEntry(id) {
+  const reason = prompt('请输入驳回原因', '');
+  if (reason === null) return;
+  const res = await fetchWithAuth(`/api/production-entries/${id}/review`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'reject', reason: String(reason || '').trim() })
+  });
+  if (!res.ok) return alert('驳回失败');
+  showAppToast('已驳回');
+  loadProductionEntries(productionReviewCurrentTab, null, 1);
+  updateGlobalBadges();
+}
+window.rejectProductionEntry = rejectProductionEntry;
+
+async function loadKnowledgeBase(tab = 'internal', btn = null, page = 1) {
+  knowledgeBaseCurrentTab = tab === 'surrounding' ? 'surrounding' : 'internal';
+  knowledgeBasePage = page;
+  if (btn) {
+    document.querySelectorAll('#page-knowledge-base .tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  } else {
+    const tBtn = document.querySelector(`#page-knowledge-base .tab[data-tab="${knowledgeBaseCurrentTab}"]`);
+    if (tBtn) {
+      document.querySelectorAll('#page-knowledge-base .tab').forEach(b => b.classList.remove('active'));
+      tBtn.classList.add('active');
+    }
+  }
+  const q = document.getElementById('knowledge-base-search')?.value?.trim() || '';
+  const res = await fetchWithAuth(`/api/knowledge-base?category=${knowledgeBaseCurrentTab}&page=${knowledgeBasePage}&size=${knowledgeBasePageSize}&q=${encodeURIComponent(q)}&_t=${Date.now()}`);
+  if (!res.ok) return;
+  const data = await res.json();
+  currentKnowledgeBaseList = data.list || [];
+  knowledgeBaseTotal = data.total || 0;
+  const tbody = document.getElementById('knowledge-base-rows');
+  if (!tbody) return;
+  if (!currentKnowledgeBaseList.length) {
+    tbody.innerHTML = '<tr class="empty"><td colspan="6">暂无数据</td></tr>';
+    renderKnowledgeBasePager();
+    return;
+  }
+  tbody.innerHTML = currentKnowledgeBaseList.map((x, idx) => `
+    <tr>
+      <td>${knowledgeBaseTotal - (knowledgeBasePage - 1) * knowledgeBasePageSize - idx}</td>
+      <td>${escapeHtml(x.title || '')}</td>
+      <td style="white-space:pre-wrap; word-break:break-word">${escapeHtml(x.content || '')}</td>
+      <td>${formatDateTime(Number(x.created_at || 0))}</td>
+      <td>${escapeHtml(x.created_by || '')}</td>
+      <td>
+        <button class="btn-secondary" style="padding:4px 10px; font-size:12px" onclick="openKnowledgeBaseModal(${x.id})">编辑</button>
+      </td>
+    </tr>
+  `).join('');
+  renderKnowledgeBasePager();
+}
+window.loadKnowledgeBase = loadKnowledgeBase;
+function renderKnowledgeBasePager() {
+  const pager = document.getElementById('knowledge-base-pager');
+  if (!pager) return;
+  if (knowledgeBaseTotal <= knowledgeBasePageSize) {
+    pager.style.display = 'none';
+    pager.innerHTML = '';
+    return;
+  }
+  const totalPages = Math.max(1, Math.ceil(knowledgeBaseTotal / knowledgeBasePageSize));
+  pager.style.display = 'flex';
+  pager.innerHTML = `
+    <button class="btn-secondary" ${knowledgeBasePage <= 1 ? 'disabled' : ''} onclick="loadKnowledgeBase('${knowledgeBaseCurrentTab}', null, ${Math.max(1, knowledgeBasePage - 1)})">上一页</button>
+    <span>第 ${knowledgeBasePage} / ${totalPages} 页</span>
+    <button class="btn-secondary" ${knowledgeBasePage >= totalPages ? 'disabled' : ''} onclick="loadKnowledgeBase('${knowledgeBaseCurrentTab}', null, ${Math.min(totalPages, knowledgeBasePage + 1)})">下一页</button>
+  `;
+}
+function handleKnowledgeBaseSearchInput() { loadKnowledgeBase(knowledgeBaseCurrentTab, null, 1); }
+window.handleKnowledgeBaseSearchInput = handleKnowledgeBaseSearchInput;
+function openKnowledgeBaseModal(id = null) {
+  const modal = document.getElementById('knowledge-base-modal');
+  const title = document.getElementById('knowledge-base-modal-title');
+  const idInput = document.getElementById('knowledge-base-id');
+  const titleInput = document.getElementById('knowledge-base-title-input');
+  const contentInput = document.getElementById('knowledge-base-content-input');
+  if (!modal || !title || !idInput || !titleInput || !contentInput) return;
+  if (!id) {
+    title.textContent = '添加知识库内容';
+    idInput.value = '';
+    titleInput.value = '';
+    contentInput.value = '';
+  } else {
+    const item = currentKnowledgeBaseList.find(x => Number(x.id) === Number(id));
+    if (!item) return;
+    title.textContent = '编辑知识库内容';
+    idInput.value = String(item.id);
+    titleInput.value = item.title || '';
+    contentInput.value = item.content || '';
+  }
+  modal.style.display = 'flex';
+}
+window.openKnowledgeBaseModal = openKnowledgeBaseModal;
+function closeKnowledgeBaseModal() {
+  const modal = document.getElementById('knowledge-base-modal');
+  if (modal) modal.style.display = 'none';
+}
+window.closeKnowledgeBaseModal = closeKnowledgeBaseModal;
+async function saveKnowledgeBaseEntry() {
+  const id = Number(document.getElementById('knowledge-base-id')?.value || 0);
+  const title = document.getElementById('knowledge-base-title-input')?.value?.trim() || '';
+  const content = document.getElementById('knowledge-base-content-input')?.value?.trim() || '';
+  if (!title) return alert('请输入标题');
+  if (!content) return alert('请输入内容');
+  const payload = { title, content, category: knowledgeBaseCurrentTab };
+  const res = await fetchWithAuth(id ? `/api/knowledge-base/${id}` : '/api/knowledge-base', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) return alert('保存失败');
+  closeKnowledgeBaseModal();
+  showAppToast('保存成功');
+  loadKnowledgeBase(knowledgeBaseCurrentTab, null, 1);
+}
+window.saveKnowledgeBaseEntry = saveKnowledgeBaseEntry;
+async function saveRawStock() {
+  if (rsAddItems.length === 0) return alert('请选择原材料');
+  document.querySelectorAll('.rs-item-qty').forEach(el => {
+    if (rsAddItems[el.dataset.idx]) rsAddItems[el.dataset.idx].qty = el.value;
+  });
+  document.querySelectorAll('.rs-item-lote').forEach(el => {
+    if (rsAddItems[el.dataset.idx]) rsAddItems[el.dataset.idx].lote = el.value;
+  });
+  document.querySelectorAll('.rs-item-expiry').forEach(el => {
+    if (rsAddItems[el.dataset.idx]) rsAddItems[el.dataset.idx].expiry = el.value;
+  });
+  const invalid = rsAddItems.find(i => !i.qty || Number(i.qty) <= 0 || !i.lote || !i.expiry);
+  if (invalid) {
+    return alert(`请填写完整的数量、Lote和过期时间 (${invalid.name})`);
+  }
+  const res = await fetchWithAuth('/api/inventory/raw', {
+    method: 'POST',
+    body: JSON.stringify({ items: rsAddItems })
+  });
+  if (!res.ok) return alert('保存失败');
+  document.getElementById('rs-add-modal').style.display = 'none';
+  rsAddItems = [];
+  loadRawStock(rsPage);
+  loadRawStockRecords(1);
+}
+window.saveRawStock = saveRawStock;
+function openRawStockAdjustment(encodedMaterial) {
+  const m = typeof encodedMaterial === 'string' ? JSON.parse(decodeURIComponent(encodedMaterial)) : encodedMaterial;
+  if (!m) return;
+  rsAdjustState = {
+    materialId: m.id,
+    name: m.name || '',
+    batches: buildRawBatches(m.batches)
+  };
+  const defaultBatch = rsAdjustState.batches[0] || {};
+  document.getElementById('rs-adjust-material-id').value = m.id;
+  document.getElementById('rs-adjust-notes').value = '';
+  document.getElementById('rs-adjust-tbody').innerHTML = `
+    <tr>
+      <td>${escapeHtml(m.name || '')}</td>
+      <td><input id="rs-adjust-qty" type="number" step="0.01" style="width:100%" placeholder="可填正负数"></td>
+      <td>${rsAdjustState.batches.length ? `
+        <select id="rs-adjust-expiry" style="width:100%">
+          ${rsAdjustState.batches.map(b => `<option value="${escapeHtml(b.expiry || '')}" ${String(b.expiry || '') === String(defaultBatch.expiry || '') ? 'selected' : ''}>${escapeHtml(`${b.expiry || '无过期时间'} / 库存:${b.qty}`)}</option>`).join('')}
+        </select>
+      ` : `
+        <input id="rs-adjust-expiry" type="date" value="" style="width:100%">
+      `}</td>
+    </tr>
+  `;
+  document.getElementById('rs-adjust-modal').style.display = 'flex';
+}
+window.openRawStockAdjustment = openRawStockAdjustment;
+async function saveRawStockAdjustment() {
+  const materialId = Number(document.getElementById('rs-adjust-material-id').value || 0);
+  const qty = Number(document.getElementById('rs-adjust-qty').value || 0);
+  const expiry = (document.getElementById('rs-adjust-expiry').value || '').trim();
+  const notes = (document.getElementById('rs-adjust-notes').value || '').trim();
+  if (!materialId || !Number.isFinite(qty) || qty === 0) return alert('请填写有效数量');
+  if (!notes) return alert('请填写备注');
+  const res = await fetchWithAuth('/api/inventory/raw/adjust', {
+    method: 'PUT',
+    body: JSON.stringify({ materialId, qty, expiry, notes })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    return alert(
+      err.error === 'bad_request' ? '请填写完整调整信息'
+      : err.error === 'not_found' ? '原材料不存在'
+      : err.error === 'batch_not_found' ? '所选批次不存在'
+      : '保存失败'
+    );
+  }
+  document.getElementById('rs-adjust-modal').style.display = 'none';
+  if (rsCurrentTab === 'adjust') loadRawStockAdjustments(rsAdjustPage);
+  loadRawStock(rsPage);
+  loadRawStockRecords(1);
+}
+window.saveRawStockAdjustment = saveRawStockAdjustment;
 
 // Mobile Sidebar Toggle
 window.toggleSidebar = function() {
@@ -9262,7 +12706,42 @@ async function updateGlobalBadges() {
       }
     } catch {}
 
-    // 3. Update UI
+    // 3. Event Record Stats (Ongoing)
+    let eventRecordCount = 0;
+    try {
+      const eRes = await fetchWithAuth(`/api/event-records?status=ongoing&page=1&size=1&_t=${Date.now()}`);
+      if (eRes.ok) {
+        const eData = await eRes.json();
+        eventRecordCount = Number(eData.total || 0);
+      }
+    } catch {}
+
+    // 4. Production Review Stats (Pending)
+    let productionReviewCount = 0;
+    try {
+      if (typeof can !== 'function' || can('production_review', 'view')) {
+        const pRes = await fetchWithAuth(`/api/production-entries?status=pending&page=1&size=1&_t=${Date.now()}`);
+        if (pRes.ok) {
+          const pData = await pRes.json();
+          productionReviewCount = Number(pData.total || 0);
+        }
+      }
+    } catch {}
+
+    // 5. Logistics Stats (Ongoing)
+    let logisticsOngoingCount = 0;
+    try {
+      const r = await fetchWithAuth(`/api/logistics/records?status=ongoing&_t=${Date.now()}`);
+      if (r.ok) {
+        const list = await r.json().catch(() => []);
+        logisticsOngoingCount = Array.isArray(list) ? list.length : 0;
+      } else if (r.status === 404) {
+        const all = loadLocalLogisticsRecords();
+        logisticsOngoingCount = (Array.isArray(all) ? all : []).filter(x => String(x?.status || '') === 'ongoing').length;
+      }
+    } catch {}
+
+    // 6. Update UI
     const setBadge = (id, n) => {
       const el = document.getElementById(id);
       if (el) {
@@ -9273,7 +12752,12 @@ async function updateGlobalBadges() {
 
     setBadge('nav-task-badge', taskCount);
     setBadge('nav-order-badge', orderCount);
-    setBadge('nav-daily-ops-badge', taskCount + orderCount);
+    updateLogisticsOngoingBadgeCount(logisticsOngoingCount);
+    setBadge('nav-event-record-badge', eventRecordCount);
+    setBadge('tab-event-record-ongoing-badge', eventRecordCount);
+    setBadge('fs-tab-review-badge', productionReviewCount);
+    setBadge('nav-daily-ops-badge', taskCount + orderCount + logisticsOngoingCount + eventRecordCount + productionReviewCount);
+    updateTopProductionReviewAlert(productionReviewCount);
 
   } catch (e) {
     console.error('Badge update failed', e);
