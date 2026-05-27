@@ -90,6 +90,7 @@ async function ensureSchema() {
       settled boolean not null default false,
       trust_days int,
       notes text,
+      file text,
       invoice_no text,
       invoice_date text,
       invoice_amount numeric default 0,
@@ -180,7 +181,10 @@ async function ensureSchema() {
       total_amount numeric default 0,
       notes text,
       created_at bigint,
-      created_by text
+      created_by text,
+      delivered boolean default false,
+      delivered_at text,
+      delivered_by text
     );
     create table if not exists products (
       id serial primary key,
@@ -222,6 +226,9 @@ async function ensureSchema() {
   await query('alter table invoices add column if not exists created_at bigint', []);
   await query('alter table invoices add column if not exists created_by text', []);
   await query('alter table invoices add column if not exists shipping_printed boolean default false', []);
+  await query('alter table invoices add column if not exists delivered boolean default false', []);
+  await query('alter table invoices add column if not exists delivered_at text', []);
+  await query('alter table invoices add column if not exists delivered_by text', []);
 
   // Products migrations
   await query('alter table products add column if not exists sku text unique', []);
@@ -313,6 +320,7 @@ async function ensureSchema() {
   await query('alter table payables add column if not exists settled boolean default false', []);
   await query('alter table payables add column if not exists trust_days int default 30', []);
   await query('alter table payables add column if not exists notes text', []);
+  await query('alter table payables add column if not exists file text', []);
   await query('alter table payables add column if not exists invoice_no text', []);
   await query('alter table payables add column if not exists invoice_date text', []);
   await query('alter table payables add column if not exists invoice_amount numeric', []);
@@ -324,6 +332,8 @@ async function ensureSchema() {
   await query('alter table payables add column if not exists source text', []);
   await query('alter table payables add column if not exists history jsonb default \'[]\'::jsonb', []);
   await query('alter table payables add column if not exists confirmed boolean default true', []);
+  await query('alter table payables add column if not exists confirmed_by text', []);
+  await query('alter table payables add column if not exists confirmed_at text', []);
   await query('update payables set confirmed=true where confirmed is null', []);
   await query('update payables set paid=0 where paid is null', []);
   await query('update payables set settled=false where settled is null', []);
@@ -1112,6 +1122,15 @@ function ensureAllow(module, action) {
       if (modPerms.view) return next();
     } else if (action === 'assigned_only') {
       if (modPerms.assigned_only) return next();
+    } else if (['update', 'delete', 'confirm'].includes(action)) {
+      const hasGranularRecordPerm = ['update', 'delete', 'confirm'].some(act => Object.prototype.hasOwnProperty.call(modPerms, act));
+      if (hasGranularRecordPerm) {
+        if (modPerms[action]) return next();
+      } else if (action === 'update') {
+        if (modPerms.edit || modPerms[action]) return next();
+      } else if (modPerms[action]) {
+        return next();
+      }
     } else {
       if (modPerms.edit || modPerms[action]) return next();
     }
@@ -1184,6 +1203,7 @@ function normalizePayable(rec) {
     settled,
     trust_days: rec.trustDays ?? null,
     notes: String(rec.notes || ''),
+    file: String(rec.file || ''),
     invoice_no: String(rec.invoiceNo || ''),
     invoice_date: String(rec.invoiceDate || ''),
     invoice_amount: roundMoneyValue(rec.invoiceAmount || 0),
@@ -1216,8 +1236,8 @@ app.post('/api/payables', authRequired, ensureAllow('payables','create'), async 
   if (!p.type || !p.partner || !p.doc || !p.amount) return res.status(400).json({ error: 'bad_request' });
   // upsert by (type, doc)
   const r = await query(`
-    insert into payables(type,partner,doc,amount,paid,settled,trust_days,notes,invoice_no,invoice_date,invoice_amount,sales,date,created_at,batch_at,batch_order,source,history,confirmed)
-    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+    insert into payables(type,partner,doc,amount,paid,settled,trust_days,notes,file,invoice_no,invoice_date,invoice_amount,sales,date,created_at,batch_at,batch_order,source,history,confirmed)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
     on conflict (type, doc) do update set
       partner=excluded.partner,
       amount=excluded.amount,
@@ -1225,6 +1245,7 @@ app.post('/api/payables', authRequired, ensureAllow('payables','create'), async 
       settled=excluded.settled,
       trust_days=excluded.trust_days,
       notes=excluded.notes,
+      file=excluded.file,
       invoice_no=excluded.invoice_no,
       invoice_date=excluded.invoice_date,
       invoice_amount=excluded.invoice_amount,
@@ -1237,7 +1258,7 @@ app.post('/api/payables', authRequired, ensureAllow('payables','create'), async 
       history=excluded.history,
       confirmed=excluded.confirmed
     returning *;
-  `, [p.type,p.partner,p.doc,p.amount,p.paid,p.settled,p.trust_days,p.notes,p.invoice_no,p.invoice_date,p.invoice_amount,p.sales,p.date,p.created_at,p.batch_at,p.batch_order,p.source,JSON.stringify(p.history),p.confirmed]);
+  `, [p.type,p.partner,p.doc,p.amount,p.paid,p.settled,p.trust_days,p.notes,p.file,p.invoice_no,p.invoice_date,p.invoice_amount,p.sales,p.date,p.created_at,p.batch_at,p.batch_order,p.source,JSON.stringify(p.history),p.confirmed]);
   res.json({ id: r.rows[0].id });
 });
 
@@ -1248,8 +1269,8 @@ app.post('/api/payables/import', authRequired, ensureAllow('payables','import'),
     const p = normalizePayable(rec);
     if (!p.type || !p.partner || !p.doc || !p.amount) continue;
     const r = await query(`
-      insert into payables(type,partner,doc,amount,paid,settled,trust_days,notes,invoice_no,invoice_date,invoice_amount,sales,date,created_at,batch_at,batch_order,source,history,confirmed)
-      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+      insert into payables(type,partner,doc,amount,paid,settled,trust_days,notes,file,invoice_no,invoice_date,invoice_amount,sales,date,created_at,batch_at,batch_order,source,history,confirmed)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
       on conflict (type, doc) do update set
         partner=excluded.partner,
         amount=excluded.amount,
@@ -1257,6 +1278,7 @@ app.post('/api/payables/import', authRequired, ensureAllow('payables','import'),
         settled=excluded.settled,
         trust_days=excluded.trust_days,
         notes=excluded.notes,
+        file=excluded.file,
         invoice_no=excluded.invoice_no,
         invoice_date=excluded.invoice_date,
         invoice_amount=excluded.invoice_amount,
@@ -1269,43 +1291,68 @@ app.post('/api/payables/import', authRequired, ensureAllow('payables','import'),
         history=excluded.history,
         confirmed=excluded.confirmed
       returning xmax = 0 as inserted;
-    `, [p.type,p.partner,p.doc,p.amount,p.paid,p.settled,p.trust_days,p.notes,p.invoice_no,p.invoice_date,p.invoice_amount,p.sales,p.date,p.created_at,p.batch_at,p.batch_order,p.source,JSON.stringify(p.history),p.confirmed]);
+    `, [p.type,p.partner,p.doc,p.amount,p.paid,p.settled,p.trust_days,p.notes,p.file,p.invoice_no,p.invoice_date,p.invoice_amount,p.sales,p.date,p.created_at,p.batch_at,p.batch_order,p.source,JSON.stringify(p.history),p.confirmed]);
     if (r.rows[0]?.inserted) inserted++; else updated++;
   }
   res.json({ inserted, updated });
 });
-app.put('/api/payables/:id', authRequired, ensureAllow('payables','create'), async (req, res) => {
+app.put('/api/payables/:id', authRequired, ensureAllow('payables','update'), async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
   const p = normalizePayable({ ...req.body, confirmed: false });
   const r = await query(`
     update payables set
       type=$1, partner=$2, doc=$3, amount=$4, paid=$5, settled=$6, trust_days=$7,
-      notes=$8, invoice_no=$9, invoice_date=$10, invoice_amount=$11, sales=$12,
-      date=$13, created_at=$14, batch_at=$15, batch_order=$16, source=$17, history=$18, confirmed=$19
-    where id=$20 and confirmed=false
+      notes=$8, file=$9, invoice_no=$10, invoice_date=$11, invoice_amount=$12, sales=$13,
+      date=$14, created_at=$15, batch_at=$16, batch_order=$17, source=$18, history=$19, confirmed=$20
+    where id=$21 and confirmed=false
     returning id
-  `, [p.type,p.partner,p.doc,p.amount,p.paid,p.settled,p.trust_days,p.notes,p.invoice_no,p.invoice_date,p.invoice_amount,p.sales,p.date,p.created_at,p.batch_at,p.batch_order,p.source,JSON.stringify(p.history),p.confirmed,id]);
+  `, [p.type,p.partner,p.doc,p.amount,p.paid,p.settled,p.trust_days,p.notes,p.file,p.invoice_no,p.invoice_date,p.invoice_amount,p.sales,p.date,p.created_at,p.batch_at,p.batch_order,p.source,JSON.stringify(p.history),p.confirmed,id]);
   if (!r.rows[0]) return res.status(400).json({ error:'not_editable' });
   res.json({ ok: true });
 });
-app.put('/api/payables/:id/refund', authRequired, ensureAllow('payables','create'), async (req, res) => {
+app.put('/api/payables/:id/refund', authRequired, ensureAllow('payables','update'), async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
   const p = normalizePayable(req.body || {});
   const r = await query(`
     update payables set
       type=$1, partner=$2, doc=$3, amount=$4, paid=$5, settled=$6, trust_days=$7,
-      notes=$8, invoice_no=$9, invoice_date=$10, invoice_amount=$11, sales=$12,
-      date=$13, created_at=$14, batch_at=$15, batch_order=$16, source=$17, history=$18, confirmed=$19
-    where id=$20
+      notes=$8, file=$9, invoice_no=$10, invoice_date=$11, invoice_amount=$12, sales=$13,
+      date=$14, created_at=$15, batch_at=$16, batch_order=$17, source=$18, history=$19, confirmed=$20
+    where id=$21
     returning id
-  `, [p.type,p.partner,p.doc,p.amount,p.paid,p.settled,p.trust_days,p.notes,p.invoice_no,p.invoice_date,p.invoice_amount,p.sales,p.date,p.created_at,p.batch_at,p.batch_order,p.source,JSON.stringify(p.history),p.confirmed,id]);
+  `, [p.type,p.partner,p.doc,p.amount,p.paid,p.settled,p.trust_days,p.notes,p.file,p.invoice_no,p.invoice_date,p.invoice_amount,p.sales,p.date,p.created_at,p.batch_at,p.batch_order,p.source,JSON.stringify(p.history),p.confirmed,id]);
   if (!r.rows[0]) return res.status(404).json({ error:'not_found' });
   res.json({ ok: true });
 });
-app.put('/api/payables/:id/confirm', authRequired, ensureAllow('payables','create'), async (req, res) => {
+app.put('/api/payables/:id/file', authRequired, ensureAllow('payables','update'), async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
-  const r = await query('update payables set confirmed=true where id=$1 and confirmed=false returning id', [id]);
+  const { file = '' } = req.body || {};
+  const r = await query(`
+    update payables set file=$1
+    where id=$2
+    returning id, file
+  `, [String(file || ''), id]);
   if (!r.rows[0]) return res.status(404).json({ error:'not_found' });
+  res.json({ ok: true, file: r.rows[0].file || '' });
+});
+app.put('/api/payables/:id/confirm', authRequired, ensureAllow('payables','confirm'), async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  const r0 = await query('select amount, history, confirmed from payables where id=$1', [id]);
+  const row = r0.rows[0];
+  if (!row || row.confirmed === true) return res.status(404).json({ error:'not_found' });
+  const now = new Date();
+  const dt = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const user = String(req.user?.name || '');
+  const history = Array.isArray(row.history) ? row.history.slice() : [];
+  history.push({ date: dt, user, kind: '确认', amount: roundMoneyValue(row.amount || 0) });
+  const r = await query('update payables set confirmed=true, confirmed_by=$2, confirmed_at=$3, history=$4 where id=$1 and confirmed=false returning id', [id, user, dt, JSON.stringify(history)]);
+  if (!r.rows[0]) return res.status(404).json({ error:'not_found' });
+  res.json({ ok: true });
+});
+app.delete('/api/payables/:id', authRequired, ensureAllow('payables','delete'), async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  const r = await query('delete from payables where id=$1 and confirmed=false returning id', [id]);
+  if (!r.rows[0]) return res.status(400).json({ error:'not_deletable_or_not_found' });
   res.json({ ok: true });
 });
 app.delete('/api/payables', authRequired, ensureAdmin, async (req, res) => {
@@ -1520,7 +1567,7 @@ app.post('/api/ledger', authRequired, ensureAllow('ledger','create'), async (req
   if (confirmed) await applyLedgerEffects({ type:x.type, doc:x.doc, amount:x.amount, method:x.method, date_time:x.dateTime, date:x.date, created_by:x.createdBy, notes:x.notes });
   res.json({ id: r.rows[0].id });
 });
-app.put('/api/ledger/:id', authRequired, ensureAllow('ledger','edit'), async (req, res) => {
+app.put('/api/ledger/:id', authRequired, ensureAllow('ledger','update'), async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
   const x = req.body || {};
   const r = await query(`
@@ -1533,7 +1580,7 @@ app.put('/api/ledger/:id', authRequired, ensureAllow('ledger','edit'), async (re
   if (!r.rows[0]) return res.status(400).json({ error:'not_editable' });
   res.json({ ok: true });
 });
-app.put('/api/ledger/:id/file', authRequired, ensureAllow('ledger','edit'), async (req, res) => {
+app.put('/api/ledger/:id/file', authRequired, ensureAllow('ledger','update'), async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
   const { file = '' } = req.body || {};
   const r = await query(`
@@ -1544,7 +1591,7 @@ app.put('/api/ledger/:id/file', authRequired, ensureAllow('ledger','edit'), asyn
   if (!r.rows[0]) return res.status(404).json({ error:'not_found' });
   res.json({ ok: true });
 });
-app.put('/api/ledger/:id/confirm', authRequired, ensureAllow('ledger','create'), async (req, res) => {
+app.put('/api/ledger/:id/confirm', authRequired, ensureAllow('ledger','confirm'), async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
   const r0 = await query('select * from ledger where id=$1 and confirmed=false', [id]);
   const row = r0.rows[0];
@@ -1553,7 +1600,7 @@ app.put('/api/ledger/:id/confirm', authRequired, ensureAllow('ledger','create'),
   await query('update ledger set confirmed=true, confirmed_by=$2 where id=$1', [id, req.user?.name || '']);
   res.json({ ok: true });
 });
-app.delete('/api/ledger/:id', authRequired, ensureAllow('ledger','edit'), async (req, res) => {
+app.delete('/api/ledger/:id', authRequired, ensureAllow('ledger','delete'), async (req, res) => {
   const id = parseInt(req.params.id, 10) || 0;
   const r = await query('delete from ledger where id=$1 and confirmed=false returning id', [id]);
   if (!r.rows[0]) return res.status(400).json({ error: 'not_deletable_or_not_found' });
@@ -2405,6 +2452,17 @@ app.put('/api/invoices/:id/print-shipping', authRequired, ensureAllow('sales_ord
   const r = await query('update invoices set shipping_printed=true where id=$1 returning id', [id]);
   if (!r.rows[0]) return res.status(404).json({ error: 'not_found' });
   res.json({ ok: true });
+});
+
+app.put('/api/invoices/:id/delivered', authRequired, ensureAllow('sales_order','edit'), async (req, res) => {
+  const id = parseInt(req.params.id, 10) || 0;
+  const requestedAt = String(req.body?.delivered_at || '').trim();
+  const now = new Date();
+  const fallbackDt = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const dt = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(requestedAt) ? requestedAt : fallbackDt;
+  const r = await query('update invoices set delivered=true, delivered_at=$2, delivered_by=$3 where id=$1 returning id, delivered, delivered_at, delivered_by', [id, dt, req.user?.name || '']);
+  if (!r.rows[0]) return res.status(404).json({ error: 'not_found' });
+  res.json({ ok: true, delivered: r.rows[0].delivered, delivered_at: r.rows[0].delivered_at, delivered_by: r.rows[0].delivered_by });
 });
 
 app.put('/api/invoices/:id', authRequired, ensureAllow('sales_order','edit'), async (req, res) => {

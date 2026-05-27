@@ -14,6 +14,8 @@ async function fetchWithAuth(url, options = {}) {
 }
 const payRecords = [];
 let payEditingId = null;
+let payEditingFile = '';
+let payPendingAttachment = null;
 const partners = [];
 const contactsData = {
   customers: [
@@ -558,6 +560,30 @@ function loadJSON(key, def) {
 function saveJSON(key, val) {
   localStorage.setItem(key, JSON.stringify(val));
 }
+function normalizePayRecordAttachment(rec) {
+  if (!rec || typeof rec !== 'object') return rec;
+  const rawFile = String(
+    rec.file
+    || rec.fileUrl
+    || rec.file_url
+    || rec.attachment
+    || rec.attachmentUrl
+    || rec.attachment_url
+    || ''
+  ).trim();
+  const fileName = String(
+    rec.fileName
+    || rec.attachmentName
+    || (rawFile ? rawFile.split('/').pop() : '')
+    || ''
+  ).trim();
+  return {
+    ...rec,
+    file: rawFile,
+    fileUrl: rawFile,
+    fileName
+  };
+}
 function initPersist() {
   const recs = loadJSON('records', []);
   if (Array.isArray(recs)) {
@@ -579,7 +605,7 @@ function initPersist() {
         if (!isNaN(ts)) r.createdAt = ts;
       }
     });
-    payRecords.splice(0, payRecords.length, ...pays);
+    payRecords.splice(0, payRecords.length, ...pays.map(normalizePayRecordAttachment));
   }
   const contactsSaved = loadJSON('contactsData', null);
   if (contactsSaved && typeof contactsSaved === 'object') {
@@ -771,9 +797,30 @@ function showFileViewer(url) {
   full.src = String(url);
   full.alt = '预览图片';
   fileViewerBox.appendChild(full);
+  fileViewer.style.zIndex = '20000';
+  try { document.body.appendChild(fileViewer); } catch {}
   fileViewer.style.display = 'flex';
 }
 window.showFileViewer = showFileViewer;
+function openUploadedFile(url, fileName = '') {
+  if (!fileViewer || !fileViewerBox || !url) return;
+  const lowerName = String(fileName || url || '').toLowerCase();
+  fileViewerBox.innerHTML = '';
+  if (/\.pdf($|[?#])/i.test(lowerName)) {
+    const emb = document.createElement('embed');
+    emb.src = String(url);
+    emb.type = 'application/pdf';
+    fileViewerBox.appendChild(emb);
+  } else {
+    const full = document.createElement('img');
+    full.src = String(url);
+    full.alt = '预览图片';
+    fileViewerBox.appendChild(full);
+  }
+  fileViewer.style.zIndex = '20000';
+  try { document.body.appendChild(fileViewer); } catch {}
+  fileViewer.style.display = 'flex';
+}
 function allContacts() {
   return [...contactsData.customers, ...contactsData.merchants, ...contactsData.others];
 }
@@ -864,7 +911,11 @@ clientModalForm?.addEventListener('submit', async e => {
     const id = await apiContactsCreate(payload);
     contactsData[clientModalTab].push({ id, ...payload });
     await apiContactsList(clientModalTab, '', 1, 5000);
-  } catch {
+  } catch (err) {
+    if (err?.data?.error === 'duplicate_name' || err?.message === 'duplicate_name') {
+      alert('店铺名称已经存在，请确认后重试');
+      return;
+    }
     alert('保存失败，请刷新后重试');
     return;
   }
@@ -1154,7 +1205,10 @@ function render(data) {
   }
   for (const r of data) {
     const tr = document.createElement('tr');
-    const canEdit = r.confirmed === false && r.id;
+    const rowEditable = r.confirmed === false && r.id;
+    const canUpdate = rowEditable && can('ledger', 'update');
+    const canDelete = rowEditable && can('ledger', 'delete');
+    const canConfirm = rowEditable && can('ledger', 'confirm');
     const amt = (r.type === '开支' || r.type === '支出') ? (-r.amount).toFixed(2) : r.amount.toFixed(2);
     const makeTd = (text) => {
       const td = document.createElement('td');
@@ -1221,7 +1275,7 @@ function render(data) {
         });
         tdFile.appendChild(img);
       }
-    } else if (!r.file) {
+    } else if (!r.file && canUpdate) {
       const filePicker = document.createElement('input');
       filePicker.type = 'file';
       filePicker.accept = '.jpg,.jpeg,.png,.pdf';
@@ -1310,47 +1364,55 @@ function render(data) {
     tr.appendChild(makeTd(uploadDate));
     const tdOps = document.createElement('td');
     tdOps.style.textAlign = 'center';
-    if (canEdit) {
+    if (canUpdate || canDelete || canConfirm) {
       const opsWrap = document.createElement('div');
       opsWrap.style.display = 'inline-flex';
       opsWrap.style.alignItems = 'center';
       opsWrap.style.justifyContent = 'center';
       opsWrap.style.gap = '8px';
-      const editBtn = document.createElement('button'); editBtn.type = 'button'; editBtn.textContent = '修改'; editBtn.className = 'btn-sm btn-outline-blue';
-      const okBtn = document.createElement('button'); okBtn.type = 'button'; okBtn.textContent = '确认'; okBtn.className = 'btn-sm btn-outline-green';
-      const delBtn = document.createElement('button'); delBtn.type = 'button'; delBtn.textContent = '删除'; delBtn.className = 'btn-sm btn-outline-red';
-      opsWrap.append(editBtn, okBtn, delBtn);
-      tdOps.appendChild(opsWrap);
-      editBtn.addEventListener('click', e => {
-        e.preventDefault();
-        setLedgerEdit(r);
-      });
-      okBtn.addEventListener('click', async e => {
-        e.preventDefault();
-        try {
-          await apiFetchJSON('/api/ledger/' + String(r.id) + '/confirm', { method:'PUT' });
-          clearLedgerEdit();
-          loadLedgerFromServer(true);
-          loadPayablesFromServer();
-          apiAccountsList().then(() => { refreshAccountOptions(); renderAccounts(); });
-        } catch {}
-      });
-      delBtn.addEventListener('click', async e => {
-        e.preventDefault();
-        openConfirm('确定要彻底删除这条记录吗？删除后相关的统计将被抹除且不可恢复。', async () => {
-          try {
-            await apiFetchJSON('/api/ledger/' + String(r.id), { method: 'DELETE' });
-            loadLedgerFromServer(true);
-            if (document.getElementById('page-home')?.style.display === 'block') {
-              renderHomeChart(homePeriodSel?.value || 'month');
-              renderSalesChart(salesPeriodSel?.value || 'month');
-            }
-          } catch (err) {
-            console.error(err);
-            alert('删除失败');
-          }
+      if (canUpdate) {
+        const editBtn = document.createElement('button'); editBtn.type = 'button'; editBtn.textContent = '修改'; editBtn.className = 'btn-sm btn-outline-blue';
+        editBtn.addEventListener('click', e => {
+          e.preventDefault();
+          setLedgerEdit(r);
         });
-      });
+        opsWrap.appendChild(editBtn);
+      }
+      if (canConfirm) {
+        const okBtn = document.createElement('button'); okBtn.type = 'button'; okBtn.textContent = '确认'; okBtn.className = 'btn-sm btn-outline-green';
+        okBtn.addEventListener('click', async e => {
+          e.preventDefault();
+          try {
+            await apiFetchJSON('/api/ledger/' + String(r.id) + '/confirm', { method:'PUT' });
+            clearLedgerEdit();
+            loadLedgerFromServer(true);
+            loadPayablesFromServer();
+            apiAccountsList().then(() => { refreshAccountOptions(); renderAccounts(); });
+          } catch {}
+        });
+        opsWrap.appendChild(okBtn);
+      }
+      if (canDelete) {
+        const delBtn = document.createElement('button'); delBtn.type = 'button'; delBtn.textContent = '删除'; delBtn.className = 'btn-sm btn-outline-red';
+        delBtn.addEventListener('click', async e => {
+          e.preventDefault();
+          openConfirm('确定要彻底删除这条记录吗？删除后相关的统计将被抹除且不可恢复。', async () => {
+            try {
+              await apiFetchJSON('/api/ledger/' + String(r.id), { method: 'DELETE' });
+              loadLedgerFromServer(true);
+              if (document.getElementById('page-home')?.style.display === 'block') {
+                renderHomeChart(homePeriodSel?.value || 'month');
+                renderSalesChart(salesPeriodSel?.value || 'month');
+              }
+            } catch (err) {
+              console.error(err);
+              alert('删除失败');
+            }
+          });
+        });
+        opsWrap.appendChild(delBtn);
+      }
+      tdOps.appendChild(opsWrap);
     }
     tr.appendChild(tdOps);
     if (r.type === '收入') tr.classList.add('row-income');
@@ -1364,6 +1426,15 @@ function getFilters() {
   const s = filterStart.value ? new Date(filterStart.value) : null;
   const e = filterEnd.value ? new Date(filterEnd.value) : null;
   return { t, key, s, e };
+}
+function buildAmountSearchTexts(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return [];
+  return Array.from(new Set([
+    String(value ?? '').trim(),
+    String(num),
+    num.toFixed(2)
+  ].filter(Boolean))).map(x => x.toLocaleLowerCase());
 }
 function applyFilters(preserveScroll = false) {
   const { t, key, s, e } = getFilters();
@@ -1384,7 +1455,8 @@ function applyFilters(preserveScroll = false) {
     if (key) {
       const client = (r.client || '').toLocaleLowerCase();
       const notes = (r.notes || '').toLocaleLowerCase();
-      if (!(client.includes(key) || notes.includes(key))) return false;
+      const amountTexts = buildAmountSearchTexts(r.amount);
+      if (!(client.includes(key) || notes.includes(key) || amountTexts.some(v => v.includes(key)))) return false;
     }
     const d = new Date(r.date);
     if (s && d < s) return false;
@@ -1627,6 +1699,22 @@ const sumPayEl = document.getElementById('sum-pay');
 const payFilterKey = document.getElementById('pay-filter-key');
 const payExportBtn = document.getElementById('pay-export');
 const payClearBtn = document.getElementById('pay-clear');
+const PAY_IMPORT_HINT_DEFAULT = '图片/PDF作为单条附件，Excel/CSV作为批量导入';
+function setPayImportHintText(text) {
+  if (payImportHint) payImportHint.textContent = text || PAY_IMPORT_HINT_DEFAULT;
+}
+function isPayablesAttachmentFile(fileObj) {
+  if (!fileObj) return false;
+  const fileName = String(fileObj.name || '').trim().toLowerCase();
+  const mimeType = String(fileObj.type || '').trim().toLowerCase();
+  const extOk = ['.jpg', '.jpeg', '.png', '.pdf'].some(ext => fileName.endsWith(ext));
+  const mimeOk = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'].includes(mimeType);
+  return extOk || mimeOk;
+}
+function isPayablesImportSheet(fileObj) {
+  const fileName = String(fileObj?.name || '').trim().toLowerCase();
+  return ['.csv', '.xls', '.xlsx'].some(ext => fileName.endsWith(ext));
+}
 let paySubmitLock = false;
 let payLastPageData = [];
 const payPager = document.getElementById('global-pager-controls') || document.getElementById('pay-pager');
@@ -1861,16 +1949,69 @@ const payHistoryClose = document.getElementById('pay-history-close');
 const payHistoryNotesText = document.getElementById('pay-history-notes-text');
 const payHistoryNotesInput = document.getElementById('pay-history-notes-input');
 const payHistoryNotesAdd = document.getElementById('pay-history-notes-add');
+const payHistoryAttachment = document.getElementById('pay-history-attachment');
+const payHistoryAttachmentContent = document.getElementById('pay-history-attachment-content');
 let payHistoryCurrentRec = null;
+function renderPayHistoryAttachment(rec) {
+  if (!payHistoryAttachment || !payHistoryAttachmentContent) return;
+  const fileUrl = rec.fileUrl || rec.file || '';
+  const fileName = rec.fileName || rec.file || '查看附件';
+  payHistoryAttachment.style.display = 'block';
+  payHistoryAttachmentContent.innerHTML = '';
+  if (fileUrl) {
+    const lowerName = String(fileName).toLowerCase();
+    if (/\.pdf($|[?#])/i.test(lowerName)) {
+      const pdfBtn = document.createElement('div');
+      pdfBtn.className = 'thumb-pdf';
+      pdfBtn.textContent = `PDF: ${String(fileName).split('/').pop()}`;
+      pdfBtn.style.display = 'inline-block';
+      pdfBtn.style.maxWidth = '100%';
+      pdfBtn.title = '点击查看附件';
+      pdfBtn.addEventListener('click', () => openUploadedFile(fileUrl, fileName));
+      payHistoryAttachmentContent.appendChild(pdfBtn);
+    } else {
+      const img = document.createElement('img');
+      img.src = fileUrl;
+      img.alt = String(fileName).split('/').pop() || '附件';
+      img.style.maxWidth = '160px';
+      img.style.maxHeight = '160px';
+      img.style.borderRadius = '8px';
+      img.style.border = '1px solid #334155';
+      img.style.cursor = 'pointer';
+      img.addEventListener('click', () => openUploadedFile(fileUrl, fileName));
+      payHistoryAttachmentContent.appendChild(img);
+    }
+    return;
+  }
+  const empty = document.createElement('div');
+  empty.textContent = '暂无附件';
+  empty.style.color = '#94a3b8';
+  payHistoryAttachmentContent.appendChild(empty);
+}
+function buildPayHistoryRowText(h) {
+  const amt = typeof h.amount === 'number' ? h.amount.toFixed(2) : (h.amount || '');
+  return `${h.date || ''}  ${h.user || ''}${h.kind ? '  操作：' + h.kind : ''}${amt ? '  金额：'+amt : ''}${h.method ? '  方式：'+h.method : ''}${h.notes ? '  备注：'+h.notes : ''}`;
+}
 function openPayHistory(rec) {
+  const latestRec = payRecords.find(x => (rec?.id && x.id === rec.id) || ((x.doc || '') === (rec?.doc || '') && (x.type || '') === (rec?.type || ''))) || rec;
+  rec = normalizePayRecordAttachment(latestRec);
   const total = (rec.amount || 0);
   const paid = (rec.paid || 0);
   const arrears = Math.max(0, total - paid);
   payHistoryHead.innerHTML = `<div>单据号：${rec.doc || ''}　往来单位：${rec.partner || ''}　金额：${total.toFixed(2)}　已付：${paid.toFixed(2)}　欠款：${arrears.toFixed(2)}</div>`;
+  renderPayHistoryAttachment(rec);
   payHistoryNotesText.textContent = rec.notes || '';
   if (payHistoryNotesInput) payHistoryNotesInput.value = '';
   payHistoryCurrentRec = rec;
-  const hist = rec.history || [];
+  const hist = Array.isArray(rec.history) ? rec.history.slice() : [];
+  if (rec.confirmed === true && rec.confirmedBy && rec.confirmedAt && !hist.some(h => String(h?.kind || '') === '确认')) {
+    hist.push({
+      date: rec.confirmedAt,
+      user: rec.confirmedBy,
+      kind: '确认',
+      amount: typeof rec.amount === 'number' ? rec.amount : Number(rec.amount || 0)
+    });
+  }
   payHistoryList.innerHTML = '';
   if (!hist.length) {
     const div = document.createElement('div'); div.textContent = '暂无历史记录';
@@ -1878,8 +2019,7 @@ function openPayHistory(rec) {
   } else {
     hist.forEach(h => {
       const row = document.createElement('div');
-      const amt = typeof h.amount === 'number' ? h.amount.toFixed(2) : (h.amount || '');
-      row.textContent = `${h.date || ''}  操作人员：${h.user || ''}  操作：${h.kind || ''}${amt ? '  金额：'+amt : ''}${h.method ? '  方式：'+h.method : ''}${h.notes ? '  备注：'+h.notes : ''}`;
+      row.textContent = buildPayHistoryRowText(h);
       payHistoryList.appendChild(row);
     });
   }
@@ -1898,7 +2038,7 @@ payHistoryNotesAdd?.addEventListener('click', () => {
   rec.notes = [rec.notes || '', text].filter(Boolean).join('\n');
   payHistoryNotesText.textContent = rec.notes || '';
   const row = document.createElement('div');
-  row.textContent = `${dt}  操作人员：${user}  操作：备注  备注：${text}`;
+  row.textContent = buildPayHistoryRowText({ date: dt, user, kind: '备注', notes: text });
   payHistoryList.appendChild(row);
   if (payHistoryNotesInput) payHistoryNotesInput.value = '';
   renderPayables();
@@ -2002,6 +2142,8 @@ function summarizeNotes(text, perLine, maxLines) {
 }
 function setPayEdit(rec) {
   payEditingId = rec.id || null;
+  payEditingFile = rec.file || '';
+  payPendingAttachment = null;
   setPayType(rec.type || '应收账款');
   if (payPartner) payPartner.value = rec.partner || '';
   if (payDoc) payDoc.value = rec.doc || '';
@@ -2012,11 +2154,17 @@ function setPayEdit(rec) {
   if (payAmount) payAmount.value = Number(rec.amount || 0).toFixed(2);
   if (payTrust) payTrust.value = (rec.trustDays ?? '').toString();
   if (payNotes) payNotes.value = rec.notes || '';
+  if (payImportFile) payImportFile.value = '';
+  setPayImportHintText(payEditingFile ? `当前已保存附件：${payEditingFile.split('/').pop()}，重新选择图片/PDF可替换` : '');
   if (paySubmitBtn) paySubmitBtn.textContent = '保存修改';
   payForm?.scrollIntoView({ behavior:'smooth', block:'start' });
 }
 function clearPayEdit() {
   payEditingId = null;
+  payEditingFile = '';
+  payPendingAttachment = null;
+  if (payImportFile) payImportFile.value = '';
+  setPayImportHintText('');
   if (paySubmitBtn) paySubmitBtn.textContent = '提交';
 }
 function renderPayables() {
@@ -2039,9 +2187,13 @@ function renderPayables() {
   if (sumRecvEl) sumRecvEl.textContent = recv.toFixed(2);
   if (sumPayEl) sumPayEl.textContent = pay.toFixed(2);
   const key = (payFilterKey?.value || '').trim();
+  const keyLower = key.toLocaleLowerCase();
   let listAll = payRecords.filter(r => {
     if (!key) return true;
-    return [r.partner||'', r.doc||'', r.notes||''].some(v => v.includes(key));
+    const amountTexts = buildAmountSearchTexts(r.amount);
+    return [r.partner || '', r.doc || '', r.notes || '']
+      .some(v => String(v || '').toLocaleLowerCase().includes(keyLower))
+      || amountTexts.some(v => v.includes(keyLower));
   });
   if (payFilterType !== 'all') {
     listAll = listAll.filter(r => (payFilterType === 'recv' ? /应收/.test(r.type) : /应付/.test(r.type)));
@@ -2114,7 +2266,10 @@ function renderPayables() {
     const isOverdue = tl.overdue;
     const paid = r.paid || 0;
     const arrears = Math.max(0, (r.amount || 0) - paid);
-    const canEdit = r.confirmed === false && r.id;
+    const rowEditable = r.confirmed === false && r.id;
+    const canUpdate = rowEditable && can('payables', 'update');
+    const canDelete = rowEditable && can('payables', 'delete');
+    const canConfirm = rowEditable && can('payables', 'confirm');
     const tdType = document.createElement('td'); tdType.textContent = typeDisplay; tr.appendChild(tdType);
     const tdPartner = document.createElement('td'); tdPartner.textContent = r.partner || ''; tr.appendChild(tdPartner);
     const tdDoc = document.createElement('td');
@@ -2184,7 +2339,7 @@ function renderPayables() {
     opsWrap.style.alignItems = 'center';
     opsWrap.style.justifyContent = 'center';
     opsWrap.style.gap = '8px';
-    if (canEdit) {
+    if (canUpdate) {
       const editBtn = document.createElement('button'); editBtn.type = 'button'; editBtn.textContent = '修改'; editBtn.className = 'btn-sm btn-outline-blue';
       editBtn.addEventListener('click', e => {
         e.preventDefault();
@@ -2198,7 +2353,7 @@ function renderPayables() {
       openPayHistory(r);
     });
     opsWrap.appendChild(btn);
-    if (canEdit) {
+    if (canConfirm) {
       const okBtn = document.createElement('button'); okBtn.type = 'button'; okBtn.textContent = '确认'; okBtn.className = 'btn-sm btn-outline-green';
       okBtn.addEventListener('click', async e => {
         e.preventDefault();
@@ -2210,6 +2365,24 @@ function renderPayables() {
         } catch {}
       });
       opsWrap.appendChild(okBtn);
+    }
+    if (canDelete) {
+      const delBtn = document.createElement('button'); delBtn.type = 'button'; delBtn.textContent = '删除'; delBtn.className = 'btn-sm btn-outline-red';
+      delBtn.addEventListener('click', e => {
+        e.preventDefault();
+        openConfirm('确定要删除这条应收/应付记录吗？删除后不可恢复。', async () => {
+          try {
+            await apiFetchJSON('/api/payables/' + String(r.id), { method:'DELETE' });
+            clearPayEdit();
+            loadPayablesFromServer();
+            renderContacts();
+          } catch (err) {
+            console.error(err);
+            alert('删除失败');
+          }
+        });
+      });
+      opsWrap.appendChild(delBtn);
     }
     ops.appendChild(opsWrap);
     tr.appendChild(ops);
@@ -2329,8 +2502,9 @@ const handlePayFormSubmit = async (e) => {
     });
     const uploadList = payImportParsed.slice();
     payImportParsed = [];
+      payPendingAttachment = null;
     if (payImportFile) payImportFile.value = '';
-    if (payImportHint) payImportHint.textContent = '批量导入完成';
+      setPayImportHintText('批量导入完成');
     payPage = 1;
     apiFetchJSON('/api/payables/import', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ records: uploadList }) })
       .then(() => loadPayablesFromServer())
@@ -2343,6 +2517,7 @@ const handlePayFormSubmit = async (e) => {
     const gp = document.getElementById('global-pager'); if (gp) gp.style.display = 'flex';
     renderPayables();
     alert(`导入完成：新增记录 ${inserted} 条，覆盖更新 ${covered} 条，新增客户 ${createdCustomers} 条，新增商家 ${createdMerchants} 条。`);
+    paySubmitLock = false;
     return;
   }
   const type = payType.value;
@@ -2381,6 +2556,17 @@ const handlePayFormSubmit = async (e) => {
     paySubmitLock = false;
     return;
   }
+  let fileUrl = '';
+  if (payPendingAttachment) {
+    try {
+      fileUrl = await uploadLedgerAttachment(payPendingAttachment);
+    } catch (e) {
+      if (e?.message === 'bad_type') alert('单条记录仅支持 JPG/PNG 或 PDF 文件');
+      else alert('附件上传失败，请重试');
+      paySubmitLock = false;
+      return;
+    }
+  }
   const now = new Date();
   const date = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   const dateTime = `${date} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
@@ -2401,6 +2587,7 @@ const handlePayFormSubmit = async (e) => {
       invoiceNo: origin.invoiceNo || '',
       invoiceDate: origin.invoiceDate || '',
       invoiceAmount: Number(origin.invoiceAmount || 0),
+      file: fileUrl || origin.file || '',
       source: origin.source || 'manual',
       batchAt: origin.batchAt || 0,
       batchOrder: origin.batchOrder ?? 0,
@@ -2411,15 +2598,25 @@ const handlePayFormSubmit = async (e) => {
       clearPayEdit();
       loadPayablesFromServer();
       renderContacts();
-    } catch {}
+    } catch {
+      alert('保存失败，请重试');
+      paySubmitLock = false;
+      return;
+    }
   } else {
-    const rec = { type, partner, doc, sales, amount, paid: 0, trustDays, notes, date, settled:false, history: [], createdAt: Date.now(), invoiceNo:'', invoiceDate:'', invoiceAmount:0, source:'manual', confirmed:false };
+    const rec = { type, partner, doc, sales, amount, paid: 0, trustDays, notes, date, settled:false, history: [], createdAt: Date.now(), invoiceNo:'', invoiceDate:'', invoiceAmount:0, file: fileUrl, source:'manual', confirmed:false };
     rec.batchAt = Date.now();
     rec.batchOrder = 0;
     rec.history.push({ date: dateTime, user: creator, kind: '创建', amount, partner, doc, notes });
-    apiFetchJSON('/api/payables', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(rec) })
-      .then((res) => { if (res && res.id) rec.id = res.id; loadPayablesFromServer(); })
-      .catch(() => { payRecords.push(rec); });
+    try {
+      const res = await apiFetchJSON('/api/payables', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(rec) });
+      if (res && res.id) rec.id = res.id;
+      loadPayablesFromServer();
+    } catch {
+      alert('保存失败，请重试');
+      paySubmitLock = false;
+      return;
+    }
   }
   payPartner.value = '';
   payDoc.value = '';
@@ -2427,6 +2624,9 @@ const handlePayFormSubmit = async (e) => {
   payAmount.value = '';
   payTrust.value = '30';
   payNotes.value = '';
+  payPendingAttachment = null;
+  if (payImportFile) payImportFile.value = '';
+  setPayImportHintText('');
   document.getElementById('pay-label-partner')?.classList.remove('invalid-label');
   document.getElementById('pay-label-doc')?.classList.remove('invalid-label');
   document.getElementById('pay-label-amount')?.classList.remove('invalid-label');
@@ -2696,6 +2896,23 @@ payImportFile?.addEventListener('change', () => {
   const file = payImportFile?.files?.[0];
   if (!file) { return; }
   const name = (file.name || '').toLowerCase();
+  if (isPayablesAttachmentFile(file)) {
+    payPendingAttachment = file;
+    payImportParsed = [];
+    payImportInvalidCount = 0;
+    payImportRequiredMissingCount = 0;
+    if (payImportRows) payImportRows.innerHTML = '';
+    if (payImportSummary) payImportSummary.textContent = '已切换为单条附件模式';
+    try { payImportModal.style.display = 'none'; } catch {}
+    setPayImportHintText(`已选择单条附件：${file.name}，点击下方提交保存到当前单据`);
+    return;
+  }
+  if (!isPayablesImportSheet(file)) {
+    payPendingAttachment = null;
+    alert('不支持的文件类型');
+    return;
+  }
+  payPendingAttachment = null;
   const reader = new FileReader();
   try { payImportModal.style.display = 'flex'; setImportModalWidth(); } catch {}
   if (name.endsWith('.csv')) {
@@ -3561,7 +3778,11 @@ ctForm?.addEventListener('submit', async e => {
         }
       }
     }
-  } catch {
+  } catch (err) {
+    if (err?.data?.error === 'duplicate_name' || err?.message === 'duplicate_name') {
+      alert('店铺名称已经存在，请确认后重试');
+      return;
+    }
     alert('保存失败，请刷新后重试');
     return;
   }
@@ -3850,8 +4071,24 @@ const permStructure = [
       { mod: 'sales_stats', label: '商品销售统计', extra_actions: [{ act: 'assigned_only', label: '只可查看勾选的商品' }] }
     ]
   },
-  { mod: 'ledger', label: '收支记账' },
-  { mod: 'payables', label: '应收/应付账款' },
+  {
+    mod: 'ledger',
+    label: '收支记账',
+    extra_actions: [
+      { act: 'update', label: '可修改记录' },
+      { act: 'delete', label: '可删除记录' },
+      { act: 'confirm', label: '可确认记录' }
+    ]
+  },
+  {
+    mod: 'payables',
+    label: '应收/应付账款',
+    extra_actions: [
+      { act: 'update', label: '可修改记录' },
+      { act: 'delete', label: '可删除记录' },
+      { act: 'confirm', label: '可确认记录' }
+    ]
+  },
   { mod: 'contacts', label: '往来单位' },
   { mod: 'categories', label: '分类管理' },
   { mod: 'accounts', label: '账户管理' },
@@ -3910,6 +4147,11 @@ function isModifyAction(action) {
   return !!act && act !== 'view' && act !== 'assigned_only';
 }
 
+function hasGranularRecordPerm(modPerms) {
+  if (!modPerms || typeof modPerms !== 'object') return false;
+  return ['update', 'delete', 'confirm'].some(act => Object.prototype.hasOwnProperty.call(modPerms, act));
+}
+
 function allTruePerms() {
   const p = {};
   permStructure.forEach(item => {
@@ -3942,6 +4184,11 @@ function can(module, action) {
   const m = perms[module] || {};
   if (!action || action === 'view') return !!m.view;
   if (action === 'assigned_only') return !!m.assigned_only;
+  if (['update', 'delete', 'confirm'].includes(action)) {
+    if (hasGranularRecordPerm(m)) return !!m[action];
+    if (action === 'update' && (m.edit || m[action])) return true;
+    return !!m[action];
+  }
   if (isModifyAction(action) && m.edit) return true;
   return !!m[action];
 }
@@ -3976,6 +4223,19 @@ function bindPermCheckboxDeps(viewCb, editCb) {
   });
 }
 
+function bindExtraPermCheckboxDeps(viewCb, extraCbs = []) {
+  if (!viewCb || !extraCbs.length) return;
+  extraCbs.forEach(cb => {
+    if (cb.checked) viewCb.checked = true;
+    cb.addEventListener('change', () => {
+      if (cb.checked) viewCb.checked = true;
+    });
+  });
+  viewCb.addEventListener('change', () => {
+    if (!viewCb.checked) extraCbs.forEach(cb => { cb.checked = false; });
+  });
+}
+
 function createPermRow(item, perms) {
   const row = document.createElement('label');
   row.style.display = 'flex';
@@ -3985,6 +4245,7 @@ function createPermRow(item, perms) {
   row.style.gap = '10px';
   const viewCb = appendPermCheckbox(row, item.mod, 'view', !!(perms[item.mod] && perms[item.mod].view), item.label);
   let editCb = null;
+  const extraCbs = [];
   if (moduleSupportsEdit(item.mod)) {
     const editWrap = document.createElement('span');
     editWrap.style.display = 'inline-flex';
@@ -3996,10 +4257,11 @@ function createPermRow(item, perms) {
     const extraRow = document.createElement('span');
     extraRow.style.display = 'inline-flex';
     extraRow.style.alignItems = 'center';
-    appendPermCheckbox(extraRow, item.mod, extra.act, !!(perms[item.mod] && perms[item.mod][extra.act]), extra.label);
+    extraCbs.push(appendPermCheckbox(extraRow, item.mod, extra.act, !!(perms[item.mod] && perms[item.mod][extra.act]), extra.label));
     row.appendChild(extraRow);
   });
   bindPermCheckboxDeps(viewCb, editCb);
+  bindExtraPermCheckboxDeps(viewCb, extraCbs);
   return row;
 }
 function collectRolePerms(container) {
@@ -4544,7 +4806,14 @@ async function apiFetchJSON(path, opts) {
   if (token) headers['Authorization'] = 'Bearer ' + token;
   const r = await fetch(API_BASE + path, { ...(opts||{}), headers });
   if (r.status === 401) { location.href = './login.html'; throw new Error('unauthorized'); }
-  if (!r.ok) throw new Error('network_error');
+  if (!r.ok) {
+    let data = null;
+    try { data = await r.json(); } catch {}
+    const err = new Error(data?.error || 'network_error');
+    err.status = r.status;
+    err.data = data;
+    throw err;
+  }
   return await r.json();
 }
 async function loadLedgerFromServer(preserveScroll = false) {
@@ -4592,7 +4861,7 @@ async function loadPayablesFromServer() {
       payRecords.splice(0, payRecords.length, ...list.map(r => {
         const createdRaw = Number(r.created_at);
         const createdAt = Number.isFinite(createdRaw) && createdRaw > 0 ? createdRaw : (Date.parse(r.date || '') || Date.now());
-        return {
+        return normalizePayRecordAttachment({
           id: r.id,
           type: r.type, partner: r.partner, doc: r.doc, sales: r.sales,
           amount: Number(r.amount||0), paid: Number(r.paid||0),
@@ -4600,9 +4869,17 @@ async function loadPayablesFromServer() {
           date: r.date || '', settled: !!r.settled, history: r.history || [],
           createdAt, invoiceNo: r.invoice_no || '',
           invoiceDate: r.invoice_date || '', invoiceAmount: Number(r.invoice_amount||0),
+          file: r.file || '',
+          fileUrl: r.file || r.file_url || r.attachment || '',
+          file_url: r.file_url || '',
+          attachment: r.attachment || '',
+          attachmentUrl: r.attachmentUrl || r.attachment_url || '',
+          fileName: r.file ? r.file.split('/').pop() : '',
           source: r.source || 'import', batchAt: r.batch_at || 0, batchOrder: r.batch_order ?? 0,
-          confirmed: r.confirmed !== false
-        };
+          confirmed: r.confirmed !== false,
+          confirmedBy: r.confirmed_by || '',
+          confirmedAt: r.confirmed_at || ''
+        });
       }));
       saveJSON('payRecords', payRecords);
       renderPayables();
@@ -5769,6 +6046,7 @@ if (soSave) {
         const cust = findInvoiceCustomerContact(displayCustomer);
         if ((!companyName || companyName === '-') && cust?.company) companyName = cust.company;
         if ((!companyName || companyName === '-') && displayCustomer && displayCustomer !== '-') companyName = displayCustomer;
+        const showCompanyName = companyName && companyName !== '-' && companyName !== displayCustomer;
         
         const isPaid = (paid >= total && total > 0);
         const editBtn = isPaid 
@@ -5785,16 +6063,30 @@ if (soSave) {
           if (remarkHtml) remarkHtml += '<br>';
           remarkHtml += `<span style="color:#eab308; font-size:11px">(${cust.remark})</span>`;
         }
+        const deliveredHtml = x.delivered
+          ? `<div style="display:flex; align-items:flex-start; gap:8px">
+              <input type="checkbox" checked disabled style="margin-top:2px">
+              <div style="font-size:12px; line-height:1.45">
+                <div>${x.delivered_at || '-'}</div>
+                <div style="color:#94a3b8; margin-top:2px">${x.delivered_by || '-'}</div>
+              </div>
+            </div>`
+          : `<label style="display:inline-flex; align-items:center; justify-content:center; width:100%">
+              <input type="checkbox" onchange="setInvoiceDelivered('${x.id}', this)">
+            </label>`;
 
         tr.innerHTML = `
           <td>${seq}</td>
           <td>${x.invoice_no||''}</td>
-          <td>${displayCustomer}</td>
-          <td>${companyName}</td>
+          <td>
+            <div>${displayCustomer}</div>
+            ${showCompanyName ? `<div style="margin-top:2px; font-size:12px; color:#94a3b8">${companyName}</div>` : ''}
+          </td>
           <td>${displayDate}</td>
           <td style="color:#e2e8f0; font-weight:600">€${total.toFixed(2)}</td>
           <td><span style="color:${statusColor}; background:${statusColor}20; padding:2px 8px; border-radius:4px; font-size:12px">${status}</span></td>
           <td style="color:#94a3b8; font-size:12px">${remarkHtml}</td>
+          <td>${deliveredHtml}</td>
           <td style="display:flex; gap:8px; justify-content:center">
             <button class="light-btn" style="font-size:12px; padding:4px 8px" onclick="previewInvoice('${x.id}')">预览</button>
             ${shipBtn}
@@ -5862,6 +6154,24 @@ if (soSave) {
     
     invPager.appendChild(createBtn('下一页', invPage+1, invPage>=totalPages));
   }
+
+  window.setInvoiceDelivered = async function(id, checkboxEl) {
+    if (!checkboxEl || !checkboxEl.checked) return;
+    checkboxEl.disabled = true;
+    try {
+      const now = new Date();
+      const deliveredAt = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+      const res = await fetchWithAuth(`/api/invoices/${id}/delivered`, {
+        method: 'PUT',
+        body: JSON.stringify({ delivered_at: deliveredAt })
+      });
+      if (!res.ok) throw new Error('deliver_failed');
+      await loadInvoices();
+    } catch (_) {
+      checkboxEl.checked = false;
+      checkboxEl.disabled = false;
+    }
+  };
 
 
 // Invoice Actions
