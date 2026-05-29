@@ -12495,10 +12495,14 @@ async function loadEventRecords(tab = 'ongoing', btn = null, page = 1) {
   tbody.innerHTML = currentEventRecordList.map((x, idx) => `
     <tr>
       <td>${eventRecordTotal - (eventRecordPage - 1) * eventRecordPageSize - idx}</td>
-      <td>${escapeHtml(x.name || '')}</td>
+      <td title="${escapeHtml(x.name || '')}" style="min-width:260px; max-width:360px">
+        <div style="display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; white-space:normal; word-break:break-word; line-height:1.7">${escapeHtml(x.name || '-')}</div>
+      </td>
       <td>${escapeHtml(x.record_date || '')}</td>
       <td>${escapeHtml(x.due_date || '')}</td>
-      <td title="${escapeHtml(x.notes || '')}" style="max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeHtml((x.notes || '').length > 40 ? `${String(x.notes || '').slice(0, 40)}...` : (x.notes || '-'))}</td>
+      <td title="${escapeHtml(x.notes || '')}" style="min-width:360px; max-width:460px">
+        <div style="display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; white-space:normal; word-break:break-word; line-height:1.7">${escapeHtml(x.notes || '-')}</div>
+      </td>
       <td>
         <div>${escapeHtml(x.created_by || '')}</div>
         ${eventRecordCurrentTab === 'completed' ? `<div style="margin-top:4px; font-size:12px; color:#94a3b8">确认：${escapeHtml(x.confirmed_by || '-')}</div>` : ''}
@@ -12506,7 +12510,10 @@ async function loadEventRecords(tab = 'ongoing', btn = null, page = 1) {
       <td>
         ${eventRecordCurrentTab === 'ongoing'
           ? `<button class="btn-secondary" style="padding:4px 10px; font-size:12px" onclick="openEventRecordModal(${x.id})">编辑</button><button class="btn-sm" style="margin-left:6px" onclick="markEventRecordCompleted(${x.id})">完成</button>`
-          : `<button class="btn-secondary" style="padding:4px 10px; font-size:12px" onclick="markEventRecordOngoing(${x.id})">恢复进行中</button>`}
+          : `<div style="display:flex; flex-direction:column; align-items:flex-start; gap:6px">
+               <button class="btn-secondary" style="padding:4px 10px; font-size:12px" onclick="openEventRecordViewModal(${x.id})">查看</button>
+               <button class="btn-secondary" style="padding:4px 10px; font-size:12px" onclick="markEventRecordOngoing(${x.id})">恢复进行中</button>
+             </div>`}
       </td>
     </tr>
   `).join('');
@@ -12565,6 +12572,28 @@ function closeEventRecordModal() {
   if (modal) modal.style.display = 'none';
 }
 window.closeEventRecordModal = closeEventRecordModal;
+function openEventRecordViewModal(id) {
+  const item = currentEventRecordList.find(x => Number(x.id) === Number(id));
+  const modal = document.getElementById('event-record-view-modal');
+  if (!item || !modal) return;
+  const setText = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value || '-';
+  };
+  setText('event-record-view-name', item.name || '');
+  setText('event-record-view-date', item.record_date || '');
+  setText('event-record-view-due-date', item.due_date || '');
+  setText('event-record-view-notes', item.notes || '');
+  setText('event-record-view-created-by', item.created_by || '');
+  setText('event-record-view-confirmed-by', item.confirmed_by || '');
+  modal.style.display = 'flex';
+}
+window.openEventRecordViewModal = openEventRecordViewModal;
+function closeEventRecordViewModal() {
+  const modal = document.getElementById('event-record-view-modal');
+  if (modal) modal.style.display = 'none';
+}
+window.closeEventRecordViewModal = closeEventRecordViewModal;
 async function saveEventRecord() {
   const id = Number(document.getElementById('event-record-id')?.value || 0);
   const name = document.getElementById('event-record-name')?.value?.trim() || '';

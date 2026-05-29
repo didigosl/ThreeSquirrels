@@ -996,12 +996,12 @@
                 <thead>
                   <tr>
                     <th style="width:80px">序号</th>
-                    <th>事件名称</th>
-                    <th style="width:180px">记录日期</th>
-                    <th style="width:180px">到期日期</th>
-                    <th style="min-width:320px">备注信息</th>
-                    <th style="width:140px">添加人员</th>
-                    <th style="width:180px">操作</th>
+                    <th style="min-width:260px">事件名称</th>
+                    <th style="width:140px">记录日期</th>
+                    <th style="width:140px">到期日期</th>
+                    <th style="min-width:360px">备注信息</th>
+                    <th style="width:120px">添加人员</th>
+                    <th style="width:170px">操作</th>
                   </tr>
                 </thead>
                 <tbody id="event-record-rows"></tbody>
@@ -1591,6 +1591,44 @@
             <div class="modal-actions">
               <button class="btn-secondary" onclick="closeEventRecordModal()">取消</button>
               <button class="btn" onclick="saveEventRecord()">保存</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="event-record-view-modal" class="modal-overlay" style="display:none">
+          <div class="modal" style="max-width:620px">
+            <div class="modal-header">
+              <div class="modal-title">查看事件</div>
+              <button class="btn-secondary" onclick="closeEventRecordViewModal()">关闭</button>
+            </div>
+            <div class="modal-body">
+              <div class="group">
+                <span class="label">事件名称</span>
+                <div id="event-record-view-name" style="white-space:pre-wrap; word-break:break-word; line-height:1.7; color:#e5e7eb"></div>
+              </div>
+              <div class="group">
+                <span class="label">记录日期</span>
+                <div id="event-record-view-date" style="color:#e5e7eb"></div>
+              </div>
+              <div class="group">
+                <span class="label">到期日期</span>
+                <div id="event-record-view-due-date" style="color:#e5e7eb"></div>
+              </div>
+              <div class="group">
+                <span class="label">备注信息</span>
+                <div id="event-record-view-notes" style="white-space:pre-wrap; word-break:break-word; line-height:1.7; color:#e5e7eb"></div>
+              </div>
+              <div class="group">
+                <span class="label">添加人员</span>
+                <div id="event-record-view-created-by" style="color:#e5e7eb"></div>
+              </div>
+              <div class="group">
+                <span class="label">确认人员</span>
+                <div id="event-record-view-confirmed-by" style="color:#e5e7eb"></div>
+              </div>
+            </div>
+            <div class="modal-actions">
+              <button class="btn-secondary" onclick="closeEventRecordViewModal()">关闭</button>
             </div>
           </div>
         </div>
@@ -3424,9 +3462,9 @@
     <script>
       (function () {
         var el = document.getElementById('app-version');
-        if (el) el.textContent = window.APP_VERSION || 'v20260528';
+        if (el) el.textContent = window.APP_VERSION || 'v20260530';
       })();
     </script>
-    <script src="app.js?v=20260528-duplicate-name-fix"></script>
+    <script src="app.js?v=20260530-event-records"></script>
   </body>
 </html>

@@ -117,6 +117,8 @@
       right: 0;
       max-height: 360px;
       overflow: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 14px;
@@ -234,9 +236,24 @@
       width: 100%;
       height: 100%;
       z-index: 2;
-      appearance: none;
-      -webkit-appearance: none;
-      pointer-events: none;
+      background: transparent;
+      border: none;
+      pointer-events: auto;
+    }
+    .tool-wrap input::-webkit-calendar-picker-indicator {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .tool-wrap input::-webkit-datetime-edit,
+    .tool-wrap input::-webkit-datetime-edit-fields-wrapper,
+    .tool-wrap input::-webkit-datetime-edit-text,
+    .tool-wrap input::-webkit-datetime-edit-month-field,
+    .tool-wrap input::-webkit-datetime-edit-day-field,
+    .tool-wrap input::-webkit-datetime-edit-year-field {
+      color: transparent;
     }
     .batch-box {
       margin-top: 10px;
@@ -352,11 +369,20 @@
     .hidden { display: none !important; }
     @media (max-width: 760px) {
       .wrap { width: calc(100vw - 12px); margin: 6px auto 12px; }
+      .card { overflow: visible; }
       .body, .head { padding: 16px; }
       .head-row { align-items: flex-start; }
       .title { font-size: 24px; }
       .grid { grid-template-columns: 1fr; }
       .search-row, .input-with-tool { flex-direction: row; }
+      .picker-list {
+        position: static;
+        top: auto;
+        left: auto;
+        right: auto;
+        margin-top: 8px;
+        max-height: 52vh;
+      }
       .actions .btn { width: 100%; }
       .tool-wrap { width: 96px; min-width: 96px; }
       .pending-item { grid-template-columns: 52px 1fr 44px; }
@@ -377,7 +403,7 @@
       </div>
       <div class="body">
         <div class="group picker">
-          <label class="label">菜品名称</label>
+          <label class="label">商品名称</label>
           <div class="search-row">
             <input id="prod-search" type="text" placeholder="Busque el nombre y Articulo">
             <div class="tool-wrap">
@@ -532,12 +558,16 @@
     function openDatePickerById(id) {
       const input = document.getElementById(id);
       if (!input) return;
+      if (id === 'lote-date-picker') input.value = loteInput.value || '';
+      if (id === 'expiry-date-picker') input.value = expiryInput.value || '';
       if (typeof input.showPicker === 'function') {
-        input.showPicker();
-        return;
+        try {
+          input.showPicker();
+          return;
+        } catch (_) {}
       }
-      input.focus();
-      input.click();
+      try { input.focus({ preventScroll: true }); } catch (_) { try { input.focus(); } catch (_) {} }
+      try { input.click(); } catch (_) {}
     }
 
     async function loadProducts(q) {
@@ -698,6 +728,7 @@
       loteBatches.innerHTML = '';
       setPhotoPreview(null);
       loteInput.value = '';
+      if (loteDatePicker) loteDatePicker.value = '';
       expiryInput.value = '';
       if (expiryDatePicker) expiryDatePicker.value = '';
       boxCountInput.value = '';
@@ -709,8 +740,8 @@
       const fd = new FormData();
       fd.append('file', file);
       const res = await fetch('/api/public/upload', { method: 'POST', body: fd });
-      if (!res.ok) throw new Error('upload_failed');
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'upload_failed');
       return data.url || '';
     }
 
@@ -778,17 +809,18 @@
       clearMessage();
       if (!selectedProduct) return showMessage('请先选择菜品', 'err');
       const lote = loteInput.value.trim();
-      const expirationDate = expiryInput.value;
+      const expirationDate = expiryInput.value.trim();
       const boxCount = Number(boxCountInput.value || 0);
       if (!lote) return showMessage('请填写 Lote', 'err');
       if (!expirationDate) return showMessage('请选择过期时间', 'err');
       if (!Number.isFinite(boxCount) || boxCount <= 0) return showMessage('请填写正确的箱数', 'err');
-      if (!selectedPhotoFile) return showMessage('请拍照或选择图片', 'err');
+      if (!selectedPhotoFile && !editingPhotoUrl) return showMessage('请拍照或选择图片', 'err');
 
       submitBtn.disabled = true;
       submitBtn.textContent = '提交中...';
       try {
         const photoUrl = selectedPhotoFile ? await uploadPhoto(selectedPhotoFile) : editingPhotoUrl;
+        if (!photoUrl) throw new Error('photo_required');
         const isEditing = editingEntryId > 0;
         const res = await fetch(isEditing ? `/api/public/production-entries/${editingEntryId}` : '/api/public/production-entries', {
           method: isEditing ? 'PUT' : 'POST',
@@ -801,12 +833,24 @@
             photo_url: photoUrl
           })
         });
-        if (!res.ok) throw new Error('submit_failed');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'submit_failed');
         resetForm();
         showMessage(isEditing ? '修改已保存，等待后台审核。' : '提交成功，等待后台审核。', 'ok');
         loadPendingEntries();
       } catch (e) {
-        showMessage('提交失败，请检查网络后重试。', 'err');
+        const msg = e?.message === 'photo_required'
+          ? '请拍照或选择图片'
+          : e?.message === 'product_not_found'
+            ? '商品不存在，请重新选择后再提交。'
+            : e?.message === 'bad_request'
+              ? '请检查商品、图片、Lote、日期和箱数后再提交。'
+              : e?.message === 'already_reviewed'
+                ? '这条记录已经审核，不能再提交。'
+                : e?.message === 'upload_failed' || e?.message === 'upload_normalize_failed'
+                  ? '图片上传失败，请重试。'
+                  : '提交失败，请检查网络后重试。';
+        showMessage(msg, 'err');
       } finally {
         submitBtn.disabled = false;
         updateSubmitButtonState();
@@ -848,10 +892,16 @@
     });
 
     loteInput.addEventListener('change', () => updateExpiryFromLote(loteInput.value));
-    loteDatePicker.addEventListener('change', () => applyLoteValue(loteDatePicker.value, ''));
+    loteDatePicker.addEventListener('change', () => {
+      const value = loteDatePicker.value || '';
+      applyLoteValue(value, '');
+      requestAnimationFrame(() => { loteDatePicker.value = ''; });
+    });
     if (expiryDatePicker) {
       expiryDatePicker.addEventListener('change', () => {
-        expiryInput.value = expiryDatePicker.value || '';
+        const value = expiryDatePicker.value || '';
+        expiryInput.value = value;
+        requestAnimationFrame(() => { expiryDatePicker.value = ''; });
       });
     }
     if (forceRefreshBtn) {
