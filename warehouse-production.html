@@ -825,6 +825,7 @@
       fd.append('file', file);
       const res = await fetchJSON('/api/public/upload?_=' + Date.now(), { method: 'POST', body: fd });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 413) throw new Error(data.error || 'file_too_large');
       if (!res.ok) throw new Error(data.error || 'upload_failed');
       return data.url || '';
     }
@@ -939,6 +940,8 @@
               ? '请检查商品、图片、Lote、日期和箱数后再提交。'
               : errMessage === 'already_reviewed'
                 ? '这条记录已经审核，不能再提交。'
+                : errMessage === 'file_too_large'
+                  ? '图片太大，请拍小一点或压缩后再上传。'
                 : errMessage === 'upload_failed' || errMessage === 'upload_normalize_failed'
                   ? '图片上传失败，请重试。'
                   : '提交失败，请检查网络后重试。';

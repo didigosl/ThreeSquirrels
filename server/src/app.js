@@ -19,9 +19,10 @@ const storage = multer.diskStorage({
     cb(null, uniqueSuffix + path.extname(file.originalname));
   }
 });
-const upload = multer({ 
+const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
+const upload = multer({
   storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+  limits: { fileSize: MAX_UPLOAD_FILE_SIZE }
 });
 
 const HEIC_BRANDS = new Set(['heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1']);
@@ -1383,6 +1384,15 @@ app.post('/api/public/upload', upload.single('file'), async (req, res) => {
     console.error('public upload normalize failed', err);
     res.status(500).json({ error: 'upload_normalize_failed' });
   }
+});
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: 'file_too_large', limit: MAX_UPLOAD_FILE_SIZE });
+    }
+    return res.status(400).json({ error: err.code || 'upload_error' });
+  }
+  next(err);
 });
 app.get('/api/public/products', async (req, res) => {
   const { page = '1', size = '50', q = '' } = req.query;
