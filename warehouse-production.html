@@ -575,13 +575,38 @@
     function bindPress(el, handler) {
       if (!el) return;
       let touched = false;
+      let touchMoved = false;
+      let touchStartX = 0;
+      let touchStartY = 0;
+      el.addEventListener('touchstart', ev => {
+        const touch = ev.touches && ev.touches[0];
+        touched = false;
+        touchMoved = false;
+        touchStartX = touch ? touch.clientX : 0;
+        touchStartY = touch ? touch.clientY : 0;
+      }, { passive: true });
+      el.addEventListener('touchmove', ev => {
+        const touch = ev.touches && ev.touches[0];
+        if (!touch) return;
+        if (Math.abs(touch.clientX - touchStartX) > 10 || Math.abs(touch.clientY - touchStartY) > 10) {
+          touchMoved = true;
+        }
+      }, { passive: true });
       el.addEventListener('touchend', ev => {
+        if (touchMoved) {
+          touched = false;
+          return;
+        }
         touched = true;
         ev.preventDefault();
         ev.stopPropagation();
         handler(ev);
         setTimeout(() => { touched = false; }, 350);
       }, { passive: false });
+      el.addEventListener('touchcancel', () => {
+        touched = false;
+        touchMoved = false;
+      }, { passive: true });
       el.addEventListener('click', ev => {
         if (touched) {
           ev.preventDefault();
