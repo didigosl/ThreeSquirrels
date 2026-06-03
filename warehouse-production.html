@@ -3,6 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>仓库生产录入</title>
   <style>
     :root {
@@ -228,17 +231,15 @@
     }
     .tool-wrap input {
       position: absolute;
-      inset: 0;
+      left: 0;
+      top: 0;
+      width: 1px;
+      height: 1px;
       opacity: 0;
-      cursor: pointer;
       padding: 0;
-      min-height: 50px;
-      width: 100%;
-      height: 100%;
-      z-index: 2;
       background: transparent;
       border: none;
-      pointer-events: auto;
+      pointer-events: none;
     }
     .tool-wrap input::-webkit-calendar-picker-indicator {
       width: 100%;
@@ -555,6 +556,43 @@
       submitBtn.setAttribute('aria-label', editingEntryId ? '保存修改' : '提交审核');
     }
 
+    async function fetchJSON(url, options) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      try {
+        const res = await fetch(url, {
+          cache: 'no-store',
+          ...options,
+          signal: controller.signal
+        });
+        return res;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    function bindPress(el, handler) {
+      if (!el) return;
+      let touched = false;
+      el.addEventListener('touchend', ev => {
+        touched = true;
+        ev.preventDefault();
+        ev.stopPropagation();
+        handler(ev);
+        setTimeout(() => { touched = false; }, 350);
+      }, { passive: false });
+      el.addEventListener('click', ev => {
+        if (touched) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          return;
+        }
+        ev.preventDefault();
+        ev.stopPropagation();
+        handler(ev);
+      });
+    }
+
     function openDatePickerById(id) {
       const input = document.getElementById(id);
       if (!input) return;
@@ -571,7 +609,7 @@
     }
 
     async function loadProducts(q) {
-      const res = await fetch('/api/public/products?page=1&size=20&q=' + encodeURIComponent(q || ''));
+      const res = await fetchJSON('/api/public/products?page=1&size=20&q=' + encodeURIComponent(q || '') + '&_=' + Date.now());
       if (!res.ok) return [];
       const data = await res.json();
       return data.list || [];
@@ -595,7 +633,7 @@
       `).join('');
       prodList.style.display = 'block';
       Array.from(prodList.querySelectorAll('.item[data-id]')).forEach((el, idx) => {
-        el.addEventListener('click', () => chooseProduct(list[idx]));
+        bindPress(el, () => chooseProduct(list[idx]));
       });
     }
 
@@ -605,7 +643,7 @@
     }
 
     async function loadProductBatches(productId) {
-      const res = await fetch(`/api/public/products/${productId}/batch-stock`);
+      const res = await fetchJSON(`/api/public/products/${productId}/batch-stock?_=${Date.now()}`);
       if (!res.ok) {
         currentBatches = [];
         renderBatchSuggestions();
@@ -632,7 +670,7 @@
         return `<button type="button" class="batch-chip" data-lote="${escapeHtml(lote)}" data-expiry="${escapeHtml(expiry)}">${escapeHtml(label)}</button>`;
       }).join('');
       Array.from(loteBatches.querySelectorAll('.batch-chip')).forEach(el => {
-        el.addEventListener('click', () => {
+        bindPress(el, () => {
           applyLoteValue(el.getAttribute('data-lote') || '', el.getAttribute('data-expiry') || '');
         });
       });
@@ -739,49 +777,56 @@
     async function uploadPhoto(file) {
       const fd = new FormData();
       fd.append('file', file);
-      const res = await fetch('/api/public/upload', { method: 'POST', body: fd });
+      const res = await fetchJSON('/api/public/upload?_=' + Date.now(), { method: 'POST', body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'upload_failed');
       return data.url || '';
     }
 
     async function loadPendingEntries() {
-      const res = await fetch('/api/public/production-entries?status=pending&size=12');
-      if (!res.ok) {
-        pendingEmpty.textContent = '待审核记录加载失败';
-        pendingList.innerHTML = '';
-        return;
-      }
-      const list = await res.json();
-      window.__pendingEntries = Array.isArray(list) ? list : [];
-      if (!Array.isArray(list) || list.length === 0) {
-        pendingEmpty.textContent = '当前没有待后台审核的提交';
-        pendingList.innerHTML = '';
-        return;
-      }
-      pendingEmpty.textContent = '';
-      pendingList.innerHTML = list.map(item => `
-        <div class="pending-item">
-          ${item.photo_url ? `<img class="pending-photo" src="${item.photo_url}" alt="">` : `<div class="pending-photo"></div>`}
-          <div>
-            <div class="pending-name">${escapeHtml(item.product_name || '')}</div>
-            <div class="pending-cn">${escapeHtml(item.product_name_cn || '')}</div>
-            <div class="pending-meta">
-              <div class="pending-meta-main">
-                <span>Lote: ${escapeHtml(formatDisplayLote(item.lote || ''))}</span>
-                <span>Caducidad: ${escapeHtml(item.expiration_date || '-')}</span>
-                <span>Cajas: ${Number(item.box_count || 0)}</span>
-              </div>
-              <div class="pending-meta-sub">
-                <span>提交时间: ${escapeHtml(formatDateTime(item.created_at))}</span>
+      pendingEmpty.textContent = '加载中...';
+      pendingList.innerHTML = '';
+      try {
+        const res = await fetchJSON('/api/public/production-entries?status=pending&size=12&_=' + Date.now());
+        if (!res.ok) {
+          pendingEmpty.textContent = '待审核记录加载失败';
+          pendingList.innerHTML = '';
+          return;
+        }
+        const list = await res.json();
+        window.__pendingEntries = Array.isArray(list) ? list : [];
+        if (!Array.isArray(list) || list.length === 0) {
+          pendingEmpty.textContent = '当前没有待后台审核的提交';
+          pendingList.innerHTML = '';
+          return;
+        }
+        pendingEmpty.textContent = '';
+        pendingList.innerHTML = list.map(item => `
+          <div class="pending-item">
+            ${item.photo_url ? `<img class="pending-photo" src="${item.photo_url}" alt="">` : `<div class="pending-photo"></div>`}
+            <div>
+              <div class="pending-name">${escapeHtml(item.product_name || '')}</div>
+              <div class="pending-cn">${escapeHtml(item.product_name_cn || '')}</div>
+              <div class="pending-meta">
+                <div class="pending-meta-main">
+                  <span>Lote: ${escapeHtml(formatDisplayLote(item.lote || ''))}</span>
+                  <span>Caducidad: ${escapeHtml(item.expiration_date || '-')}</span>
+                  <span>Cajas: ${Number(item.box_count || 0)}</span>
+                </div>
+                <div class="pending-meta-sub">
+                  <span>提交时间: ${escapeHtml(formatDateTime(item.created_at))}</span>
+                </div>
               </div>
             </div>
+            <div class="pending-action">
+              <button class="btn btn-secondary icon-btn" type="button" title="编辑" aria-label="编辑" onclick="editPendingEntry(${Number(item.id || 0)})">&#9998;</button>
+            </div>
           </div>
-          <div class="pending-action">
-            <button class="btn btn-secondary icon-btn" type="button" title="编辑" aria-label="编辑" onclick="editPendingEntry(${Number(item.id || 0)})">&#9998;</button>
-          </div>
-        </div>
-      `).join('');
+        `).join('');
+      } catch (_) {
+        pendingEmpty.textContent = '待审核记录加载失败';
+        pendingList.innerHTML = '';
+      }
     }
 
     function editPendingEntry(id) {
@@ -873,9 +918,9 @@
       if (prodSearch.value.trim()) renderProducts(await loadProducts(prodSearch.value.trim()));
     });
 
-    prodOpenBtn.addEventListener('click', () => showProductList(true));
+    bindPress(prodOpenBtn, () => showProductList(true));
     document.querySelectorAll('.tool-wrap[data-picker]').forEach(el => {
-      el.addEventListener('click', () => openDatePickerById(el.dataset.picker || ''));
+      bindPress(el, () => openDatePickerById(el.dataset.picker || ''));
     });
 
     document.addEventListener('click', e => {
