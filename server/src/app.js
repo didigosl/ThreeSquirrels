@@ -559,11 +559,14 @@ async function ensureAutoTasksGenerated() {
        order by coalesce(next_generate_at, created_at) asc, id asc`
     );
     for (const row of r.rows || []) {
-      const intervalMonths = Math.max(1, parseInt(row.interval_months, 10) || 1);
+      const rawIntervalMonths = parseInt(row.interval_months, 10);
+      const isOneTime = Number.isFinite(rawIntervalMonths) && rawIntervalMonths <= 0;
+      const intervalMonths = isOneTime ? 0 : Math.max(1, rawIntervalMonths || 1);
       const startAt = Number(row.start_at || row.created_at || now);
       let nextTs = Number(row.next_generate_at || 0);
       if (!nextTs) nextTs = startAt;
       let lastGeneratedAt = Number(row.last_generated_at || 0);
+      let active = !!row.active;
       while (nextTs > 0 && nextTs <= now) {
         await query(
           `insert into tasks(title, description, created_by, created_at, assigned_to, time_limit, status, auto_task_id, auto_task_cycle_at)
@@ -581,12 +584,17 @@ async function ensureAutoTasksGenerated() {
           ]
         );
         lastGeneratedAt = nextTs;
+        if (isOneTime) {
+          nextTs = null;
+          active = false;
+          break;
+        }
         nextTs = addMonthsTs(nextTs, intervalMonths);
       }
-      if (Number(row.next_generate_at || 0) !== nextTs || Number(row.last_generated_at || 0) !== lastGeneratedAt) {
+      if (!!row.active !== active || Number(row.next_generate_at || 0) !== Number(nextTs || 0) || Number(row.last_generated_at || 0) !== lastGeneratedAt) {
         await query(
-          'update auto_tasks set last_generated_at=$1, next_generate_at=$2 where id=$3',
-          [lastGeneratedAt || null, nextTs || null, row.id]
+          'update auto_tasks set last_generated_at=$1, next_generate_at=$2, active=$3 where id=$4',
+          [lastGeneratedAt || null, nextTs || null, active, row.id]
         );
       }
     }
@@ -2215,7 +2223,8 @@ app.get('/api/sales-stats/products', authRequired, ensureAllow('sales_stats','vi
         item,
         nullif(trim(item->>'productId'), '') as pid_text,
         trim(coalesce(item->>'sku', '')) as sku_text,
-        trim(coalesce(item->>'name', '')) as name_text
+        trim(coalesce(item->>'name', '')) as name_text,
+        trim(coalesce(item->>'cn_name', item->>'name_cn', '')) as cn_text
       from invoices i
       cross join lateral jsonb_array_elements(coalesce(i.items, '[]'::jsonb)) item
       ${invoiceConds.length ? 'where ' + invoiceConds.join(' and ') : ''}
@@ -2223,9 +2232,9 @@ app.get('/api/sales-stats/products', authRequired, ensureAllow('sales_stats','vi
     rows as (
       select
         coalesce(prod.id, case when e.pid_text ~ '^[0-9]+$' then e.pid_text::int else null end) as product_id,
-        coalesce(prod.sku, e.sku_text) as sku,
-        coalesce(prod.name, e.name_text) as product_name,
-        coalesce(prod.name_cn, trim(coalesce(e.item->>'cn_name', e.item->>'name_cn', ''))) as product_name_cn,
+        coalesce(nullif(trim(prod.sku), ''), e.sku_text) as sku,
+        coalesce(nullif(trim(prod.name), ''), e.name_text) as product_name,
+        coalesce(nullif(trim(prod.name_cn), ''), nullif(e.cn_text, ''), '') as product_name_cn,
         coalesce(prod.spec, '') as spec,
         coalesce(nullif(e.item->>'cost_price', '')::numeric, 0) as item_cost_price,
         (coalesce(prod.dividend_enabled, false) or coalesce(jsonb_array_length(coalesce(prod.dividend_users, '[]'::jsonb)), 0) > 0) as dividend_enabled,
@@ -2245,13 +2254,16 @@ app.get('/api/sales-stats/products', authRequired, ensureAllow('sales_stats','vi
         from products p
         where
           (e.pid_text ~ '^[0-9]+$' and p.id = e.pid_text::int)
-          or (not (e.pid_text ~ '^[0-9]+$') and e.sku_text <> '' and p.sku = e.sku_text)
-          or (not (e.pid_text ~ '^[0-9]+$') and e.sku_text = '' and e.name_text <> '' and p.name = e.name_text)
+          or (e.sku_text <> '' and trim(coalesce(p.sku, '')) = e.sku_text)
+          or (e.name_text <> '' and trim(coalesce(p.name, '')) = e.name_text)
+          or (e.cn_text <> '' and trim(coalesce(p.name_cn, '')) = e.cn_text)
         order by
           case
             when e.pid_text ~ '^[0-9]+$' and p.id = e.pid_text::int then 0
             when e.sku_text <> '' and p.sku = e.sku_text then 1
-            else 2
+            when e.name_text <> '' and p.name = e.name_text then 2
+            when e.cn_text <> '' and p.name_cn = e.cn_text then 3
+            else 4
           end
         limit 1
       ) prod on true
@@ -2614,7 +2626,8 @@ app.post('/api/auto-tasks', authRequired, ensureAllow('tasks','edit'), async (re
   const title = String(x.title || '').trim();
   const description = String(x.description || '').trim();
   const assignedTo = String(x.assigned_to || '').trim();
-  const intervalMonths = Math.max(1, parseInt(x.interval_months, 10) || 1);
+  const rawIntervalMonths = parseInt(x.interval_months, 10);
+  const intervalMonths = Number.isFinite(rawIntervalMonths) && rawIntervalMonths <= 0 ? 0 : Math.max(1, rawIntervalMonths || 1);
   const timeLimit = Math.max(0, parseInt(x.time_limit, 10) || 0);
   const startAt = Math.max(0, parseInt(x.start_at, 10) || 0) || Date.now();
   const active = x.active !== false;
@@ -2639,14 +2652,17 @@ app.put('/api/auto-tasks/:id', authRequired, ensureAllow('tasks','edit'), async 
   const title = String(x.title || '').trim();
   const description = String(x.description || '').trim();
   const assignedTo = String(x.assigned_to || '').trim();
-  const intervalMonths = Math.max(1, parseInt(x.interval_months, 10) || 1);
+  const rawIntervalMonths = parseInt(x.interval_months, 10);
+  const intervalMonths = Number.isFinite(rawIntervalMonths) && rawIntervalMonths <= 0 ? 0 : Math.max(1, rawIntervalMonths || 1);
   const timeLimit = Math.max(0, parseInt(x.time_limit, 10) || 0);
   const startAt = Math.max(0, parseInt(x.start_at, 10) || 0) || Number(row.start_at || row.created_at || Date.now());
   const active = x.active !== false;
   if (!title || !assignedTo) return res.status(400).json({ error: 'bad_request' });
   let nextGenerateAt = null;
   if (active) {
-    if (Number(row.last_generated_at || 0) > 0) {
+    if (intervalMonths === 0) {
+      nextGenerateAt = Number(row.last_generated_at || 0) > 0 ? null : startAt;
+    } else if (Number(row.last_generated_at || 0) > 0) {
       nextGenerateAt = addMonthsTs(Number(row.last_generated_at), intervalMonths);
       while (nextGenerateAt <= Date.now()) nextGenerateAt = addMonthsTs(nextGenerateAt, intervalMonths);
     } else {

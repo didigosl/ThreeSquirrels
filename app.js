@@ -8585,6 +8585,7 @@ function readDateTimeLocalInput(id) {
 
 function formatAutoTaskInterval(months) {
   const val = Number(months || 0);
+  if (val === 0) return '仅限一次';
   return val > 0 ? `每${val}个月` : '-';
 }
 
@@ -8987,7 +8988,7 @@ window.editAutoTask = function(id) {
   document.getElementById('auto-task-title').value = t.title || '';
   document.getElementById('auto-task-desc').value = t.description || '';
   document.getElementById('auto-task-assign').value = t.assigned_to || '';
-  document.getElementById('auto-task-interval').value = String(t.interval_months || 6);
+  document.getElementById('auto-task-interval').value = String(t.interval_months ?? 6);
   document.getElementById('auto-task-time-limit').value = String(t.time_limit || 1);
   document.getElementById('auto-task-start-at').value = formatDateTimeLocalInput(t.start_at || t.created_at || 0);
   document.getElementById('auto-task-active').checked = !!t.active;
@@ -9028,7 +9029,7 @@ window.toggleAutoTask = async function(id, active) {
       title: t.title || '',
       description: t.description || '',
       assigned_to: t.assigned_to || '',
-      interval_months: t.interval_months || 1,
+      interval_months: t.interval_months ?? 1,
       time_limit: t.time_limit || 0,
       start_at: t.start_at || t.created_at || Date.now(),
       active: !!active
