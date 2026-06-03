@@ -408,7 +408,7 @@
           <div class="search-row">
             <input id="prod-search" type="text" placeholder="Busque el nombre y Articulo">
             <div class="tool-wrap">
-              <button id="prod-open-btn" class="btn btn-secondary tool-btn" type="button" title="选择商品" aria-label="选择商品">+</button>
+              <button id="prod-open-btn" class="btn btn-secondary tool-btn" type="button" title="选择商品" aria-label="选择商品" onclick="return handleProdOpen(event)" ontouchend="return handleProdOpen(event)">+</button>
             </div>
           </div>
           <div id="prod-list" class="picker-list"></div>
@@ -439,7 +439,7 @@
             <label class="label">Lote</label>
             <div class="input-with-tool">
               <input id="lote-input" type="text" placeholder="Lote">
-              <div class="tool-wrap" data-picker="lote-date-picker">
+              <div class="tool-wrap" data-picker="lote-date-picker" onclick="return handlePickerPress(event, 'lote-date-picker')" ontouchend="return handlePickerPress(event, 'lote-date-picker')">
                 <button class="btn btn-ghost tool-btn" type="button" title="选择日期" aria-label="选择日期" style="pointer-events:none">&#128197;</button>
                 <input id="lote-date-picker" type="date">
               </div>
@@ -450,7 +450,7 @@
             <label class="label">Caducidad</label>
             <div class="input-with-tool">
               <input id="expiry-input" type="text" placeholder="Fecha de caducidad">
-              <div class="tool-wrap" data-picker="expiry-date-picker">
+              <div class="tool-wrap" data-picker="expiry-date-picker" onclick="return handlePickerPress(event, 'expiry-date-picker')" ontouchend="return handlePickerPress(event, 'expiry-date-picker')">
                 <button class="btn btn-ghost tool-btn" type="button" title="选择日期" aria-label="选择日期" style="pointer-events:none">&#128197;</button>
                 <input id="expiry-date-picker" type="date">
               </div>
@@ -557,17 +557,18 @@
     }
 
     async function fetchJSON(url, options) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 8000);
+      const controller = typeof AbortController === 'function' ? new AbortController() : null;
+      const timer = controller ? setTimeout(() => controller.abort(), 8000) : null;
+      const fetchOptions = {
+        cache: 'no-store'
+      };
+      if (options && typeof options === 'object') Object.assign(fetchOptions, options);
+      if (controller) fetchOptions.signal = controller.signal;
       try {
-        const res = await fetch(url, {
-          cache: 'no-store',
-          ...options,
-          signal: controller.signal
-        });
+        const res = await fetch(url, fetchOptions);
         return res;
       } finally {
-        clearTimeout(timer);
+        if (timer) clearTimeout(timer);
       }
     }
 
@@ -592,6 +593,26 @@
         handler(ev);
       });
     }
+
+    function handleProdOpen(ev) {
+      if (ev) {
+        try { ev.preventDefault(); } catch (_) {}
+        try { ev.stopPropagation(); } catch (_) {}
+      }
+      showProductList(true);
+      return false;
+    }
+    window.handleProdOpen = handleProdOpen;
+
+    function handlePickerPress(ev, id) {
+      if (ev) {
+        try { ev.preventDefault(); } catch (_) {}
+        try { ev.stopPropagation(); } catch (_) {}
+      }
+      openDatePickerById(id);
+      return false;
+    }
+    window.handlePickerPress = handlePickerPress;
 
     function openDatePickerById(id) {
       const input = document.getElementById(id);
@@ -884,15 +905,16 @@
         showMessage(isEditing ? '修改已保存，等待后台审核。' : '提交成功，等待后台审核。', 'ok');
         loadPendingEntries();
       } catch (e) {
-        const msg = e?.message === 'photo_required'
+        const errMessage = e && e.message ? e.message : '';
+        const msg = errMessage === 'photo_required'
           ? '请拍照或选择图片'
-          : e?.message === 'product_not_found'
+          : errMessage === 'product_not_found'
             ? '商品不存在，请重新选择后再提交。'
-            : e?.message === 'bad_request'
+            : errMessage === 'bad_request'
               ? '请检查商品、图片、Lote、日期和箱数后再提交。'
-              : e?.message === 'already_reviewed'
+              : errMessage === 'already_reviewed'
                 ? '这条记录已经审核，不能再提交。'
-                : e?.message === 'upload_failed' || e?.message === 'upload_normalize_failed'
+                : errMessage === 'upload_failed' || errMessage === 'upload_normalize_failed'
                   ? '图片上传失败，请重试。'
                   : '提交失败，请检查网络后重试。';
         showMessage(msg, 'err');
