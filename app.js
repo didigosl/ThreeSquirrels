@@ -8586,6 +8586,8 @@ function readDateTimeLocalInput(id) {
 function formatAutoTaskInterval(months) {
   const val = Number(months || 0);
   if (val === 0) return '仅限一次';
+  if (val === -1) return '每一天';
+  if (val === -2) return '每一周';
   return val > 0 ? `每${val}个月` : '-';
 }
 
@@ -9488,6 +9490,68 @@ var logisticsReviewedFilters = { from: '', to: '', company: '', updated: '' };
 var logisticsReviewedFilterMenuKey = '';
 var logisticsReviewMode = false;
 var logisticsReviewSelectedIds = new Set();
+var logisticsOngoingBadgeCountCache = null;
+var navTaskBadgeCountCache = null;
+var navOrderBadgeCountCache = null;
+var globalBadgesRequestSeq = 0;
+
+function ensureLogisticsReviewSelectedIds() {
+  if (!(logisticsReviewSelectedIds instanceof Set)) logisticsReviewSelectedIds = new Set();
+  return logisticsReviewSelectedIds;
+}
+
+function readBadgeCountCache(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null || raw === '') return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeBadgeCountCache(key, count) {
+  try {
+    localStorage.setItem(key, String(Number(count || 0) || 0));
+  } catch {}
+}
+
+function updateNavDailyOpsBadgeCount() {
+  const total =
+    (Number(navTaskBadgeCountCache || 0) || 0) +
+    (Number(navOrderBadgeCountCache || 0) || 0) +
+    (Number(logisticsOngoingBadgeCountCache || 0) || 0);
+  const el = document.getElementById('nav-daily-ops-badge');
+  if (el) {
+    el.textContent = String(total);
+    el.style.display = total > 0 ? 'inline-block' : 'none';
+  }
+}
+
+function updateNavTaskBadgeCount(count) {
+  const total = Number(count || 0) || 0;
+  navTaskBadgeCountCache = total;
+  writeBadgeCountCache('nav-task-badge-cache', total);
+  const el = document.getElementById('nav-task-badge');
+  if (el) {
+    el.textContent = String(total);
+    el.style.display = total > 0 ? 'inline-block' : 'none';
+  }
+  updateNavDailyOpsBadgeCount();
+}
+
+function updateNavOrderBadgeCount(count) {
+  const total = Number(count || 0) || 0;
+  navOrderBadgeCountCache = total;
+  writeBadgeCountCache('nav-order-badge-cache', total);
+  const el = document.getElementById('nav-order-badge');
+  if (el) {
+    el.textContent = String(total);
+    el.style.display = total > 0 ? 'inline-block' : 'none';
+  }
+  updateNavDailyOpsBadgeCount();
+}
 
 function loadLocalLogisticsCompanies() {
   try {
@@ -9510,6 +9574,83 @@ function loadLocalLogisticsRecords() {
 }
 function saveLocalLogisticsRecords(list) {
   localStorage.setItem('logisticsRecords', JSON.stringify(Array.isArray(list) ? list : []));
+}
+
+function getLogisticsRecordStatus(record) {
+  return String(record?.status || record?.logistics_status || '').trim();
+}
+
+function mergeLogisticsRecordsWithLocal(status, remoteList) {
+  const arr = Array.isArray(remoteList) ? remoteList : [];
+  try {
+    const localAll = loadLocalLogisticsRecords();
+    if (Array.isArray(localAll) && localAll.length > 0) {
+      const localMap = new Map(localAll.map(x => [String(x?.order_id || x?.id || ''), x]));
+      const want = String(status || 'ongoing');
+      const seen = new Set();
+      const merged = arr.map(r => {
+        const key = String(r?.id || r?.order_id || '');
+        if (key) seen.add(key);
+        const local = localMap.get(key);
+        if (!local) return r;
+        const localStatus = getLogisticsRecordStatus(local);
+        if (localStatus && localStatus !== want) return null;
+        return {
+          ...r,
+          orderNo: String(local?.orderNo || '').trim() ? String(local.orderNo).trim() : r.orderNo,
+          shipped_by: String(local?.shipped_by || local?.created_by || '').trim() ? (local.shipped_by || local.created_by) : r.shipped_by,
+          logistics_from: String(local?.logistics_from || local?.from || '').trim() ? (local.logistics_from || local.from) : r.logistics_from,
+          logistics_to: String(local?.logistics_to || local?.to || '').trim() ? (local.logistics_to || local.to) : r.logistics_to,
+          logistics_ship_date: String(local?.logistics_ship_date || local?.ship_date || local?.shipDate || '').trim() ? (local.logistics_ship_date || local.ship_date || local.shipDate) : r.logistics_ship_date,
+          logistics_pallet_count: String(local?.logistics_pallet_count || local?.pallet_count || local?.palletCount || '').trim()
+            ? (local.logistics_pallet_count || local.pallet_count || local.palletCount)
+            : r.logistics_pallet_count,
+          logistics_box_count: String(local?.logistics_box_count || local?.box_count || local?.boxCount || '').trim()
+            ? (local.logistics_box_count || local.box_count || local.boxCount)
+            : r.logistics_box_count,
+          logistics_total_weight: String(local?.logistics_total_weight || local?.total_weight || local?.totalWeight || '').trim()
+            ? (local.logistics_total_weight || local.total_weight || local.totalWeight)
+            : r.logistics_total_weight,
+          logistics_arrival_date: String(local?.logistics_arrival_date || local?.arrival_date || local?.arrivalDate || '').trim()
+            ? (local.logistics_arrival_date || local.arrival_date || local.arrivalDate)
+            : r.logistics_arrival_date,
+          logistics_completed_by: String(local?.logistics_completed_by || local?.completed_by || '').trim()
+            ? (local.logistics_completed_by || local.completed_by)
+            : r.logistics_completed_by,
+          logistics_reviewed_by: String(local?.logistics_reviewed_by || local?.reviewed_by || '').trim()
+            ? (local.logistics_reviewed_by || local.reviewed_by)
+            : r.logistics_reviewed_by,
+          logistics_updated_at: Number(local?.updatedAt || 0) || r.logistics_updated_at
+        };
+      }).filter(Boolean);
+      const extras = localAll.filter(x => getLogisticsRecordStatus(x) === want).filter(x => {
+        const key = String(x?.order_id || x?.id || '');
+        return key && !seen.has(key);
+      }).map(x => ({
+        id: Number(x?.order_id || x?.id || 0) || 0,
+        customer: x?.customer || '',
+        notes: x?.notes || '',
+        logistics_status: want,
+        logistics_updated_at: Number(x?.updatedAt || 0) || Date.now(),
+        logistics_company: x?.company || '',
+        logistics_from: x?.logistics_from || x?.from || '',
+        logistics_to: x?.logistics_to || x?.to || '',
+        logistics_ship_date: x?.logistics_ship_date || x?.ship_date || x?.shipDate || '',
+        logistics_pallet_count: x?.logistics_pallet_count || x?.pallet_count || x?.palletCount || '',
+        logistics_box_count: x?.logistics_box_count || x?.box_count || x?.boxCount || '',
+        logistics_total_weight: x?.logistics_total_weight || x?.total_weight || x?.totalWeight || '',
+        logistics_arrival_date: x?.logistics_arrival_date || x?.arrival_date || x?.arrivalDate || '',
+        logistics_completed_by: x?.logistics_completed_by || x?.completed_by || '',
+        logistics_reviewed_by: x?.logistics_reviewed_by || x?.reviewed_by || '',
+        shipped_by: x?.shipped_by || x?.created_by || '',
+        invoice_no: x?.orderNo || '',
+        orderNo: x?.orderNo || '',
+        shipped_at: Number(x?.shippedAt || 0) || 0
+      }));
+      return [...extras, ...merged];
+    }
+  } catch {}
+  return arr;
 }
 
 async function apiLogisticsCompaniesList(force = false) {
@@ -9573,7 +9714,7 @@ async function loadLogisticsRecords(status) {
   if (!res.ok) {
     if (res.status === 404) {
       const all = loadLocalLogisticsRecords();
-      const filtered = all.filter(x => String(x.status || '') === String(status || 'ongoing'));
+      const filtered = all.filter(x => getLogisticsRecordStatus(x) === String(status || 'ongoing'));
       try {
         if (status === 'ongoing') {
           const shippedRes = await fetchWithAuth(`/api/daily-orders?status=shipped&_t=${Date.now()}`);
@@ -9618,75 +9759,7 @@ async function loadLogisticsRecords(status) {
       }
     }
   } catch {}
-  try {
-    const localAll = loadLocalLogisticsRecords();
-    if (Array.isArray(localAll) && localAll.length > 0) {
-      const localMap = new Map(localAll.map(x => [String(x?.order_id || x?.id || ''), x]));
-      const want = String(status || 'ongoing');
-      const seen = new Set();
-      const merged = arr.map(r => {
-        const key = String(r?.id || r?.order_id || '');
-        if (key) seen.add(key);
-        const local = localMap.get(key);
-        if (!local) return r;
-        const localStatus = String(local?.status || '').trim();
-        if (localStatus && localStatus !== want) return null;
-        return {
-          ...r,
-          orderNo: String(local?.orderNo || '').trim() ? String(local.orderNo).trim() : r.orderNo,
-          shipped_by: String(local?.shipped_by || local?.created_by || '').trim() ? (local.shipped_by || local.created_by) : r.shipped_by,
-          logistics_from: String(local?.logistics_from || local?.from || '').trim() ? (local.logistics_from || local.from) : r.logistics_from,
-          logistics_to: String(local?.logistics_to || local?.to || '').trim() ? (local.logistics_to || local.to) : r.logistics_to,
-          logistics_ship_date: String(local?.logistics_ship_date || local?.ship_date || local?.shipDate || '').trim() ? (local.logistics_ship_date || local.ship_date || local.shipDate) : r.logistics_ship_date,
-          logistics_pallet_count: String(local?.logistics_pallet_count || local?.pallet_count || local?.palletCount || '').trim()
-            ? (local.logistics_pallet_count || local.pallet_count || local.palletCount)
-            : r.logistics_pallet_count,
-          logistics_box_count: String(local?.logistics_box_count || local?.box_count || local?.boxCount || '').trim()
-            ? (local.logistics_box_count || local.box_count || local.boxCount)
-            : r.logistics_box_count,
-          logistics_total_weight: String(local?.logistics_total_weight || local?.total_weight || local?.totalWeight || '').trim()
-            ? (local.logistics_total_weight || local.total_weight || local.totalWeight)
-            : r.logistics_total_weight,
-          logistics_arrival_date: String(local?.logistics_arrival_date || local?.arrival_date || local?.arrivalDate || '').trim()
-            ? (local.logistics_arrival_date || local.arrival_date || local.arrivalDate)
-            : r.logistics_arrival_date,
-          logistics_completed_by: String(local?.logistics_completed_by || local?.completed_by || '').trim()
-            ? (local.logistics_completed_by || local.completed_by)
-            : r.logistics_completed_by,
-          logistics_reviewed_by: String(local?.logistics_reviewed_by || local?.reviewed_by || '').trim()
-            ? (local.logistics_reviewed_by || local.reviewed_by)
-            : r.logistics_reviewed_by,
-          logistics_updated_at: Number(local?.updatedAt || 0) || r.logistics_updated_at
-        };
-      }).filter(Boolean);
-      const extras = localAll.filter(x => String(x?.status || '') === want).filter(x => {
-        const key = String(x?.order_id || x?.id || '');
-        return key && !seen.has(key);
-      }).map(x => ({
-        id: Number(x?.order_id || x?.id || 0) || 0,
-        customer: x?.customer || '',
-        notes: x?.notes || '',
-        logistics_status: want,
-        logistics_updated_at: Number(x?.updatedAt || 0) || Date.now(),
-        logistics_company: x?.company || '',
-        logistics_from: x?.logistics_from || x?.from || '',
-        logistics_to: x?.logistics_to || x?.to || '',
-        logistics_ship_date: x?.logistics_ship_date || x?.ship_date || x?.shipDate || '',
-        logistics_pallet_count: x?.logistics_pallet_count || x?.pallet_count || x?.palletCount || '',
-        logistics_box_count: x?.logistics_box_count || x?.box_count || x?.boxCount || '',
-        logistics_total_weight: x?.logistics_total_weight || x?.total_weight || x?.totalWeight || '',
-        logistics_arrival_date: x?.logistics_arrival_date || x?.arrival_date || x?.arrivalDate || '',
-        logistics_completed_by: x?.logistics_completed_by || x?.completed_by || '',
-        logistics_reviewed_by: x?.logistics_reviewed_by || x?.reviewed_by || '',
-        shipped_by: x?.shipped_by || x?.created_by || '',
-        invoice_no: x?.orderNo || '',
-        orderNo: x?.orderNo || '',
-        shipped_at: Number(x?.shippedAt || 0) || 0
-      }));
-      return [...extras, ...merged];
-    }
-  } catch {}
-  return arr;
+  return mergeLogisticsRecordsWithLocal(status, arr);
 }
 
 async function loadLogisticsCompanies() {
@@ -9739,7 +9812,8 @@ async function toggleLogisticsCompany(id, enabled) {
 function updateLogisticsReviewButton() {
   const btn = document.getElementById('logistics-review-btn');
   if (!btn) return;
-  const selectedCount = logisticsReviewSelectedIds.size;
+  const selectedIds = ensureLogisticsReviewSelectedIds();
+  const selectedCount = selectedIds.size;
   const isConfirm = logisticsReviewMode && selectedCount > 0;
   btn.style.display = currentLogisticsTab === 'completed' ? 'inline-flex' : 'none';
   btn.innerHTML = isConfirm
@@ -9758,15 +9832,12 @@ function updateLogisticsCompletedTabCount(count) {
     el.style.display = 'inline';
     el.textContent = String(total);
   }
-  const navBadge = document.getElementById('nav-logistics-completed-badge');
-  if (navBadge) {
-    navBadge.textContent = String(total);
-    navBadge.style.display = total > 0 ? 'inline-block' : 'none';
-  }
 }
 
 function updateLogisticsOngoingBadgeCount(count) {
   const total = Number(count || 0) || 0;
+  logisticsOngoingBadgeCountCache = total;
+  writeBadgeCountCache('nav-logistics-badge-cache', total);
   const navBadge = document.getElementById('nav-logistics-badge');
   if (navBadge) {
     navBadge.textContent = String(total);
@@ -9777,7 +9848,12 @@ function updateLogisticsOngoingBadgeCount(count) {
     tabBadge.textContent = String(total);
     tabBadge.style.display = total > 0 ? 'inline-block' : 'none';
   }
+  updateNavDailyOpsBadgeCount();
 }
+
+navTaskBadgeCountCache = readBadgeCountCache('nav-task-badge-cache');
+navOrderBadgeCountCache = readBadgeCountCache('nav-order-badge-cache');
+logisticsOngoingBadgeCountCache = readBadgeCountCache('nav-logistics-badge-cache');
 
 async function refreshLogisticsCompletedTabCount() {
   const want = 'completed';
@@ -10081,26 +10157,28 @@ function renderLogisticsTable(rawList) {
 function toggleLogisticsReviewSelection(id, checked) {
   const key = String(id || '').trim();
   if (!key) return;
-  if (checked) logisticsReviewSelectedIds.add(key);
-  else logisticsReviewSelectedIds.delete(key);
+  const selectedIds = ensureLogisticsReviewSelectedIds();
+  if (checked) selectedIds.add(key);
+  else selectedIds.delete(key);
   updateLogisticsReviewButton();
   renderLogisticsTable(currentLogisticsRecords);
 }
 
 async function handleLogisticsReviewAction() {
   if (currentLogisticsTab !== 'completed') return;
+  const selectedIds = ensureLogisticsReviewSelectedIds();
   if (!logisticsReviewMode) {
     logisticsReviewMode = true;
-    logisticsReviewSelectedIds.clear();
+    selectedIds.clear();
     updateLogisticsReviewButton();
     loadLogistics('completed');
     return;
   }
-  if (logisticsReviewSelectedIds.size === 0) {
+  if (selectedIds.size === 0) {
     alert('请先勾选要审核的物流');
     return;
   }
-  const ids = Array.from(logisticsReviewSelectedIds).map(x => Number(x)).filter(Boolean);
+  const ids = Array.from(selectedIds).map(x => Number(x)).filter(Boolean);
   if (ids.length === 0) return;
   const btn = document.getElementById('logistics-review-btn');
   if (btn) btn.disabled = true;
@@ -10125,7 +10203,7 @@ async function handleLogisticsReviewAction() {
     });
     saveLocalLogisticsRecords(next);
     logisticsReviewMode = false;
-    logisticsReviewSelectedIds.clear();
+    selectedIds.clear();
     updateLogisticsReviewButton();
     loadLogistics('completed');
     updateGlobalBadges();
@@ -10143,7 +10221,7 @@ function loadLogistics(status = 'ongoing', btn = null) {
   if (currentLogisticsTab !== 'completed') {
     logisticsCompletedFilterMenuKey = '';
     logisticsReviewMode = false;
-    logisticsReviewSelectedIds.clear();
+    ensureLogisticsReviewSelectedIds().clear();
   }
   if (currentLogisticsTab !== 'reviewed') {
     logisticsReviewedFilterMenuKey = '';
@@ -10194,6 +10272,9 @@ function loadLogistics(status = 'ongoing', btn = null) {
       if (e?.name === 'AbortError') return;
     }
     currentLogisticsRecords = Array.isArray(list) ? list : [];
+    if (currentLogisticsTab === 'ongoing') {
+      updateLogisticsOngoingBadgeCount(currentLogisticsRecords.length);
+    }
     renderLogisticsTable(currentLogisticsRecords);
   })();
 }
@@ -12484,7 +12565,6 @@ async function loadEventRecords(tab = 'ongoing', btn = null, page = 1) {
   };
   if (eventRecordCurrentTab === 'ongoing') {
     setEventBadge('tab-event-record-ongoing-badge', eventRecordTotal);
-    setEventBadge('nav-event-record-badge', eventRecordTotal);
   }
   const tbody = document.getElementById('event-record-rows');
   if (!tbody) return;
@@ -13024,6 +13104,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // Auto-refresh Badges Logic
 async function updateGlobalBadges() {
   if (!localStorage.getItem('authToken')) return;
+  const requestSeq = ++globalBadgesRequestSeq;
 
   try {
     // 1. Task Stats (New + Review)
@@ -13069,15 +13150,15 @@ async function updateGlobalBadges() {
     } catch {}
 
     // 5. Logistics Stats (Ongoing)
-    let logisticsOngoingCount = 0;
+    let logisticsOngoingCount = null;
     try {
       const r = await fetchWithAuth(`/api/logistics/records?status=ongoing&_t=${Date.now()}`);
       if (r.ok) {
         const list = await r.json().catch(() => []);
-        logisticsOngoingCount = Array.isArray(list) ? list.length : 0;
+        logisticsOngoingCount = mergeLogisticsRecordsWithLocal('ongoing', list).length;
       } else if (r.status === 404) {
         const all = loadLocalLogisticsRecords();
-        logisticsOngoingCount = (Array.isArray(all) ? all : []).filter(x => String(x?.status || '') === 'ongoing').length;
+        logisticsOngoingCount = (Array.isArray(all) ? all : []).filter(x => getLogisticsRecordStatus(x) === 'ongoing').length;
       }
     } catch {}
 
@@ -13090,13 +13171,15 @@ async function updateGlobalBadges() {
       }
     };
 
-    setBadge('nav-task-badge', taskCount);
-    setBadge('nav-order-badge', orderCount);
-    updateLogisticsOngoingBadgeCount(logisticsOngoingCount);
-    setBadge('nav-event-record-badge', eventRecordCount);
+    if (requestSeq !== globalBadgesRequestSeq) return;
+
+    updateNavTaskBadgeCount(taskCount);
+    updateNavOrderBadgeCount(orderCount);
+    if (logisticsOngoingCount !== null) {
+      updateLogisticsOngoingBadgeCount(logisticsOngoingCount);
+    }
     setBadge('tab-event-record-ongoing-badge', eventRecordCount);
     setBadge('fs-tab-review-badge', productionReviewCount);
-    setBadge('nav-daily-ops-badge', taskCount + orderCount + logisticsOngoingCount + eventRecordCount + productionReviewCount);
     updateTopProductionReviewAlert(productionReviewCount);
 
   } catch (e) {
@@ -13106,7 +13189,17 @@ async function updateGlobalBadges() {
 
 // Start polling
 setInterval(updateGlobalBadges, 30000); // 30 seconds
+if (navTaskBadgeCountCache !== null) updateNavTaskBadgeCount(navTaskBadgeCountCache);
+if (navOrderBadgeCountCache !== null) updateNavOrderBadgeCount(navOrderBadgeCountCache);
+if (logisticsOngoingBadgeCountCache !== null) updateLogisticsOngoingBadgeCount(logisticsOngoingBadgeCountCache);
+updateNavDailyOpsBadgeCount();
 // Initial call
 if (localStorage.getItem('authToken')) {
   updateGlobalBadges();
 }
+window.addEventListener('focus', updateGlobalBadges);
+window.addEventListener('pageshow', updateGlobalBadges);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') updateGlobalBadges();
+});
+window.addEventListener('online', updateGlobalBadges);

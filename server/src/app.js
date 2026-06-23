@@ -547,6 +547,22 @@ function addMonthsTs(baseTs, months) {
   return d.getTime();
 }
 
+function normalizeAutoTaskInterval(rawValue) {
+  const raw = parseInt(rawValue, 10);
+  if (raw === 0) return 0;
+  if (raw === -1) return -1;
+  if (raw === -2) return -2;
+  return Math.max(1, raw || 1);
+}
+
+function advanceAutoTaskTs(baseTs, intervalValue) {
+  const base = Number(baseTs || Date.now());
+  const interval = normalizeAutoTaskInterval(intervalValue);
+  if (interval === -1) return base + 24 * 60 * 60 * 1000;
+  if (interval === -2) return base + 7 * 24 * 60 * 60 * 1000;
+  return addMonthsTs(base, interval);
+}
+
 let autoTaskGenerationRunning = false;
 async function ensureAutoTasksGenerated() {
   if (autoTaskGenerationRunning) return;
@@ -559,9 +575,8 @@ async function ensureAutoTasksGenerated() {
        order by coalesce(next_generate_at, created_at) asc, id asc`
     );
     for (const row of r.rows || []) {
-      const rawIntervalMonths = parseInt(row.interval_months, 10);
-      const isOneTime = Number.isFinite(rawIntervalMonths) && rawIntervalMonths <= 0;
-      const intervalMonths = isOneTime ? 0 : Math.max(1, rawIntervalMonths || 1);
+      const intervalValue = normalizeAutoTaskInterval(row.interval_months);
+      const isOneTime = intervalValue === 0;
       const startAt = Number(row.start_at || row.created_at || now);
       let nextTs = Number(row.next_generate_at || 0);
       if (!nextTs) nextTs = startAt;
@@ -589,7 +604,7 @@ async function ensureAutoTasksGenerated() {
           active = false;
           break;
         }
-        nextTs = addMonthsTs(nextTs, intervalMonths);
+        nextTs = advanceAutoTaskTs(nextTs, intervalValue);
       }
       if (!!row.active !== active || Number(row.next_generate_at || 0) !== Number(nextTs || 0) || Number(row.last_generated_at || 0) !== lastGeneratedAt) {
         await query(
@@ -2626,8 +2641,7 @@ app.post('/api/auto-tasks', authRequired, ensureAllow('tasks','edit'), async (re
   const title = String(x.title || '').trim();
   const description = String(x.description || '').trim();
   const assignedTo = String(x.assigned_to || '').trim();
-  const rawIntervalMonths = parseInt(x.interval_months, 10);
-  const intervalMonths = Number.isFinite(rawIntervalMonths) && rawIntervalMonths <= 0 ? 0 : Math.max(1, rawIntervalMonths || 1);
+  const intervalMonths = normalizeAutoTaskInterval(x.interval_months);
   const timeLimit = Math.max(0, parseInt(x.time_limit, 10) || 0);
   const startAt = Math.max(0, parseInt(x.start_at, 10) || 0) || Date.now();
   const active = x.active !== false;
@@ -2652,8 +2666,7 @@ app.put('/api/auto-tasks/:id', authRequired, ensureAllow('tasks','edit'), async 
   const title = String(x.title || '').trim();
   const description = String(x.description || '').trim();
   const assignedTo = String(x.assigned_to || '').trim();
-  const rawIntervalMonths = parseInt(x.interval_months, 10);
-  const intervalMonths = Number.isFinite(rawIntervalMonths) && rawIntervalMonths <= 0 ? 0 : Math.max(1, rawIntervalMonths || 1);
+  const intervalMonths = normalizeAutoTaskInterval(x.interval_months);
   const timeLimit = Math.max(0, parseInt(x.time_limit, 10) || 0);
   const startAt = Math.max(0, parseInt(x.start_at, 10) || 0) || Number(row.start_at || row.created_at || Date.now());
   const active = x.active !== false;
@@ -2663,8 +2676,8 @@ app.put('/api/auto-tasks/:id', authRequired, ensureAllow('tasks','edit'), async 
     if (intervalMonths === 0) {
       nextGenerateAt = Number(row.last_generated_at || 0) > 0 ? null : startAt;
     } else if (Number(row.last_generated_at || 0) > 0) {
-      nextGenerateAt = addMonthsTs(Number(row.last_generated_at), intervalMonths);
-      while (nextGenerateAt <= Date.now()) nextGenerateAt = addMonthsTs(nextGenerateAt, intervalMonths);
+      nextGenerateAt = advanceAutoTaskTs(Number(row.last_generated_at), intervalMonths);
+      while (nextGenerateAt <= Date.now()) nextGenerateAt = advanceAutoTaskTs(nextGenerateAt, intervalMonths);
     } else {
       nextGenerateAt = startAt;
     }

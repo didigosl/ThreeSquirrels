@@ -519,10 +519,10 @@
             <div class="nav-children collapsed">
               <a href="#tasks">任务信息 <span id="nav-task-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></a>
               <a href="#daily-orders">订单管理 <span id="nav-order-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></a>
-              <a href="#logistics">物流管理 <span id="nav-logistics-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span><span id="nav-logistics-completed-badge" class="badge" style="display:none; background:#f97316; color:white; border-radius:50%; padding:2px 6px; font-size:10px; margin-left:4px">0</span></a>
+              <a href="#logistics">物流管理 <span id="nav-logistics-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></a>
               <a href="#finished-stock">商品库存</a>
               <a href="#raw-stock">原材料库存</a>
-              <a href="#event-records">事件记录 <span id="nav-event-record-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></a>
+              <a href="#event-records">事件记录</a>
               <a href="#knowledge-base">知识库</a>
             </div>
           </div>
@@ -1110,6 +1110,8 @@
                 <span class="label">生成周期</span>
                 <select id="auto-task-interval" style="width:100%; padding:8px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--text)">
                   <option value="0">仅限一次</option>
+                  <option value="-1">每一天</option>
+                  <option value="-2">每一周</option>
                   <option value="1">每1个月</option>
                   <option value="3">每3个月</option>
                   <option value="6">每6个月</option>
@@ -3473,6 +3475,6 @@
         document.head.appendChild(s);
       })();
     </script>
-    <script src="app.js?v=20260530-event-records"></script>
+    <script src="app.js?v=20260603-logistics-nav"></script>
   </body>
 </html>
