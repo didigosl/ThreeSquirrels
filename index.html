@@ -28,6 +28,8 @@
       .label { font-size:13px; color:var(--muted); }
       select, input[type="text"], input[type="number"], input[type="date"], textarea, input[type="file"] { background:#0b1524; border:1px solid #233048; color:#fff; border-radius:8px; padding:10px 12px; outline:none; }
       input[type="date"] { padding:8px 10px; }
+      .production-plan-date-trigger { display:flex; align-items:center; width:100%; min-height:38px; padding:0 10px; border:1px solid #233048; border-radius:8px; background:#0b1524; cursor:pointer; }
+      .production-plan-date-trigger input[type="date"] { width:100%; min-height:28px; padding:4px 0; border:none; background:transparent; pointer-events:none; }
       textarea { min-height:120px; resize:vertical; }
       .btn { background:var(--blue); color:#fff; border:none; border-radius:8px; padding:10px 16px; cursor:pointer; }
       .btn:disabled { opacity:0.6; cursor:not-allowed; }
@@ -73,7 +75,57 @@
         border:1px solid #991b1b;
         box-shadow:0 0 0 1px rgba(153,27,27,0.3) inset;
       }
+      .btn-sm.btn-outline-orange {
+        background:#0f172a;
+        color:#f59e0b;
+        border:1px solid #92400e;
+        box-shadow:0 0 0 1px rgba(146,64,14,0.3) inset;
+      }
       .btn-sm.btn-red { background:#ef4444; color:#fff; }
+      .auth-locale-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px;
+        min-width: 124px;
+        border: 1px solid #233048;
+        border-radius: 14px;
+        background: #0b1524;
+      }
+      .auth-locale-btn {
+        flex: 1;
+        min-width: 0;
+        height: 24px;
+        padding: 0 12px;
+        border: none;
+        border-radius: 9px;
+        background: transparent;
+        color: #94a3b8;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background .15s ease, color .15s ease, transform .15s ease;
+      }
+      .auth-locale-btn:hover {
+        color: #e2e8f0;
+      }
+      .auth-locale-btn:active {
+        transform: scale(0.98);
+      }
+      .auth-locale-btn.is-active {
+        background: #1a73e8;
+        color: #fff;
+      }
+      .icon-refresh-btn {
+        transition: transform .18s ease, box-shadow .18s ease, opacity .18s ease;
+      }
+      .icon-refresh-btn:hover { transform: translateY(-1px); box-shadow:0 10px 24px rgba(15,23,42,0.28); }
+      .icon-refresh-btn:active { transform: scale(0.96); }
+      .icon-refresh-btn.is-refreshing svg { animation: index-refresh-spin 0.8s linear infinite; }
+      @keyframes index-refresh-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
       .table-wrap { padding:16px; }
       #logistics-record-panel { overflow-x:auto; overflow-y:hidden; }
       #logistics-record-panel table { table-layout:fixed; font-size:13px; }
@@ -106,6 +158,90 @@
       .form { padding:16px; display:flex; flex-direction:column; gap:12px; }
       .form h3 { margin:4px 0 8px; font-size:16px; }
       .group { display:flex; flex-direction:column; gap:6px; }
+      .product-modal-body-grid {
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        gap:20px;
+        overflow-y:auto;
+        min-height:0;
+        padding:24px;
+        padding-bottom:96px;
+      }
+      .product-top-stack {
+        display:flex;
+        flex-direction:column;
+        gap:20px;
+      }
+      .product-top-right-grid {
+        display:grid;
+        grid-template-columns:minmax(0, 1fr) minmax(220px, 0.9fr);
+        gap:16px;
+        align-items:start;
+      }
+      .product-side-fields {
+        display:flex;
+        flex-direction:column;
+        gap:20px;
+      }
+      .product-image-panel {
+        display:flex;
+        flex-direction:column;
+        gap:8px;
+        min-width:0;
+      }
+      .product-image-frame {
+        border:1px dashed #334155;
+        border-radius:8px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        overflow:hidden;
+        background:#0f172a;
+        min-height:168px;
+        max-height:200px;
+        padding:10px;
+      }
+      .product-image-frame img {
+        width:100%;
+        height:100%;
+        object-fit:contain;
+        display:none;
+      }
+      .product-details-grid {
+        grid-column:span 2;
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        gap:16px;
+        align-items:start;
+      }
+      .product-template-slot {
+        min-height:260px;
+        border:1px dashed #334155;
+        border-radius:10px;
+        background:#08111f;
+        padding:16px;
+        display:flex;
+        flex-direction:column;
+        gap:14px;
+      }
+      .product-template-slot textarea {
+        min-height:72px;
+      }
+      .product-template-slot-title {
+        font-size:13px;
+        color:#94a3b8;
+      }
+      @media (max-width: 980px) {
+        .product-modal-body-grid,
+        .product-details-grid,
+        .product-top-right-grid {
+          grid-template-columns:1fr;
+        }
+        .product-details-grid,
+        .product-modal-body-grid {
+          grid-column:auto;
+        }
+      }
       .ship-modal-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
       .ship-cargo-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:8px; }
       .ship-cargo-item { position:relative; }
@@ -118,11 +254,99 @@
         line-height:1;
         pointer-events:none;
       }
+      @media (max-width: 760px) {
+        #shareholder-metrics {
+          grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+        }
+        .shareholder-summary-columns {
+          grid-template-columns:1fr !important;
+        }
+      }
       .ship-cargo-input {
         width:100%;
         padding-top:22px !important;
         padding-bottom:8px !important;
         text-align:right;
+      }
+      .ship-voucher-wrap {
+        margin-top:12px;
+        border:1px dashed #334155;
+        border-radius:12px;
+        background:#08111f;
+        padding:12px;
+      }
+      .ship-voucher-head {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+        margin-bottom:10px;
+      }
+      .ship-voucher-actions {
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+      }
+      .ship-voucher-preview {
+        display:flex;
+        gap:12px;
+        align-items:flex-start;
+      }
+      .ship-voucher-thumb-wrap {
+        position:relative;
+        width:84px;
+        height:84px;
+        flex:0 0 84px;
+      }
+      .ship-voucher-thumb {
+        width:84px;
+        height:84px;
+        border-radius:10px;
+        border:1px solid #334155;
+        background:#020817;
+        object-fit:cover;
+        display:none;
+      }
+      .ship-voucher-remove {
+        position:absolute;
+        top:-8px;
+        right:-8px;
+        width:24px;
+        height:24px;
+        border:none;
+        border-radius:999px;
+        background:#ef4444;
+        color:#fff;
+        font-size:16px;
+        line-height:24px;
+        text-align:center;
+        cursor:pointer;
+        display:none;
+        box-shadow:0 4px 12px rgba(15, 23, 42, 0.35);
+      }
+      .ship-voucher-meta {
+        min-width:0;
+        flex:1;
+        display:flex;
+        flex-direction:column;
+        gap:6px;
+      }
+      .ship-voucher-name {
+        color:#e2e8f0;
+        font-size:13px;
+        line-height:1.5;
+        word-break:break-all;
+      }
+      .ship-voucher-hint {
+        color:#94a3b8;
+        font-size:12px;
+        line-height:1.5;
+      }
+      .ship-voucher-link {
+        color:#60a5fa;
+        font-size:12px;
+        text-decoration:none;
+        display:none;
       }
       .submit { display:flex; justify-content:flex-end; padding-top:8px; }
       #entry-form .submit .btn { width:100%; }
@@ -155,9 +379,9 @@
       .preview-table .empty { text-align:center; color:#94a3b8; padding:40px; }
       
       /* Invoice Preview */
-      .invoice-preview-shell { padding:40px; display:flex; justify-content:center; overflow:auto; }
-      .invoice-preview-stage { --invoice-scale:1; display:flex; justify-content:center; align-items:flex-start; margin:0 auto; }
-      .invoice-paper { background:#fff; color:#000; width:800px; padding:20px 40px; margin:0 auto; min-height:1000px; font-family:sans-serif; position:relative; box-sizing:border-box; display:flex; flex-direction:column; transform-origin:top center; }
+      .invoice-preview-shell { padding:24px; display:flex; justify-content:center; align-items:flex-start; overflow:auto; flex:1; min-height:0; }
+      .invoice-preview-stage { --invoice-scale:1; display:flex; justify-content:center; align-items:flex-start; margin:0 auto; transform-origin:top center; }
+      .invoice-paper { background:#fff; color:#000; width:210mm; min-height:297mm; padding:15mm; margin:0; font-family:sans-serif; position:relative; box-sizing:border-box; display:flex; flex-direction:column; transform-origin:top center; box-shadow:0 10px 30px rgba(15,23,42,0.22); }
       .invoice-paper h1 { margin:0 0 2px; font-size:24px; text-align:right; font-weight:800; letter-spacing:-0.5px; }
       .invoice-paper .inv-meta-right { text-align:right; color:#000; font-size:12px; line-height:1.2; margin-bottom:20px; }
       .invoice-paper .inv-status { color:#ef4444; font-size:11px; font-weight:600; text-transform:uppercase; margin-top:2px; }
@@ -167,12 +391,19 @@
       .invoice-paper .customer-info { text-align:right; font-size:12px; line-height:1.3; color:#333; flex:1; min-width:0; overflow-wrap:anywhere; word-break:break-word; }
       .invoice-paper .customer-label { font-weight:700; color:#000; margin-bottom:2px; }
       .invoice-paper .dates-grid { text-align:right; font-size:11px; margin-bottom:20px; line-height:1.4; color:#000; }
-      .invoice-paper table { width:100%; border-collapse:collapse; margin-bottom:20px; font-size:11px; }
+      .invoice-paper table { width:100%; border-collapse:collapse; margin-bottom:20px; font-size:11px; table-layout:fixed; }
       .invoice-paper th { background:#2c3e50 !important; color:#fff !important; padding:6px 8px; text-align:left; font-weight:600; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .invoice-paper td { border-bottom:1px solid #eee; padding:8px 8px; vertical-align:top; color:#333; }
-      .invoice-paper .item-idx { width:30px; text-align:center; }
-      .invoice-paper .item-name { font-weight:700; color:#000; font-size:12px; }
-      .invoice-paper .item-desc { color:#666; font-size:10px; margin-top:1px; }
+      .invoice-paper tbody tr:hover td { background:#f3f4f6 !important; }
+      .invoice-paper .item-idx { width:28px; text-align:center; }
+      .invoice-paper .item-main-col { width:auto; min-width:0; }
+      .invoice-paper .item-qty-col { width:44px; text-align:right; white-space:nowrap; padding-left:6px; padding-right:6px; }
+      .invoice-paper .item-price-col { width:58px; text-align:right; white-space:nowrap; padding-left:6px; padding-right:6px; }
+      .invoice-paper .item-discount-col { width:48px; text-align:right; white-space:nowrap; padding-left:6px; padding-right:6px; }
+      .invoice-paper .item-tax-col { width:50px; text-align:right; white-space:nowrap; padding-left:6px; padding-right:6px; }
+      .invoice-paper .item-value-col { width:68px; text-align:right; white-space:nowrap; padding-left:6px; padding-right:6px; }
+      .invoice-paper .item-name { font-weight:700; color:#000; font-size:12px; white-space:normal; overflow-wrap:anywhere; word-break:break-word; }
+      .invoice-paper .item-desc { color:#666; font-size:10px; margin-top:1px; white-space:normal; overflow-wrap:anywhere; word-break:break-word; }
       .invoice-paper .totals-area { display:flex; justify-content:flex-end; margin-bottom:30px; }
       .invoice-paper .totals-table { width:280px; font-size:12px; border-collapse:collapse; }
       .invoice-paper .totals-table td { padding:4px 0; border:none; }
@@ -186,7 +417,7 @@
       .invoice-paper .payment-label { font-weight:700; margin-bottom:2px; }
       .invoice-paper .sign-area { display:none; }
       @media (max-width: 900px) {
-        .invoice-preview-shell { padding:16px; }
+        .invoice-preview-shell { padding:8px; }
         .ship-modal-grid, .ship-cargo-grid { grid-template-columns:1fr; }
       }
       
@@ -253,12 +484,56 @@
         .modal-header, .modal-actions, .app-version { display:none !important; }
       }
       .invalid { border-color: var(--red) !important; color: var(--red) !important; animation: shake 0.18s ease-in-out 0s 2; }
+      .invalid::placeholder { color: var(--red) !important; opacity: 1; }
       .invalid-label { color: var(--red) !important; animation: shake 0.18s ease-in-out 0s 2; }
       @keyframes shake { 0% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } 100% { transform: translateX(0); } }
       #pay-import-summary { font-weight:600; color:#0f172a; }
       .switch { display:inline-flex; align-items:center; gap:6px; }
       .switch button { background:#1a73e8; color:#fff; border:none; border-radius:999px; padding:4px 10px; cursor:pointer; font-size:12px; }
       .switch.off button { background:#64748b; }
+      .setting-toggle {
+        position: relative;
+        width: 58px;
+        height: 30px;
+        padding: 0 8px 0 30px;
+        border: 1px solid #475569;
+        border-radius: 999px;
+        background: #334155;
+        color: #cbd5e1;
+        cursor: pointer;
+        font-size: 12px;
+        line-height: 28px;
+        text-align: right;
+        transition: background .18s ease, border-color .18s ease, color .18s ease;
+      }
+      .setting-toggle::before {
+        content: "";
+        position: absolute;
+        top: 5px;
+        left: 5px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #cbd5e1;
+        box-shadow: 0 1px 3px rgba(0,0,0,.35);
+        transition: transform .18s ease, background .18s ease;
+      }
+      .setting-toggle.is-on {
+        padding-left: 8px;
+        padding-right: 30px;
+        border-color: #2563eb;
+        background: #1d4ed8;
+        color: #fff;
+        text-align: left;
+      }
+      .setting-toggle.is-on::before {
+        background: #fff;
+        transform: translateX(28px);
+      }
+      .setting-toggle:disabled {
+        cursor: not-allowed;
+        opacity: .55;
+      }
       .cat-bar { display:flex; justify-content:space-between; align-items:center; padding:16px; }
       .cat-btn { background:var(--blue); color:#fff; border:none; border-radius:8px; padding:8px 12px; cursor:pointer; }
       .cat-list { display:flex; flex-direction:column; gap:16px; padding:16px; }
@@ -270,6 +545,18 @@
       .btn-green { background:#22c55e; }
       .btn-blue { background:#3b82f6; }
       .btn-red { background:#ef4444; }
+      .btn-icon-outline-blue { width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; border:1px solid #93c5fd; border-radius:8px; background:rgba(59, 130, 246, 0.08); color:#60a5fa; cursor:pointer; }
+      .btn-icon-outline-blue:hover { background:rgba(59, 130, 246, 0.16); }
+      .btn-icon-outline-blue:disabled { opacity:.45; cursor:not-allowed; }
+      .btn-icon-outline-red { width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; border:1px solid #fca5a5; border-radius:8px; background:rgba(239, 68, 68, 0.06); color:#f87171; cursor:pointer; }
+      .btn-icon-outline-red:hover { background:rgba(239, 68, 68, 0.12); }
+      .btn-icon-outline-red:disabled { opacity:.45; cursor:not-allowed; }
+      .plan-drag-handle { width:28px; height:28px; border:1px solid #334155; border-radius:8px; background:#0f172a; color:#cbd5e1; cursor:grab; font-size:15px; line-height:1; }
+      .plan-drag-handle:active { cursor:grabbing; }
+      .plan-drag-handle:disabled { opacity:.45; cursor:not-allowed; }
+      .plan-row-dragging { opacity:.45; }
+      .plan-drop-before { box-shadow: inset 0 2px 0 #3b82f6; }
+      .plan-drop-after { box-shadow: inset 0 -2px 0 #3b82f6; }
       .cat-items { display:flex; flex-direction:column; }
       .cat-item { display:flex; justify-content:space-between; align-items:center; padding:10px 16px; border-top:1px solid var(--line); }
       .cat-name { color:#e5e7eb; }
@@ -297,8 +584,11 @@
       .viewer-box img { max-width:85vw; max-height:80vh; display:block; }
       .viewer-box embed, .viewer-box iframe { width:85vw; height:80vh; border:none; }
       .pay-row-recv td { color: var(--green); }
+      #daily-order-rows tr.order-row-alloc-ready td { color: var(--green); }
       .pay-row-pay td { color: var(--orange); }
       .pay-row-settled td { color: #fff; }
+      .pay-row-special td,
+      .pay-row-special td a { color: #fff !important; }
       .summary { display:flex; gap:12px; padding:12px 16px; border-bottom:1px solid var(--line); }
       .summary-item { background:#0f172a; border:1px solid var(--line); border-radius:8px; padding:8px 12px; color:#e5e7eb; font-weight:600; }
       .type-switch { display:flex; gap:12px; }
@@ -378,8 +668,12 @@
         #daily-order-rows td:nth-of-type(2)::before { content:"客户"; }
         #daily-order-rows td:nth-of-type(3)::before { content:"日期"; }
         #daily-order-rows td:nth-of-type(4)::before { content:"状态"; }
-        #daily-order-rows td:nth-of-type(5)::before { content:"单号"; }
-        #daily-order-rows td:nth-of-type(6)::before { display:none; }
+        #daily-order-rows td:nth-of-type(5)::before { content:"备注信息"; }
+        #daily-order-rows td:nth-of-type(6)::before { content:"操作人员"; }
+        #daily-order-rows td:nth-of-type(7)::before { content:"单号"; }
+        #daily-order-rows td:nth-of-type(8)::before { display:none; }
+        #daily-order-rows[data-voucher-column="1"] td:nth-of-type(8)::before { content:"发货单"; display:inline; }
+        #daily-order-rows[data-voucher-column="1"] td:nth-of-type(9)::before { display:none; }
 
         #task-rows td:nth-of-type(1)::before { content:"序号"; }
         #task-rows td:nth-of-type(2)::before { content:"标题"; }
@@ -401,6 +695,65 @@
         #finished-stock-rows td:nth-of-type(9)::before { content:"最近过期时间"; }
         #finished-stock-rows td:nth-of-type(10)::before { content:"操作"; }
 
+        #page-contacts .table-wrap {
+          overflow-x:visible;
+        }
+        #page-contacts .table-wrap table {
+          width:100%;
+          min-width:0 !important;
+        }
+        #contacts-rows td:nth-of-type(1)::before { content:"序号"; }
+        #contacts-rows td:nth-of-type(2)::before { content:"店名"; }
+        #contacts-rows td:nth-of-type(3)::before { content:"公司名称"; }
+        #contacts-rows td:nth-of-type(4)::before { content:"城市"; }
+        #contacts-rows td:nth-of-type(5)::before { content:"备注"; }
+        #contacts-rows td:nth-of-type(6)::before { content:"业务员"; }
+        #contacts-rows td:nth-of-type(7)::before { content:"交易金额"; }
+        #contacts-rows td:nth-of-type(8)::before { content:"欠款金额"; }
+        #contacts-rows td:nth-of-type(9)::before { content:"创建时间"; }
+        #contacts-rows td:nth-of-type(10)::before { content:"操作"; }
+        #contacts-rows td:nth-of-type(3) {
+          max-width:none !important;
+          display:flex !important;
+          align-items:flex-start;
+          justify-content:space-between;
+          text-align:left !important;
+          white-space:nowrap !important;
+          overflow:visible !important;
+          text-overflow:clip !important;
+          word-break:normal !important;
+        }
+        #contacts-rows td:nth-of-type(3)::before {
+          display:block;
+          flex:0 0 auto;
+          margin:0 12px 0 0;
+        }
+        #contacts-rows td:nth-of-type(3) .contact-company-value {
+          display:block;
+          flex:1 1 auto;
+          min-width:0;
+          overflow:visible;
+          white-space:nowrap;
+          text-align:right;
+        }
+        #contacts-rows td:nth-of-type(10) {
+          display:block !important;
+          justify-content:flex-start !important;
+          text-align:left !important;
+        }
+        #contacts-rows td:nth-of-type(10).actions {
+          display:block !important;
+          text-align:left !important;
+        }
+        #contacts-rows td:nth-of-type(10)::before {
+          display:block;
+          margin:0 0 6px;
+        }
+        #contacts-rows td:nth-of-type(10) a {
+          display:inline-block;
+          margin:0 8px 6px 0;
+        }
+
         .modal { width:100% !important; height:100% !important; border-radius:0; display:flex; flex-direction:column; }
         .modal-body { flex:1; overflow-y:auto; padding:16px; }
         .search { flex-direction:column; align-items:stretch; }
@@ -410,6 +763,648 @@
         input, select, textarea { font-size:16px; }
         .grid6 { grid-template-columns:1fr; }
         .span2 { grid-column:span 1; }
+      }
+      @media screen and (max-width: 768px) {
+        html, body { min-width:0; overflow-x:hidden; }
+        .content { width:100%; min-width:0; overflow-x:hidden; }
+        .content > * { max-width:100%; }
+        .card { max-width:100%; overflow:hidden; }
+        .bar, .toolbar, .section-header, .page-header {
+          flex-wrap:wrap;
+          height:auto !important;
+          min-height:48px;
+          gap:8px !important;
+        }
+        .bar > *, .toolbar > *, .section-header > *, .page-header > * {
+          max-width:100%;
+        }
+        .bar h2, .bar h3, .page-title { flex:1 1 100%; }
+        .table-wrap { max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+        .table-wrap table { min-width:0 !important; width:100% !important; }
+        .table-scroll table { min-width:0 !important; width:100% !important; }
+        .table-wrap table tbody tr { min-width:0; }
+        .table-wrap table td, .table-wrap table th { white-space:normal; word-break:break-word; }
+        .form, .group, .field { min-width:0; }
+        .field { flex-wrap:wrap; }
+        .field > input, .field > select, .field > textarea { min-width:0; max-width:100%; flex:1 1 180px; }
+        .grid2, .grid3, .grid4, .grid5, .grid6,
+        .stats-grid, .metrics-grid, .dashboard-grid { grid-template-columns:1fr !important; }
+        .row { gap:12px; }
+        .modal-overlay { padding:0 !important; align-items:stretch; }
+        .modal { max-width:100vw !important; max-height:100vh !important; }
+        .modal-header, .modal-actions { padding:12px; gap:8px; flex-wrap:wrap; }
+        .modal-actions > * { flex:1 1 auto; min-width:110px; }
+        .modal-body { padding:12px; }
+        .modal-body .grid6, .modal-body .grid5, .modal-body .grid4,
+        .modal-body .grid3, .modal-body .grid2 { grid-template-columns:1fr !important; }
+        .modal-body input, .modal-body select, .modal-body textarea { max-width:100%; }
+        .btn, .btn-sm, .btn-secondary { max-width:100%; white-space:normal; }
+        .btn-sm { min-height:38px; }
+        #shareholder-metrics { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+        #shareholder-investment-layout { grid-template-columns:1fr !important; }
+        #shareholder-investment-layout > * { min-width:0; }
+        #shareholder-donut-chart { max-width:100%; overflow:hidden; }
+        .top-review-alerts { max-width:calc(100vw - 24px); flex-wrap:wrap; justify-content:center; }
+        .top-review-alerts button { max-width:100%; }
+        input[type="date"] { min-width:0; }
+      }
+      @media screen and (max-width: 420px) {
+        .content { padding:8px; }
+        .mobile-header { padding:10px 12px; }
+        .card { border-radius:9px; }
+        .table-wrap { padding:8px; }
+        #shareholder-metrics { grid-template-columns:1fr !important; }
+        .auth-locale-toggle { min-width:104px; }
+        .modal-actions > * { min-width:100%; }
+      }
+      @media screen and (max-width: 768px) {
+        /* Ledger is a two-panel desktop layout; stack it on phones. */
+        #ledger-row {
+          display:grid !important;
+          grid-template-columns:minmax(0, 1fr) !important;
+          gap:12px !important;
+        }
+        #ledger-row > .card:first-child { order:2; }
+        #ledger-row > .card:last-child { order:1; }
+        #ledger-row > .card {
+          width:100%;
+          min-width:0;
+        }
+        #ledger-table-wrap {
+          max-height:none !important;
+          overflow-x:auto !important;
+        }
+        #ledger-table-wrap table {
+          display:block;
+          min-width:0 !important;
+          width:100% !important;
+        }
+        #ledger-table-wrap thead { display:none !important; }
+        #ledger-table-wrap tbody,
+        #ledger-table-wrap tbody tr {
+          display:block;
+          width:100%;
+        }
+        #ledger-table-wrap tbody tr {
+          padding:12px;
+          margin-bottom:10px;
+          border:1px solid var(--line);
+          border-radius:10px;
+          background:#111827;
+        }
+        #ledger-table-wrap tbody td {
+          display:flex;
+          align-items:flex-start;
+          justify-content:space-between;
+          gap:12px;
+          width:100%;
+          min-width:0;
+          padding:8px 0;
+          border:0;
+          border-bottom:1px solid rgba(148,163,184,.12);
+          text-align:right;
+          white-space:normal;
+          overflow-wrap:anywhere;
+        }
+        #ledger-table-wrap tbody td:last-child {
+          border-bottom:0;
+          justify-content:flex-end;
+        }
+        #ledger-table-wrap tbody td::before {
+          flex:0 0 auto;
+          color:var(--muted);
+          font-weight:600;
+          text-align:left;
+        }
+        #rows td:nth-of-type(1)::before { content:"类型"; }
+        #rows td:nth-of-type(2)::before { content:"子类目"; }
+        #rows td:nth-of-type(3)::before { content:"单据/凭证号"; }
+        #rows td:nth-of-type(4)::before { content:"往来单位"; }
+        #rows td:nth-of-type(5)::before { content:"金额"; }
+        #rows td:nth-of-type(6)::before { content:"支付方式"; }
+        #rows td:nth-of-type(7)::before { content:"文件"; }
+        #rows td:nth-of-type(8)::before { content:"录入人员"; }
+        #rows td:nth-of-type(9)::before { content:"备注"; }
+        #rows td:nth-of-type(10)::before { content:"日期"; }
+        #rows td:nth-of-type(11)::before { content:"操作"; }
+        #rows td:nth-of-type(4),
+        #rows td:nth-of-type(9) {
+          min-width:0;
+        }
+        #rows td:nth-of-type(4).ledger-clamp-cell,
+        #rows td:nth-of-type(9).ledger-clamp-cell {
+          width:auto;
+          min-width:0;
+          max-width:none;
+        }
+        #rows td:nth-of-type(4) .ledger-clamp-text,
+        #rows td:nth-of-type(9) .ledger-clamp-text {
+          flex:1 1 auto;
+          min-width:0;
+          max-width:none;
+          overflow:hidden;
+          text-align:right;
+          white-space:nowrap;
+          text-overflow:ellipsis;
+          word-break:normal;
+          overflow-wrap:normal;
+        }
+        #rows td:nth-of-type(11) {
+          justify-content:space-between !important;
+          text-align:left !important;
+        }
+        #rows .empty td { display:block; text-align:center; }
+        #payables-row {
+          display:grid !important;
+          grid-template-columns:minmax(0, 1fr) !important;
+          gap:12px !important;
+        }
+        #payables-row > .card:first-child { order:2; }
+        #payables-row > .card:last-child { order:1; }
+        #payables-row > .card {
+          width:100%;
+          min-width:0;
+        }
+        #pay-table-wrap {
+          height:auto !important;
+          max-height:none !important;
+          overflow-x:visible !important;
+        }
+        #pay-table-wrap table {
+          display:block;
+          width:100% !important;
+          min-width:0 !important;
+        }
+        #pay-table-wrap thead { display:none !important; }
+        #pay-rows,
+        #pay-rows tr {
+          display:block;
+          width:100%;
+        }
+        #pay-rows tr {
+          padding:12px;
+          margin-bottom:10px;
+          border:1px solid var(--line);
+          border-radius:10px;
+          background:#111827;
+        }
+        #pay-rows td {
+          display:flex;
+          align-items:flex-start;
+          justify-content:space-between;
+          gap:12px;
+          width:100%;
+          min-width:0;
+          padding:8px 0;
+          border:0;
+          border-bottom:1px solid rgba(148,163,184,.12);
+          text-align:right;
+          white-space:normal;
+          overflow-wrap:anywhere;
+        }
+        #pay-rows td::before {
+          flex:0 0 auto;
+          color:var(--muted);
+          font-weight:600;
+          text-align:left;
+        }
+        #pay-rows td:nth-of-type(1)::before { content:"款项类型"; }
+        #pay-rows td:nth-of-type(2)::before { content:"往来单位"; }
+        #pay-rows td:nth-of-type(3)::before { content:"单据/凭证号"; }
+        #pay-rows td:nth-of-type(4)::before { content:"金额"; }
+        #pay-rows td:nth-of-type(5)::before { content:"发票号"; }
+        #pay-rows td:nth-of-type(6)::before { content:"发票金额"; }
+        #pay-rows td:nth-of-type(7)::before { content:"欠款"; }
+        #pay-rows td:nth-of-type(8)::before { content:"信任天数"; }
+        #pay-rows td:nth-of-type(9)::before { content:"备注"; }
+        #pay-rows td:nth-of-type(10)::before { content:"业务员"; }
+        #pay-rows td:nth-of-type(11)::before { content:"日期"; }
+        #pay-rows td:nth-of-type(12)::before { content:"操作"; }
+        #pay-rows td:nth-of-type(2),
+        #pay-rows td:nth-of-type(9) {
+          white-space:nowrap;
+          overflow:hidden;
+          text-overflow:ellipsis;
+          text-align:right;
+        }
+        #pay-rows td:nth-of-type(12) {
+          justify-content:space-between !important;
+          text-align:left !important;
+          border-bottom:0;
+        }
+        #pay-rows td:nth-of-type(12) > div {
+          margin-left:auto;
+          max-width:calc(100% - 70px);
+          flex-wrap:wrap;
+          justify-content:flex-end;
+        }
+        #pay-rows .empty td {
+          display:block;
+          text-align:center;
+        }
+        #pay-rows .empty td::before { display:none; }
+
+        #page-sales-invoice .table-scroll,
+        #page-sales-albaran .table-scroll {
+          max-height:none !important;
+          overflow-x:visible !important;
+          border:0;
+          background:transparent;
+        }
+        #page-sales-invoice .preview-table,
+        #page-sales-albaran .preview-table {
+          display:block;
+          width:100% !important;
+          min-width:0 !important;
+        }
+        #page-sales-invoice .preview-table thead,
+        #page-sales-albaran .preview-table thead {
+          display:none !important;
+        }
+        #inv-rows,
+        #alb-rows,
+        #inv-rows tr,
+        #alb-rows tr {
+          display:block;
+          width:100%;
+        }
+        #inv-rows tr,
+        #alb-rows tr {
+          padding:12px;
+          margin-bottom:10px;
+          border:1px solid var(--line);
+          border-radius:10px;
+          background:#111827;
+        }
+        #inv-rows td,
+        #alb-rows td {
+          display:flex;
+          align-items:flex-start;
+          justify-content:space-between;
+          gap:12px;
+          width:100%;
+          min-width:0;
+          padding:8px 0;
+          border:0;
+          border-bottom:1px solid rgba(148,163,184,.12);
+          text-align:right;
+          white-space:normal;
+          overflow-wrap:anywhere;
+        }
+        #inv-rows td::before,
+        #alb-rows td::before {
+          flex:0 0 auto;
+          color:var(--muted);
+          font-weight:600;
+          text-align:left;
+        }
+        #inv-rows td:nth-of-type(1)::before,
+        #alb-rows td:nth-of-type(1)::before { content:"序号"; }
+        #inv-rows td:nth-of-type(2)::before { content:"发票号"; }
+        #alb-rows td:nth-of-type(2)::before { content:"Albaran号"; }
+        #inv-rows td:nth-of-type(3)::before,
+        #alb-rows td:nth-of-type(3)::before { content:"客户"; }
+        #inv-rows td:nth-of-type(4)::before { content:"日期"; }
+        #alb-rows td:nth-of-type(4)::before { content:"公司名称"; }
+        #inv-rows td:nth-of-type(5)::before,
+        #alb-rows td:nth-of-type(5)::before { content:"金额"; }
+        #inv-rows td:nth-of-type(6)::before,
+        #alb-rows td:nth-of-type(6)::before { content:"状态"; }
+        #inv-rows td:nth-of-type(7)::before,
+        #alb-rows td:nth-of-type(8)::before { content:"备注"; }
+        #inv-rows td:nth-of-type(8)::before { content:"票已交付"; }
+        #alb-rows td:nth-of-type(7)::before { content:"状态"; }
+        #inv-rows td:nth-of-type(9)::before,
+        #alb-rows td:nth-of-type(9)::before { content:"操作"; }
+        #inv-rows td:nth-of-type(3),
+        #alb-rows td:nth-of-type(3),
+        #alb-rows td:nth-of-type(4),
+        #inv-rows td:nth-of-type(7),
+        #alb-rows td:nth-of-type(8) {
+          min-width:0;
+          overflow:hidden;
+          text-overflow:ellipsis;
+        }
+        #inv-rows td:nth-of-type(3) > div,
+        #alb-rows td:nth-of-type(3) > div,
+        #alb-rows td:nth-of-type(4) > div {
+          max-width:100%;
+          overflow:hidden;
+          text-overflow:ellipsis;
+          white-space:nowrap;
+        }
+        #inv-rows td:nth-of-type(9),
+        #alb-rows td:nth-of-type(9) {
+          justify-content:flex-end !important;
+          text-align:left !important;
+          border-bottom:0;
+        }
+        #inv-rows td:nth-of-type(9)::before,
+        #alb-rows td:nth-of-type(9)::before {
+          margin-right:auto;
+        }
+        #inv-rows .empty td,
+        #alb-rows .empty td {
+          display:block;
+          text-align:center;
+        }
+        #inv-rows .empty td::before,
+        #alb-rows .empty td::before { display:none; }
+
+        /* Keep the invoice preview as a scaled white A4 sheet on phones. */
+        #invoice-preview-modal .modal {
+          background:#525659 !important;
+        }
+        #invoice-preview-modal .invoice-preview-shell {
+          display:flex !important;
+          align-items:flex-start;
+          justify-content:center;
+          padding:8px !important;
+          overflow:auto !important;
+          background:#525659 !important;
+        }
+        #invoice-preview-modal .invoice-preview-stage {
+          display:flex !important;
+          flex:0 0 auto;
+          align-items:flex-start;
+          justify-content:center;
+          width:auto !important;
+          min-width:0 !important;
+          margin:0 auto;
+        }
+        #invoice-preview-modal .invoice-paper {
+          display:flex !important;
+          flex-direction:column !important;
+          flex:0 0 auto;
+          width:210mm !important;
+          min-width:210mm !important;
+          min-height:297mm !important;
+          height:auto !important;
+          padding:15mm !important;
+          background:#fff !important;
+          color:#000 !important;
+          box-sizing:border-box;
+        }
+        #invoice-preview-modal .invoice-paper table,
+        #invoice-preview-modal .invoice-paper .totals-table {
+          display:table !important;
+          width:100% !important;
+          min-width:0 !important;
+          border-collapse:collapse !important;
+          border-spacing:0 !important;
+          table-layout:fixed !important;
+        }
+        #invoice-preview-modal .invoice-paper thead {
+          display:table-header-group !important;
+        }
+        #invoice-preview-modal .invoice-paper tbody {
+          display:table-row-group !important;
+        }
+        #invoice-preview-modal .invoice-paper tfoot {
+          display:table-footer-group !important;
+        }
+        #invoice-preview-modal .invoice-paper tr {
+          display:table-row !important;
+          padding:0 !important;
+          margin:0 !important;
+          border:0 !important;
+          border-radius:0 !important;
+          background:transparent !important;
+        }
+        #invoice-preview-modal .invoice-paper th,
+        #invoice-preview-modal .invoice-paper td {
+          display:table-cell !important;
+          min-width:0 !important;
+          white-space:normal !important;
+          word-break:normal !important;
+          overflow:visible !important;
+          text-overflow:clip !important;
+        }
+        #invoice-preview-modal .invoice-paper .meta-grid,
+        #invoice-preview-modal .invoice-paper .footer-area {
+          display:flex !important;
+        }
+
+        #page-finished-stock > .card:first-child {
+          display:flex !important;
+          flex-wrap:wrap;
+          align-items:center !important;
+          gap:8px !important;
+          padding:12px !important;
+          position:static !important;
+        }
+        #page-finished-stock > .card:first-child > .tab {
+          flex:1 1 calc(25% - 8px);
+          min-width:0;
+          padding:10px 6px;
+          font-size:14px;
+          line-height:1.25;
+          white-space:nowrap;
+          text-align:center;
+        }
+        #page-finished-stock > .card:first-child > div[style*="flex:1"] {
+          display:none;
+        }
+        #fs-stock-toolbar {
+          display:flex !important;
+          flex:1 1 100%;
+          width:100%;
+          min-width:0;
+          gap:8px !important;
+          align-items:center !important;
+        }
+        #fs-search {
+          flex:1 1 auto;
+          width:auto !important;
+          min-width:0;
+        }
+        #fs-add-btn {
+          flex:0 0 auto;
+          min-height:42px;
+          padding:10px 12px;
+          white-space:nowrap;
+          font-size:14px;
+        }
+
+        #page-sales-order > .card {
+          padding:12px !important;
+        }
+        #page-sales-order .light-top {
+          flex-wrap:wrap;
+          gap:8px;
+          margin-bottom:12px;
+        }
+        #page-sales-order .light-top h3 {
+          flex:1 1 100%;
+        }
+        #page-sales-order .form > div:first-child {
+          display:grid !important;
+          grid-template-columns:repeat(2, minmax(0, 1fr));
+          gap:10px !important;
+          margin-bottom:12px !important;
+        }
+        #page-sales-order .form > div:first-child > div:first-child {
+          grid-column:1 / -1;
+        }
+        #page-sales-order .form > div:first-child > div {
+          min-width:0;
+        }
+        #page-sales-order #so-add-item {
+          min-height:40px;
+          padding:9px 12px;
+        }
+        #page-sales-order .form > div:nth-child(2) > div:first-child {
+          flex-wrap:wrap;
+          gap:8px;
+        }
+        #page-sales-order .form > div:nth-child(2) > div:first-child h4 {
+          flex:1 1 auto;
+        }
+        #page-sales-order .form > div:nth-child(2) > div:nth-child(2) {
+          overflow:visible !important;
+          border-radius:10px !important;
+        }
+        #page-sales-order .form > div:nth-child(2) table {
+          display:block !important;
+          width:100% !important;
+          min-width:0 !important;
+          table-layout:auto !important;
+        }
+        #page-sales-order .form > div:nth-child(2) table thead {
+          display:none !important;
+        }
+        #page-sales-order .form > div:nth-child(2) table tbody,
+        #page-sales-order .form > div:nth-child(2) table tbody tr {
+          display:block !important;
+          width:100%;
+        }
+        #page-sales-order .form > div:nth-child(2) table tbody tr {
+          display:grid !important;
+          grid-template-columns:repeat(2, minmax(0, 1fr));
+          column-gap:10px;
+          padding:10px;
+          margin-bottom:10px;
+          border:1px solid #334155;
+          border-radius:9px;
+          background:#111827;
+        }
+        #page-sales-order .form > div:nth-child(2) table tbody td {
+          display:flex !important;
+          align-items:flex-start;
+          justify-content:space-between;
+          gap:10px;
+          width:100%;
+          min-width:0;
+          padding:7px 0 !important;
+          border:0;
+          border-bottom:1px solid rgba(148,163,184,.12);
+          text-align:right;
+          white-space:normal;
+          overflow-wrap:anywhere;
+        }
+        #page-sales-order .form > div:nth-child(2) table tbody td:nth-of-type(1),
+        #page-sales-order .form > div:nth-child(2) table tbody td:nth-of-type(2),
+        #page-sales-order .form > div:nth-child(2) table tbody td:nth-of-type(3),
+        #page-sales-order .form > div:nth-child(2) table tbody td:nth-of-type(4),
+        #page-sales-order .form > div:nth-child(2) table tbody td:nth-of-type(11) {
+          grid-column:1 / -1;
+        }
+        #page-sales-order .form > div:nth-child(2) table tbody td:nth-of-type(5),
+        #page-sales-order .form > div:nth-child(2) table tbody td:nth-of-type(6),
+        #page-sales-order .form > div:nth-child(2) table tbody td:nth-of-type(7),
+        #page-sales-order .form > div:nth-child(2) table tbody td:nth-of-type(8),
+        #page-sales-order .form > div:nth-child(2) table tbody td:nth-of-type(9),
+        #page-sales-order .form > div:nth-child(2) table tbody td:nth-of-type(10) {
+          grid-column:auto;
+        }
+        #page-sales-order .form > div:nth-child(2) table tbody td::before {
+          content:attr(data-label);
+          flex:0 0 auto;
+          color:var(--muted);
+          font-weight:600;
+          text-align:left;
+        }
+        #page-sales-order .form > div:nth-child(2) table tbody td:last-child {
+          justify-content:flex-end !important;
+          border-bottom:0;
+        }
+        #page-sales-order .form > div:nth-child(2) table tfoot {
+          display:block !important;
+          width:100%;
+          background:#0f172a;
+        }
+        #page-sales-order .form > div:nth-child(2) table tfoot tr {
+          display:grid !important;
+          grid-template-columns:minmax(0, 1fr) auto;
+          width:100%;
+          border-bottom:1px solid #1e293b;
+        }
+        #page-sales-order .form > div:nth-child(2) table tfoot td {
+          display:block !important;
+          min-width:0;
+          padding:9px 10px !important;
+        }
+        #page-sales-order .form > div:nth-child(2) table tfoot td:first-child {
+          grid-column:1;
+          text-align:left !important;
+        }
+        #page-sales-order .form > div:nth-child(2) table tfoot td:nth-child(2) {
+          grid-column:2;
+          text-align:right !important;
+        }
+        #page-sales-order .form > div:nth-child(2) table tfoot td:last-child {
+          display:none !important;
+        }
+        #page-sales-order #so-notes {
+          width:100%;
+          min-height:42px;
+        }
+        #page-sales-order #so-save {
+          width:100%;
+          min-height:46px;
+        }
+
+        #rows .empty td::before { display:none; }
+        #rows .empty td::before { display:none; }
+        #rows .empty td::before { display:none; }
+        #global-pager {
+          position:static !important;
+          width:100%;
+          max-width:100%;
+          transform:none !important;
+          margin:12px 0 0;
+          padding:8px;
+          gap:6px;
+          flex-wrap:wrap;
+          box-shadow:none;
+        }
+        #global-pager-controls {
+          display:flex !important;
+          align-items:center;
+          justify-content:center;
+          flex-wrap:wrap;
+          gap:4px;
+          min-width:0;
+          max-width:100%;
+        }
+        #global-pager-controls a {
+          flex:0 0 auto;
+          min-width:32px;
+          text-align:center;
+        }
+        #pay-footer-info {
+          display:flex !important;
+          align-items:center;
+          justify-content:center;
+          flex-wrap:wrap;
+          gap:4px;
+          width:100%;
+          min-width:0;
+        }
+        #pay-footer-info .info-pill {
+          white-space:nowrap;
+          font-size:11px;
+        }
       }
       .mobile-header { display:none; }
       .toast {
@@ -453,11 +1448,7 @@
         white-space: nowrap;
       }
       .top-review-alert {
-        position: fixed;
-        top: 18px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 1150;
+        position: static;
         display: none;
         align-items: center;
         gap: 10px;
@@ -469,6 +1460,30 @@
         box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
         cursor: pointer;
         font-weight: 700;
+      }
+      .top-review-alerts {
+        position: fixed;
+        top: 18px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1150;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .top-review-alert-copy {
+        display:flex;
+        flex-direction:column;
+        align-items:flex-start;
+        gap:2px;
+        min-width:0;
+      }
+      .top-review-alert-subtext {
+        font-size:12px;
+        line-height:1.2;
+        font-weight:600;
+        color:rgba(255,255,255,0.88);
+        white-space:nowrap;
       }
       .top-review-alert:hover {
         background: rgba(153, 27, 27, 0.98);
@@ -487,17 +1502,26 @@
         line-height: 1;
       }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="i18n.js"></script>
   </head>
   <body>
     <div id="app-toast" class="toast" style="display:none">
       <span class="toast-icon">✓</span>
       <span id="app-toast-text" class="toast-text">保存成功！</span>
     </div>
-    <button id="top-production-review-alert" class="top-review-alert" type="button" onclick="openProductionReviewCenter()">
-      <span>新生产需要审核</span>
-      <span id="top-production-review-alert-badge" class="top-review-alert-badge">0</span>
-    </button>
+    <div class="top-review-alerts">
+      <button id="top-production-review-alert" class="top-review-alert" type="button" onclick="openProductionReviewCenter()">
+        <span id="top-production-review-alert-text">新生产需要审核</span>
+        <span id="top-production-review-alert-badge" class="top-review-alert-badge">0</span>
+      </button>
+      <button id="top-order-action-alert" class="top-review-alert" type="button" onclick="openDailyOrderActionCenter()" style="background:rgba(30,64,175,0.96); border-color:rgba(96,165,250,0.5)">
+        <span id="top-order-action-alert-text">0个可配货</span>
+        <span id="top-order-action-alert-subtext" class="top-review-alert-subtext" style="display:none"></span>
+        <span id="top-order-action-alert-badge" class="top-review-alert-badge" style="color:#1d4ed8">0</span>
+      </button>
+    </div>
     <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
     <div class="layout">
       <div class="mobile-header">
@@ -524,6 +1548,8 @@
               <a href="#raw-stock">原材料库存</a>
               <a href="#event-records">事件记录</a>
               <a href="#knowledge-base">知识库</a>
+              <a href="#warehouse-production">仓库生成录入</a>
+              <a href="#employee-checkin">员工签到</a>
             </div>
           </div>
 
@@ -534,6 +1560,7 @@
             </div>
             <div class="nav-children collapsed">
               <a href="#sales-order">出单系统</a>
+              <a href="#sales-albaran">送货单Albaran</a>
               <a href="#sales-invoice">发票</a>
               <a href="#sales-products">商品列表</a>
               <a href="#sales-stats">商品销售统计</a>
@@ -546,6 +1573,7 @@
           
           <a href="#categories">分类管理</a>
           <a href="#accounts">账户管理</a>
+          <a href="#shareholder-summary">股东概览</a>
           <a href="#sales-accounts">业务员管理</a>
 
           <div class="nav-group">
@@ -562,10 +1590,16 @@
           </div>
         </nav>
         <div id="auth-area" style="padding:12px; border-top:1px solid var(--line); margin-top:auto">
-          <div id="auth-user-tag" class="tag" style="display:none; margin-bottom:8px"></div>
+          <div id="auth-user-row" style="display:none; gap:8px; align-items:center; margin-bottom:8px">
+            <div id="auth-user-tag" class="tag" style="display:none; margin-bottom:0"></div>
+            <div id="auth-language-switch" class="auth-locale-toggle" style="display:none">
+              <button type="button" class="auth-locale-btn" data-locale="zh-CN">中文</button>
+              <button type="button" class="auth-locale-btn" data-locale="es-ES">西语</button>
+            </div>
+          </div>
           <button id="logout-btn" class="btn-secondary" style="display:none; width:100%">退出登录</button>
         </div>
-        <div id="generic-confirm-modal" class="modal-overlay" style="display:none">
+        <div id="generic-confirm-modal" class="modal-overlay" style="display:none; z-index:10020">
           <div class="modal" style="max-width:400px">
             <div class="modal-header">
               <div class="modal-title">确认</div>
@@ -577,6 +1611,27 @@
             <div class="modal-actions">
               <button class="btn-secondary close-generic-confirm">取消</button>
               <button id="generic-confirm-ok" class="btn">确定</button>
+            </div>
+          </div>
+        </div>
+        <div id="warehouse-exit-modal" class="modal-overlay" style="display:none; z-index:10070">
+          <div class="modal" style="max-width:420px">
+            <div class="modal-header">
+              <div class="modal-title">退出仓库生成录入</div>
+              <button class="btn-secondary" type="button" onclick="closeWarehouseExitModal()">取消</button>
+            </div>
+            <div class="modal-body" style="padding:24px">
+              <div style="color:#94a3b8; margin-bottom:12px">请输入当前登录账号密码后退出页面。</div>
+              <div id="warehouse-exit-user" class="tag" style="margin-bottom:12px; display:inline-block"></div>
+              <div class="group" style="margin-bottom:0">
+                <span class="label">登录密码</span>
+                <input id="warehouse-exit-password" type="password" placeholder="请输入当前登录密码" autocomplete="current-password">
+              </div>
+              <div id="warehouse-exit-error" style="display:none; margin-top:12px; color:#fca5a5; font-size:13px"></div>
+            </div>
+            <div class="modal-actions">
+              <button class="btn-secondary" type="button" onclick="closeWarehouseExitModal()">取消</button>
+              <button id="warehouse-exit-confirm" class="btn" type="button" onclick="confirmWarehouseExit()">确认退出</button>
             </div>
           </div>
         </div>
@@ -615,14 +1670,17 @@
             <h3 style="margin:0">任务列表</h3>
             <div style="flex:1"></div>
             <button id="task-create-btn" class="btn" onclick="openTaskModal()">+ 创建任务</button>
+            <button id="production-plan-create-btn" class="btn" onclick="openProductionPlanModal()" style="display:none">+ 新建计划</button>
             <button id="auto-task-create-btn" class="btn" onclick="openAutoTaskModal()" style="display:none">+ 添加自动任务</button>
           </div>
           <div id="task-manual-panel" class="card" style="margin-top:16px">
             <div class="bar">
               <div class="tabs">
+                <button id="task-tab-production-plan" class="tab" data-tab="production-plan" onclick="loadTasks('production-plan',this)">生产计划</button>
                 <button class="tab active" data-tab="new" onclick="loadTasks('new',this)">新任务 <span id="tab-new-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></button>
                 <button class="tab" data-tab="review" onclick="loadTasks('review',this)">审核中 <span id="tab-review-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></button>
                 <button class="tab" data-tab="completed" onclick="loadTasks('completed',this)">已完成</button>
+                <button class="tab" data-tab="production-completed" onclick="loadTasks('production-completed',this)">生产已完成</button>
                 <button class="tab" data-tab="auto" onclick="loadTasks('auto',this)">自动任务</button>
               </div>
             </div>
@@ -644,6 +1702,54 @@
               </table>
             </div>
             <div id="task-pager" style="display:flex; gap:8px; align-items:center; justify-content:center; padding:12px 0"></div>
+          </div>
+          <div id="production-plan-panel" style="margin-top:16px; display:none">
+            <div id="production-plan-current-section" class="card table-wrap" style="padding-top:0; display:none">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin:4px 0 10px 0">
+                <div style="font-weight:700"><span id="production-plan-current-title-text">本周生产</span><span id="production-plan-current-title-period" style="margin-left:8px; font-size:12px; color:#94a3b8; font-weight:500"></span></div>
+                <button id="production-plan-current-edit-btn" class="btn-sm btn-secondary" style="margin:0; display:none" onclick="editProductionPlanGroup('current')">编辑计划</button>
+              </div>
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width:40px"></th>
+                    <th style="width:60px">序号</th>
+                    <th id="production-plan-current-weekday-header" style="width:96px">星期</th>
+                    <th style="width:72px">图片</th>
+                    <th>商品名称</th>
+                    <th>原料名称</th>
+                    <th style="width:160px">生产量（原料）kg</th>
+                    <th style="width:220px">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="production-plan-current-rows" ondragover="handleProductionPlanDragOver('production-plan-current-rows', event)" ondrop="handleProductionPlanDrop('production-plan-current-rows', event)"></tbody>
+              </table>
+            </div>
+            <div id="production-plan-next-section" class="card table-wrap" style="padding-top:0; display:none; margin-top:16px">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin:4px 0 10px 0">
+                <div style="font-weight:700"><span id="production-plan-next-title-text">下周生产计划</span><span id="production-plan-next-title-period" style="margin-left:8px; font-size:12px; color:#94a3b8; font-weight:500"></span></div>
+                <button id="production-plan-next-edit-btn" class="btn-sm btn-secondary" style="margin:0; display:none" onclick="editProductionPlanGroup('next')">编辑计划</button>
+              </div>
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width:40px"></th>
+                    <th style="width:60px">序号</th>
+                    <th id="production-plan-next-weekday-header" style="width:96px">星期</th>
+                    <th style="width:72px">图片</th>
+                    <th>商品名称</th>
+                    <th>原料名称</th>
+                    <th style="width:160px">生产量（原料）kg</th>
+                    <th style="width:220px">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="production-plan-next-rows" ondragover="handleProductionPlanDragOver('production-plan-next-rows', event)" ondrop="handleProductionPlanDrop('production-plan-next-rows', event)"></tbody>
+              </table>
+            </div>
+            <div id="production-plan-future-list"></div>
+          </div>
+          <div id="production-plan-completed-panel" style="margin-top:16px; display:none">
+            <div id="production-plan-completed-list"></div>
           </div>
           <div id="auto-task-panel" class="card" style="margin-top:16px; display:none; overflow:hidden">
             <div id="auto-task-table-wrap" class="table-wrap" style="padding:0 16px 16px 16px; overflow-x:auto; overflow-y:hidden; max-width:100%">
@@ -681,6 +1787,7 @@
               <div class="tabs">
                 <button class="tab active" data-tab="new" onclick="loadDailyOrders('new',this)">新订单 <span id="tab-order-new-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></button>
                 <button class="tab" data-tab="allocated" onclick="loadDailyOrders('allocated',this)">已配货 <span id="tab-order-alloc-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></button>
+                <button class="tab" data-tab="ready_to_ship" onclick="loadDailyOrders('ready_to_ship',this)">待发货 <span id="tab-order-ready-ship-badge" class="badge" style="display:none; background:red; color:white; border-radius:50%; padding:2px 6px; font-size:10px">0</span></button>
                 <button class="tab" data-tab="shipped" onclick="loadDailyOrders('shipped',this)">已发货</button>
                 <button class="tab" data-tab="cancelled" onclick="loadDailyOrders('cancelled',this)">已退单</button>
               </div>
@@ -695,7 +1802,8 @@
                     <th>状态</th>
                     <th>备注信息</th>
                     <th>操作人员</th>
-                    <th>单号</th>
+                    <th id="daily-order-no-header">单号</th>
+                    <th id="daily-order-voucher-header" style="width:96px">发货单</th>
                     <th>操作</th>
                   </tr>
                 </thead>
@@ -804,7 +1912,7 @@
                     <th style="width:90px">货号</th>
                     <th style="min-width:220px">名称</th>
                     <th style="min-width:220px">中文名称</th>
-                    <th style="width:120px">总库存</th>
+                    <th id="fs-total-stock-header" onclick="toggleFinishedStockLowFilter()" title="点击筛选少于提醒数量的商品" style="width:120px; cursor:pointer; user-select:none">总库存</th>
                     <th style="width:110px">提醒数量</th>
                     <th style="min-width:140px">Lote</th>
                     <th style="min-width:160px">最近过期时间</th>
@@ -902,27 +2010,54 @@
         <div id="page-raw-stock" style="display:none">
           <div class="card" style="padding:16px 20px; display:flex; gap:12px; align-items:center; position:sticky; top:0; z-index:40">
             <button id="rs-tab-stock" class="tab active" onclick="switchRawStockTab('stock', this)">库存列表</button>
+            <button id="rs-tab-audit" class="tab" onclick="switchRawStockTab('audit', this)">盘点库存</button>
             <button id="rs-tab-records" class="tab" onclick="switchRawStockTab('records', this)">出入库记录</button>
             <button id="rs-tab-adjust" class="tab" onclick="switchRawStockTab('adjust', this)">库存调整</button>
+            <button id="rs-tab-audit-results" class="tab" onclick="switchRawStockTab('audit-results', this)">盘点结果</button>
             <div style="flex:1"></div>
-            <div id="rs-stock-toolbar" style="display:flex; gap:12px; align-items:center">
+              <div id="rs-stock-toolbar" style="display:flex; gap:12px; align-items:center; flex-wrap:wrap">
               <input type="text" id="rs-search" placeholder="搜索原材料名称..." oninput="handleRsSearchInput()" style="width:220px">
-              <button id="rs-add-name-btn" class="btn-secondary" onclick="openRawMaterialNameModal()">+ 添加原材料名称</button>
-              <button id="rs-add-stock-btn" class="btn" onclick="startRawStockAdd()">+ 添加原材料库存</button>
+                <div id="rs-record-toolbar" style="display:none; gap:12px; align-items:center; flex-wrap:wrap">
+                  <input type="month" id="rs-record-month-from" onclick="if(this.showPicker) this.showPicker()" onchange="loadRawStockRecords(1)" style="width:150px; cursor:pointer">
+                  <input type="month" id="rs-record-month-to" onclick="if(this.showPicker) this.showPicker()" onchange="loadRawStockRecords(1)" style="width:150px; cursor:pointer">
+                  <select id="rs-record-type-filter" onchange="loadRawStockRecords(1)" style="width:140px">
+                    <option value="">全部类型</option>
+                    <option value="in">入库</option>
+                    <option value="adjust">库存调整</option>
+                    <option value="out">出库</option>
+                  </select>
+                  <select id="rs-record-merchant-filter" onchange="loadRawStockRecords(1)" style="width:180px">
+                    <option value="">全部商家</option>
+                  </select>
+                  <button id="rs-record-print-btn" class="btn-secondary" type="button" onclick="printRawStockRecords()">打印</button>
+                </div>
+                <div id="rs-audit-toolbar" style="display:none; gap:12px; align-items:center; flex-wrap:wrap">
+                  <label style="display:flex; align-items:center; gap:8px">盘点分类
+                    <select id="rs-audit-category" onchange="loadRawStockAudit()" style="width:160px">
+                      <option value="">全部分类</option>
+                    </select>
+                  </label>
+                  <button class="btn" type="button" onclick="submitRawStockAudit()">确认盘点提交</button>
+                </div>
+              <button id="rs-add-name-btn" class="btn-secondary" onclick="openRawMaterialNameModal()">+ 添加名称</button>
+              <button id="rs-add-stock-btn" class="btn" onclick="startRawStockAdd()">+ 添加库存</button>
             </div>
           </div>
           <div id="rs-stock-panel">
             <div class="card" style="margin-top:16px">
               <div class="table-scroll" style="max-height:calc(100vh - 240px)">
-                <table class="preview-table" style="min-width:900px">
+                <table class="preview-table" style="min-width:1020px">
                   <thead>
                     <tr>
                       <th style="width:80px">序号</th>
                       <th style="width:90px">图片</th>
                       <th style="min-width:260px">名称</th>
-                      <th style="width:140px">总库存</th>
-                      <th style="min-width:180px">最近过期时间</th>
-                      <th style="min-width:200px">分批库存</th>
+                      <th style="min-width:150px">类别</th>
+                      <th style="min-width:180px">商家</th>
+                      <th style="width:140px">预库存</th>
+                      <th style="width:140px">现库存</th>
+                      <th style="min-width:180px">Lote</th>
+                      <th style="min-width:200px">最近过期时间</th>
                       <th style="width:140px; text-align:center">操作</th>
                     </tr>
                   </thead>
@@ -930,6 +2065,25 @@
                 </table>
               </div>
               <div id="rs-pager" style="display:none; justify-content:center; gap:12px; align-items:center; padding:16px 0 0 0; border-top:1px solid #334155; margin-top:16px"></div>
+            </div>
+          </div>
+          <div id="rs-audit-panel" style="display:none">
+            <div class="card" style="margin-top:16px">
+              <div class="table-scroll" style="max-height:calc(100vh - 240px)">
+                <table class="preview-table" style="min-width:860px">
+                  <thead>
+                    <tr>
+                      <th style="width:80px">序号</th>
+                      <th style="min-width:260px">名称</th>
+                      <th style="min-width:150px">类别</th>
+                      <th style="width:150px">预库存</th>
+                      <th style="width:140px">现库存</th>
+                      <th style="width:180px">实际库存</th>
+                    </tr>
+                  </thead>
+                  <tbody id="raw-stock-audit-rows"></tbody>
+                </table>
+              </div>
             </div>
           </div>
           <div id="rs-records-panel" style="display:none">
@@ -940,12 +2094,13 @@
                     <tr>
                       <th style="width:80px">序号</th>
                       <th style="min-width:240px">名称</th>
-                      <th style="min-width:180px">日期时间</th>
+                      <th style="min-width:180px">商家</th>
                       <th style="width:120px">类型</th>
                       <th style="width:120px; text-align:right">变动数量</th>
+                      <th style="min-width:140px">Lote</th>
                       <th style="min-width:160px">过期时间</th>
-                      <th style="min-width:220px">备注</th>
-                      <th style="min-width:140px">操作人</th>
+                      <th style="min-width:220px">商品名称</th>
+                      <th style="min-width:180px">操作人</th>
                     </tr>
                   </thead>
                   <tbody id="raw-stock-record-rows"></tbody>
@@ -963,9 +2118,10 @@
                       <th style="width:80px">序号</th>
                       <th style="width:90px">图片</th>
                       <th style="min-width:260px">名称</th>
+                      <th style="min-width:180px">商家</th>
                       <th style="width:140px">总库存</th>
-                      <th style="min-width:180px">最近过期时间</th>
-                      <th style="min-width:200px">分批库存</th>
+                      <th style="min-width:180px">Lote</th>
+                      <th style="min-width:200px">最近过期时间</th>
                       <th style="width:110px; text-align:center">操作</th>
                     </tr>
                   </thead>
@@ -973,6 +2129,60 @@
                 </table>
               </div>
               <div id="rs-adjust-pager" style="display:none; justify-content:center; gap:12px; align-items:center; padding:16px 0 0 0; border-top:1px solid #334155; margin-top:16px"></div>
+            </div>
+          </div>
+          <div id="rs-audit-results-panel" style="display:none">
+            <div class="card" style="margin-top:16px">
+              <div class="table-scroll" style="max-height:calc(100vh - 240px)">
+                <table class="preview-table" style="min-width:1040px">
+                  <thead>
+                    <tr>
+                      <th style="width:80px">序号</th>
+                      <th style="min-width:180px">盘点记录</th>
+                      <th style="min-width:160px">盘点类别</th>
+                      <th style="width:140px">商品数量</th>
+                      <th style="width:130px">状态</th>
+                      <th style="min-width:180px">盘点时间</th>
+                      <th style="min-width:140px">盘点人</th>
+                      <th style="min-width:140px">审核人员</th>
+                      <th style="width:120px; text-align:center">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="raw-stock-audit-result-rows"></tbody>
+                </table>
+              </div>
+              <div id="rs-audit-result-pager" style="display:none; justify-content:center; gap:12px; align-items:center; padding:16px 0 0 0; border-top:1px solid #334155; margin-top:16px"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="page-raw-stock-audit-detail" style="display:none">
+          <div class="card" style="padding:16px 20px; display:flex; align-items:center; gap:12px">
+            <button class="btn-secondary" type="button" onclick="location.hash='#raw-stock'">返回盘点结果</button>
+            <strong id="rs-audit-detail-title">盘点详情</strong>
+            <span id="rs-audit-detail-status" style="color:#94a3b8"></span>
+            <div style="flex:1"></div>
+            <button class="btn-secondary" type="button" onclick="printRawStockAuditDetail()">打印盘点</button>
+            <button id="rs-audit-detail-save" class="btn-secondary" type="button" onclick="saveRawStockAuditDetail()">保存修改</button>
+            <button id="rs-audit-detail-approve" class="btn" type="button" onclick="approveRawStockAuditDetail()">确认审核</button>
+          </div>
+          <div id="rs-audit-detail-panel" class="card" style="margin-top:16px">
+            <div class="table-scroll">
+              <table class="preview-table" style="min-width:980px">
+                <thead>
+                  <tr>
+                    <th style="width:70px">序号</th>
+                    <th style="min-width:240px">名称</th>
+                    <th style="min-width:140px">类别</th>
+                    <th style="width:120px">预库存</th>
+                    <th style="width:130px">盘点前现库存</th>
+                    <th style="width:160px">实际库存</th>
+                    <th style="width:130px">库存差异</th>
+                    <th style="width:130px">需采购量</th>
+                  </tr>
+                </thead>
+                <tbody id="raw-stock-audit-detail-rows"></tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -1000,6 +2210,7 @@
                     <th style="width:140px">记录日期</th>
                     <th style="width:140px">到期日期</th>
                     <th style="min-width:360px">备注信息</th>
+                    <th style="width:96px">图片</th>
                     <th style="width:120px">添加人员</th>
                     <th style="width:170px">操作</th>
                   </tr>
@@ -1043,6 +2254,41 @@
               </table>
             </div>
             <div id="knowledge-base-pager" style="display:flex; gap:8px; align-items:center; justify-content:center; padding:12px 0"></div>
+          </div>
+        </div>
+
+        <div id="page-warehouse-production" style="display:none; position:fixed; inset:0; z-index:10050; background:#020617">
+          <div style="height:100%; display:flex; flex-direction:column; background:#020617">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 20px; border-bottom:1px solid #1f2937; background:rgba(2,6,23,0.98)">
+              <div style="display:flex; flex-direction:column; gap:4px">
+                <div style="font-size:20px; font-weight:700; color:#e5e7eb">仓库生成录入</div>
+              </div>
+              <button class="btn-secondary" onclick="requestExitWarehouseProduction()">退出</button>
+            </div>
+            <div style="flex:1; min-height:0; background:#020617">
+              <iframe id="warehouse-production-frame" src="" title="仓库生成录入" style="width:100%; height:100%; border:none; display:block; background:#020617"></iframe>
+            </div>
+          </div>
+        </div>
+
+        <div id="page-employee-checkin" style="display:none">
+          <iframe id="employee-checkin-frame" src="" title="员工签到" style="width:100%; min-height:calc(100vh - 140px); border:none; display:block; background:transparent"></iframe>
+        </div>
+
+        <div id="page-employee-checkin-checkin" style="display:none; position:fixed; inset:0; z-index:10050; background:#020617">
+          <div style="height:100%; display:flex; flex-direction:column; background:#020617">
+            <div style="display:grid; grid-template-columns:56px 1fr 56px; align-items:center; gap:12px; padding:16px 20px; border-bottom:1px solid #1f2937; background:rgba(2,6,23,0.98)">
+              <button class="btn-secondary" type="button" onclick="requestExitWarehouseProduction('employee-checkin')" title="关闭" aria-label="关闭" style="width:56px; min-width:56px; height:56px; padding:0; display:inline-flex; align-items:center; justify-content:center; border-radius:16px">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+              <div style="font-size:20px; font-weight:700; color:#e5e7eb; text-align:center">员工签到</div>
+              <button id="employee-checkin-fullscreen-refresh" class="btn-secondary icon-refresh-btn" type="button" onclick="refreshEmployeeCheckinFullscreen()" title="刷新列表" aria-label="刷新列表" style="width:56px; min-width:56px; height:56px; padding:0; display:inline-flex; align-items:center; justify-content:center; border-radius:16px">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+              </button>
+            </div>
+            <div style="flex:1; min-height:0; background:#020617">
+              <iframe id="employee-checkin-checkin-frame" src="" title="员工签到全屏" style="width:100%; height:100%; border:none; display:block; background:#020617"></iframe>
+            </div>
           </div>
         </div>
 
@@ -1147,6 +2393,51 @@
             <div class="modal-actions" style="justify-content:center"><button class="btn" onclick="saveAutoTask()" style="width:33%; height:48px; font-size:16px">保存</button></div>
           </div>
         </div>
+        <div id="production-plan-modal" class="modal-overlay" style="display:none">
+          <div class="modal">
+            <div class="modal-header"><div class="modal-title" id="production-plan-modal-title">新建计划</div><button class="btn-secondary" onclick="closeProductionPlanModal()">关闭</button></div>
+            <div class="modal-body">
+              <input type="hidden" id="production-plan-id">
+              <input type="hidden" id="production-plan-mode">
+              <input type="hidden" id="production-plan-group-ids">
+              <input type="hidden" id="production-plan-single-product-id">
+              <div class="group">
+                <span class="label" id="production-plan-date-label">计划周期</span>
+                <div id="production-plan-date-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
+                  <div class="production-plan-date-trigger" onclick="openProductionPlanDatePicker('production-plan-start-date')">
+                    <input id="production-plan-start-date" type="date">
+                  </div>
+                  <div id="production-plan-end-date-wrap">
+                    <div class="production-plan-date-trigger" onclick="openProductionPlanDatePicker('production-plan-end-date')">
+                      <input id="production-plan-end-date" type="date">
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="group" id="production-plan-product-select-group">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px">
+                  <span class="label" style="margin:0">选择商品</span>
+                  <span id="production-plan-selected-summary" style="color:#94a3b8; font-size:12px">已选择 0 个商品</span>
+                </div>
+                <div id="production-plan-product-list" style="max-height:320px; overflow:auto; border:1px solid var(--line); border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:8px"></div>
+              </div>
+              <div class="group" id="production-plan-single-product-group" style="display:none">
+                <span class="label">商品信息</span>
+                <div id="production-plan-single-product-card" style="border:1px solid var(--line); border-radius:10px; padding:12px"></div>
+              </div>
+            </div>
+            <div class="modal-actions" style="justify-content:center"><button class="btn" onclick="saveProductionPlan()" style="width:33%; height:48px; font-size:16px">保存</button></div>
+          </div>
+        </div>
+        <datalist id="production-plan-qty-options">
+          <option value="100"></option>
+          <option value="200"></option>
+          <option value="300"></option>
+          <option value="400"></option>
+          <option value="500"></option>
+          <option value="600"></option>
+          <option value="700"></option>
+        </datalist>
 
         <!-- Complete Task Modal -->
         <div id="complete-task-modal" class="modal-overlay" style="display:none">
@@ -1202,10 +2493,10 @@
         </div>
 
         <!-- Daily Order Create Modal -->
-        <div id="daily-order-modal" class="modal-overlay" style="display:none">
-          <div class="modal" style="width:800px; max-width:95vw">
+        <div id="daily-order-modal" class="modal-overlay" style="display:none; overscroll-behavior:contain; padding:24px 0">
+          <div class="modal" style="width:800px; max-width:95vw; max-height:92vh; display:flex; flex-direction:column; overflow:hidden">
             <div class="modal-header"><div class="modal-title" id="daily-order-modal-title">新订单</div><button class="btn-secondary" onclick="closeDailyOrderModal()">关闭</button></div>
-            <div class="modal-body">
+            <div class="modal-body" style="flex:1; overflow-y:auto; overscroll-behavior:contain">
               <input type="hidden" id="do-id">
               <div class="group">
                 <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:6px">
@@ -1230,7 +2521,7 @@
                   <button class="btn-secondary" style="font-size:12px; padding:6px 12px" onclick="openDoProdSelector()">+ 添加商品</button>
                 </div>
                 <table class="table">
-                  <thead><tr><th>商品</th><th style="width:120px">中文名</th><th style="width:100px">数量</th><th style="width:100px">单价</th><th style="width:60px">操作</th></tr></thead>
+                  <thead><tr><th>商品</th><th style="width:120px">中文名</th><th style="width:120px">Lote</th><th style="width:100px">数量</th><th style="width:100px">单价</th><th style="width:60px">操作</th></tr></thead>
                   <tbody id="do-items-container"></tbody>
                 </table>
               </div>
@@ -1240,17 +2531,21 @@
         </div>
 
         <!-- Daily Order Allocate Modal -->
-        <div id="do-allocate-modal" class="modal-overlay" style="display:none">
-          <div class="modal" style="width:800px; max-width:95vw">
-            <div class="modal-header"><div class="modal-title">订单配货</div><button class="btn-secondary" onclick="document.getElementById('do-allocate-modal').style.display='none'">关闭</button></div>
-            <div class="modal-body">
+        <div id="do-allocate-modal" class="modal-overlay" style="display:none; padding:24px 0; overscroll-behavior:contain">
+          <div class="modal" style="width:800px; max-width:95vw; max-height:92vh; display:flex; flex-direction:column; overflow:hidden">
+            <div class="modal-header"><div class="modal-title">订单配货</div><button class="btn-secondary" onclick="closeAllocateModal()">关闭</button></div>
+            <div class="modal-body" style="flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch">
               <input type="hidden" id="do-allocate-id">
               <table class="table">
                 <thead><tr><th>商品</th><th>中文名称</th><th>Lote</th><th>商品库存</th><th>下单数量</th><th>配货数量</th></tr></thead>
                 <tbody id="do-allocate-rows"></tbody>
               </table>
             </div>
-            <div class="modal-actions"><button id="do-allocate-ok" class="btn" onclick="confirmAllocate()">确认配货完成</button></div>
+            <div class="modal-actions" style="justify-content:space-between; align-items:center">
+              <div style="width:140px"></div>
+              <div id="do-allocate-grand-total" style="font-size:16px; font-weight:700; color:#e5e7eb">总计箱数：0</div>
+              <button id="do-allocate-ok" class="btn" onclick="confirmAllocate()">确认配货完成</button>
+            </div>
           </div>
         </div>
 
@@ -1262,13 +2557,16 @@
             <div class="modal-body">
               <input type="hidden" id="do-ship-id">
               <div id="do-ship-modal-hint" style="color:#94a3b8; line-height:1.6; margin-bottom:12px">确认已发货？(发票将自动生成)</div>
-              <div class="ship-modal-grid">
+              <div id="do-ship-basic-section" class="ship-modal-grid">
                 <div class="group">
                   <span class="label">发货日期</span>
                   <input id="do-ship-date" type="date">
                 </div>
                 <div class="group">
-                  <span class="label">选择出发地</span>
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:10px">
+                    <span class="label">选择出发地</span>
+                    <button id="do-ship-from-default-btn" type="button" class="btn-secondary" style="padding:4px 12px; font-size:12px; line-height:1.2" onclick="openDoShipDefaultFromSelect()">默认</button>
+                  </div>
                   <input id="do-ship-from" type="text" placeholder="点击选择往来单位" readonly onclick="openPartnerSelect('from')">
                 </div>
                 <div class="group">
@@ -1280,12 +2578,24 @@
                   <select id="do-ship-company"></select>
                 </div>
               </div>
-              <div class="group">
+              <div id="do-ship-cargo-section" class="group">
                 <span class="label">货物信息</span>
                 <div class="ship-cargo-grid">
                   <div class="ship-cargo-item">
                     <span class="ship-cargo-item-label">托盘数量</span>
-                    <input id="do-ship-pallet-count" class="ship-cargo-input" type="text" inputmode="numeric">
+                    <select id="do-ship-pallet-count" class="ship-cargo-input">
+                      <option value="">请选择</option>
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                      <option value="4">4</option>
+                      <option value="5">5</option>
+                      <option value="6">6</option>
+                      <option value="7">7</option>
+                      <option value="8">8</option>
+                      <option value="9">9</option>
+                      <option value="10">10</option>
+                    </select>
                   </div>
                   <div class="ship-cargo-item">
                     <span class="ship-cargo-item-label">总箱数</span>
@@ -1297,10 +2607,33 @@
                   </div>
                 </div>
               </div>
+              <div id="do-ship-voucher-section" class="ship-voucher-wrap">
+                <div class="ship-voucher-head">
+                  <span class="label" style="margin:0">发货单凭证</span>
+                  <div class="ship-voucher-actions">
+                    <button type="button" class="btn-secondary" style="padding:6px 12px; font-size:12px" onclick="triggerDoShipVoucherCamera()">拍照</button>
+                    <button type="button" class="btn-secondary" style="padding:6px 12px; font-size:12px" onclick="triggerDoShipVoucherUpload()">上传图片</button>
+                  </div>
+                </div>
+                <input id="do-ship-voucher-camera" type="file" accept="image/*,.jpg,.jpeg,.png,.heic,.heif" capture="environment" style="display:none">
+                <input id="do-ship-voucher-file" type="file" accept="image/*,.jpg,.jpeg,.png,.heic,.heif" style="display:none">
+                <div class="ship-voucher-preview">
+                    <div class="ship-voucher-thumb-wrap">
+                      <img id="do-ship-voucher-thumb" class="ship-voucher-thumb" alt="发货单凭证预览">
+                      <button type="button" id="do-ship-voucher-remove" class="ship-voucher-remove" onclick="clearDoShipVoucher()">x</button>
+                    </div>
+                  <div class="ship-voucher-meta">
+                    <div id="do-ship-voucher-name" class="ship-voucher-name">未上传凭证</div>
+                    <a id="do-ship-voucher-link" class="ship-voucher-link" href="#" target="_blank" rel="noopener">查看已上传图片</a>
+                    <div id="do-ship-voucher-hint" class="ship-voucher-hint">支持拍照或上传 jpg、png、heic、heif 等图片，系统会自动压缩后保存。</div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="modal-actions" style="justify-content:space-between">
-              <button class="btn-secondary" type="button" onclick="closeDoShipModal()">取消</button>
-              <button id="do-ship-ok" class="btn" type="button" onclick="confirmShipSubmit()">确定</button>
+            <div class="modal-actions" style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center">
+              <button class="btn-secondary" type="button" style="justify-self:start" onclick="closeDoShipModal()">取消</button>
+              <button id="do-ship-export-excel" class="btn" type="button" style="display:none; justify-self:center" onclick="exportContactLogisticsExcel()">导出Excel</button>
+              <button id="do-ship-ok" class="btn" type="button" style="justify-self:end" onclick="confirmShipSubmit()">确定</button>
             </div>
           </div>
         </div>
@@ -1321,7 +2654,7 @@
         <div id="logistics-company-modal" class="modal-overlay" style="display:none">
           <div class="modal" style="width:520px; max-width:95vw">
             <div class="modal-header">
-              <div class="modal-title">新增物流公司</div>
+              <div id="logistics-company-modal-title" class="modal-title">新增物流公司</div>
               <button class="btn-secondary" type="button" onclick="closeLogisticsCompanyModal()">取消</button>
             </div>
             <div class="modal-body">
@@ -1337,11 +2670,18 @@
                 <span class="label">联系人</span>
                 <input id="lgc-contact" type="text" placeholder="请输入联系人">
               </div>
+              <div class="group">
+                <span class="label">是否生成物流订单</span>
+                <select id="lgc-generate-order">
+                  <option value="true">是</option>
+                  <option value="false">否</option>
+                </select>
+              </div>
               <div id="lgc-msg" class="tag" style="display:none; margin-top:6px; background:#0f172a; color:#fca5a5; border-color:#7f1d1d"></div>
             </div>
             <div class="modal-actions">
               <button class="btn-secondary" type="button" onclick="closeLogisticsCompanyModal()">取消</button>
-              <button class="btn" type="button" onclick="submitLogisticsCompany()">确定</button>
+              <button id="logistics-company-submit-btn" class="btn" type="button" onclick="submitLogisticsCompany()">确定</button>
             </div>
           </div>
         </div>
@@ -1393,16 +2733,16 @@
         </div>
 
         <!-- Order Preview Modal (Printable) -->
-        <div id="do-preview-modal" class="modal-overlay" style="display:none; z-index:10000">
-          <div class="modal" style="width:800px; max-width:95vw; height:90vh; display:flex; flex-direction:column">
+        <div id="do-preview-modal" class="modal-overlay" style="display:none; z-index:10000; padding:24px 0; overscroll-behavior:contain">
+          <div class="modal" style="width:800px; max-width:95vw; height:90vh; max-height:92vh; display:flex; flex-direction:column; overflow:hidden">
             <div class="modal-header">
               <div class="modal-title">订单预览</div>
               <div style="display:flex; gap:8px">
                 <button class="btn" onclick="printOrderPreview()">打印</button>
-                <button class="btn-secondary" onclick="document.getElementById('do-preview-modal').style.display='none'">关闭</button>
+                <button class="btn-secondary" onclick="closeOrderPreviewModal()">关闭</button>
               </div>
             </div>
-            <div class="modal-body" style="flex:1; overflow:auto; background:#fff; color:#000; padding:40px" id="do-preview-content">
+            <div class="modal-body" style="flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; background:#fff; color:#000; padding:20px" id="do-preview-content">
               <!-- Content injected via JS -->
             </div>
           </div>
@@ -1411,7 +2751,7 @@
         <!-- Finished Stock Add Modal -->
         <div id="fs-add-modal" class="modal-overlay" style="display:none">
           <div class="modal" style="width:800px; max-width:90vw">
-            <div class="modal-header"><div class="modal-title">添加商品库存</div><button class="btn-secondary" onclick="document.getElementById('fs-add-modal').style.display='none'">关闭</button></div>
+            <div class="modal-header"><div class="modal-title">添加商品库存</div><button class="btn-secondary" onclick="closeFinishedStockModal()">关闭</button></div>
             <div class="modal-body">
               <div style="margin-bottom:12px">
                 <button class="btn" onclick="openFsProdSelector()">+ 选择商品</button>
@@ -1489,6 +2829,15 @@
             <div class="modal-body">
               <input id="rs-material-id" type="hidden">
               <div class="group"><span class="label">名称</span><input id="rs-material-name" type="text" placeholder="原材料名称"></div>
+              <div class="group"><span class="label">类别</span><select id="rs-material-category"></select></div>
+              <div class="group"><span class="label">预库存</span><input id="rs-material-pre-stock" type="number" min="0" step="0.01" value="0" placeholder="请输入预库存数量"></div>
+              <div class="group">
+                <span class="label">商家</span>
+                <div style="display:flex; gap:10px; align-items:center">
+                  <input id="rs-material-merchant-name" type="text" placeholder="点击选择商家" readonly onclick="openRawMaterialMerchantSelector()" style="flex:1; background:#0f172a; color:#e2e8f0; cursor:pointer">
+                  <button type="button" class="btn-secondary" onclick="openRawMaterialMerchantSelector()">选择商家</button>
+                </div>
+              </div>
               <div class="group">
                 <span class="label">图片</span>
                 <input id="rs-material-file" type="file" accept="image/*">
@@ -1506,13 +2855,17 @@
           <div class="modal" style="width:800px; max-width:90vw">
             <div class="modal-header"><div class="modal-title">添加原材料库存</div><button class="btn-secondary" onclick="document.getElementById('rs-add-modal').style.display='none'">关闭</button></div>
             <div class="modal-body">
-              <div style="margin-bottom:12px">
+              <div style="margin-bottom:12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap">
                 <button class="btn" onclick="openRawMaterialSelector()">+ 选择原材料</button>
+                <select id="rs-category" style="width:160px"></select>
+                <input id="rs-merchant-name" type="text" placeholder="点击选择商家" readonly onclick="openRawStockMerchantSelector()" style="flex:1; min-width:240px; background:#0f172a; color:#e2e8f0; cursor:pointer">
+                <button class="btn-secondary" type="button" onclick="openRawStockMerchantSelector()">选择商家</button>
               </div>
               <table class="table" style="margin-bottom:0">
                 <thead>
-                  <tr>
-                    <th>原材料名称</th>
+                    <tr>
+                      <th>原材料名称</th>
+                      <th>类别</th>
                     <th style="width:100px">数量</th>
                     <th style="width:160px">Lote</th>
                     <th style="width:160px">过期时间</th>
@@ -1526,10 +2879,26 @@
           </div>
         </div>
 
+        <div id="rs-merchant-selector-modal" class="modal-overlay" style="display:none; align-items:flex-start; padding-top:60px; z-index:310">
+          <div class="modal" style="width:760px; max-width:94vw; height:78vh; display:flex; flex-direction:column; padding:0">
+            <div class="modal-header" style="padding:16px 24px; border-bottom:1px solid #334155">
+              <div class="modal-title">选择商家</div>
+              <input type="text" id="rs-merchant-search" class="light-input" placeholder="搜索商家名称..." style="width:280px; margin-left:auto">
+              <button id="rs-merchant-close" class="btn-secondary" style="margin-left:12px">关闭</button>
+            </div>
+            <div class="modal-body" style="flex:1; overflow-y:auto; padding:0">
+              <div id="rs-merchant-list" style="padding:16px"></div>
+            </div>
+            <div style="padding:16px 24px; background:#1e293b; border-top:1px solid #334155; display:flex; justify-content:flex-end; border-radius:0 0 12px 12px">
+              <button id="rs-merchant-confirm" class="btn" type="button" onclick="confirmRawStockMerchantSelection()" style="width:120px">确认选择</button>
+            </div>
+          </div>
+        </div>
+
         <div id="rs-selector-modal" class="modal-overlay" style="display:none; align-items:flex-start; padding-top:60px; z-index:300">
           <div class="modal" style="width:900px; max-width:95vw; height:80vh; display:flex; flex-direction:column; padding:0">
             <div class="modal-header" style="padding:16px 24px; border-bottom:1px solid #334155">
-              <div class="modal-title">选择原材料</div>
+              <div id="rs-sel-title" class="modal-title">选择原材料</div>
               <input type="text" id="rs-sel-search" class="light-input" placeholder="搜索原材料名称..." style="width:300px; margin-left:auto">
               <button id="rs-sel-close" class="btn-secondary" style="margin-left:12px">关闭</button>
             </div>
@@ -1537,7 +2906,7 @@
               <div id="rs-sel-list" style="padding:16px;"></div>
             </div>
             <div style="padding:16px 24px; background:#1e293b; border-top:1px solid #334155; display:flex; justify-content:flex-end; z-index:10; border-radius: 0 0 12px 12px;">
-              <button class="btn" onclick="confirmRawMaterialSelection()" style="width:120px">确认添加</button>
+              <button id="rs-sel-confirm" class="btn" onclick="confirmRawMaterialSelection()" style="width:120px">确认添加</button>
             </div>
           </div>
         </div>
@@ -1590,6 +2959,14 @@
                 <span class="label">备注信息</span>
                 <textarea id="event-record-notes" placeholder="可填写事件说明"></textarea>
               </div>
+              <input id="event-record-image-url" type="hidden">
+              <div class="group">
+                <span class="label">上传图片</span>
+                <input id="event-record-image-file" type="file" accept="image/*" style="width:100%; padding:8px; background:var(--bg-dark); color:#fff; border:1px dashed var(--line); border-radius:4px;">
+                <div id="event-record-image-preview-wrap" style="display:none; margin-top:10px">
+                  <img id="event-record-image-preview" src="" alt="" style="width:88px; height:88px; object-fit:cover; border-radius:8px; border:1px solid var(--line); cursor:zoom-in" onclick="if(this.src) showFileViewer(this.src)">
+                </div>
+              </div>
             </div>
             <div class="modal-actions">
               <button class="btn-secondary" onclick="closeEventRecordModal()">取消</button>
@@ -1620,6 +2997,10 @@
               <div class="group">
                 <span class="label">备注信息</span>
                 <div id="event-record-view-notes" style="white-space:pre-wrap; word-break:break-word; line-height:1.7; color:#e5e7eb"></div>
+              </div>
+              <div class="group" id="event-record-view-image-group" style="display:none">
+                <span class="label">图片</span>
+                <img id="event-record-view-image" src="" alt="" style="width:120px; height:120px; object-fit:cover; border-radius:8px; border:1px solid var(--line); cursor:zoom-in" onclick="if(this.src) showFileViewer(this.src)">
               </div>
               <div class="group">
                 <span class="label">添加人员</span>
@@ -1663,10 +3044,10 @@
         <div id="page-ledger" style="display:none">
           <div class="card search">
             <div class="field">
-              <span class="label">类型</span>
+              <span id="ledger-top-type-label" class="label">类型</span>
               <div class="type-switch" id="ledger-type-switch">
-                <button type="button" class="type-item recv" data-value="收入">收入</button>
-                <button type="button" class="type-item pay" data-value="支出">支出</button>
+                <button id="ledger-top-income-btn" type="button" class="type-item recv" data-value="收入">收入</button>
+                <button id="ledger-top-expense-btn" type="button" class="type-item pay" data-value="支出">支出</button>
               </div>
               <input id="filter-type" type="hidden" value="all">
             </div>
@@ -1739,30 +3120,30 @@
             </div>
             <div class="card">
               <form class="form" id="entry-form">
-                <h3>录入流水</h3>
+                <h3 id="entry-form-title">录入流水</h3>
                 <div class="group">
-                  <span class="label">* 类型</span>
+                  <span id="entry-type-label" class="label">* 类型</span>
                   <div class="type-switch" id="entry-type-switch">
-                    <button type="button" class="type-item recv" data-value="收入">收入</button>
-                    <button type="button" class="type-item pay" data-value="开支">开支</button>
+                    <button id="entry-type-income-btn" type="button" class="type-item recv" data-value="收入">收入</button>
+                    <button id="entry-type-expense-btn" type="button" class="type-item pay" data-value="开支">开支</button>
                   </div>
                   <input id="entry-type" type="hidden" value="">
                 </div>
                 <div class="group">
-                  <span class="label">* 子类目</span>
+                  <span id="entry-category-label" class="label">* 子类目</span>
                   <select id="entry-category">
                     <option value="">请选择子类目</option>
                   </select>
                 </div>
                 <div class="group" style="position:relative">
-                  <span class="label">* 单据 / 凭证号</span>
-                  <input id="entry-doc" type="text" placeholder="输入单据/凭证号">
+                  <span id="entry-doc-label" class="label">* 订单号（可多选）</span>
+                  <input id="entry-doc" type="text" placeholder="请选择一个或多个订单号">
                   <div id="doc-dd" class="dropdown" style="display:none; position:absolute; top:0; right:calc(100% + 12px); left:auto; width:450px; max-height:400px; overflow-y:auto; z-index:9999; border:1px solid #334155; box-shadow:0 10px 15px -3px rgba(0,0,0,.5); border-radius:8px; background:#1e293b;">
                     <div id="doc-dd-list" class="dd-list" style="padding:4px 0"></div>
                   </div>
                 </div>
                 <div class="group">
-                  <span class="label">* 往来单位</span>
+                  <span id="entry-client-label" class="label">* 往来单位</span>
                   <div class="inline" id="client-wrap">
                     <div class="select">
                       <input id="entry-client" type="text" placeholder="请选择往来单位">
@@ -1777,30 +3158,32 @@
                   </div>
                 </div>
                 <div class="group">
-                  <span class="label">* 金额</span>
+                  <span id="entry-amount-label" class="label">* 金额 <span id="entry-matched-orders-total" style="font-size:13px; font-weight:500; color:#94a3b8"></span></span>
                   <input id="entry-amount" type="number" step="0.01" placeholder="0.00">
                 </div>
                 <div class="group">
-                  <span class="label">* 支付方式</span>
-                  <select id="entry-method">
-                    <option value="">请选择</option>
-                    <option>现金</option>
-                    <option>银行卡</option>
-                    <option>微信</option>
-                    <option>支付宝</option>
-                  </select>
+                  <span id="entry-method-label" class="label">* 支付方式</span>
+                  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+                    <select id="entry-method" style="width:100%">
+                      <option value="">请选择</option>
+                    </select>
+                    <label style="display:inline-flex; align-items:center; gap:6px; white-space:nowrap; color:#cbd5e1; font-size:13px">
+                      <input id="entry-skip-account-balance" type="checkbox">
+                      <span>本次不计算</span>
+                    </label>
+                  </div>
                 </div>
                 <div class="group">
-                  <span class="label">附件 / 批量导入</span>
+                  <span id="entry-files-label" class="label">附件 / 批量导入</span>
                   <input id="entry-file" type="file" accept=".jpg,.jpeg,.png,.pdf,.xls,.xlsx,.csv">
-                  <div class="label">图片/PDF作为单条附件，Excel/CSV作为批量导入</div>
+                  <div id="entry-file-hint" class="label">图片/PDF作为单条附件，Excel/CSV作为批量导入</div>
                 </div>
                 <div class="group">
-                  <span class="label">备注</span>
+                  <span id="entry-notes-label" class="label">备注</span>
                   <textarea id="entry-notes" placeholder="可选"></textarea>
                 </div>
                 <div class="submit">
-                  <button class="btn" type="submit">提交</button>
+                  <button id="entry-submit-btn" class="btn" type="submit">提交</button>
                 </div>
               </form>
             </div>
@@ -1844,14 +3227,33 @@
             </div>
             <div style="padding:16px">
               <div style="background:#0f172a; border:1px solid #334155; border-radius:12px; padding:16px">
+                <div class="light-top" style="color:#cbd5e1">页面语言</div>
+                <div style="padding:12px; display:flex; flex-wrap:wrap; align-items:center; gap:12px; color:#e2e8f0; border-bottom:1px solid #1e293b">
+                  <span class="label" style="color:#cbd5e1">当前账号语言</span>
+                  <select id="system-language" style="width:180px">
+                    <option value="zh-CN">中文</option>
+                    <option value="es-ES">西班牙语</option>
+                  </select>
+                  <span class="label" style="color:#94a3b8">修改后立即生效，并保存到当前账号</span>
+                </div>
                 <div class="light-top" style="color:#cbd5e1">数据维护</div>
                 <div style="padding:12px; display:flex; align-items:center; gap:12px; color:#e2e8f0">
                   <button id="system-clear-ledger" class="btn" type="button">清空记账记录</button>
                   <span class="label" style="color:#fca5a5">仅超级管理员可操作，清空后不可恢复</span>
                 </div>
+                <div style="padding:12px; display:flex; align-items:center; gap:12px; color:#e2e8f0; border-top:1px solid #1e293b">
+                  <span class="label" style="min-width:160px; color:#cbd5e1">收支记账强制编辑</span>
+                  <button id="system-ledger-force-edit-toggle" class="setting-toggle is-off" type="button" aria-pressed="false">关</button>
+                  <span id="system-ledger-force-edit-hint" class="label" style="color:#94a3b8">开启后，仅管理员 aaaaaa 可强制编辑已确认的收支记账记录</span>
+                </div>
               <div style="padding:12px; display:flex; align-items:center; gap:12px; color:#e2e8f0">
                 <button id="system-clear-pay" class="btn" type="button">清空应收/应付记录</button>
                 <span class="label" style="color:#fca5a5">仅超级管理员可操作，清空后不可恢复</span>
+              </div>
+              <div style="padding:12px; display:flex; align-items:center; gap:12px; color:#e2e8f0; border-top:1px solid #1e293b">
+                <span class="label" style="min-width:160px; color:#cbd5e1">应收应付强制编辑</span>
+                <button id="system-payables-force-edit-toggle" class="setting-toggle is-off" type="button" aria-pressed="false">关</button>
+                <span id="system-payables-force-edit-hint" class="label" style="color:#94a3b8">开启后，仅管理员 aaaaaa 可强制编辑已确认的应收应付记录</span>
               </div>
               </div>
             </div>
@@ -1934,6 +3336,7 @@
           </div>
         </div>
         <div id="page-home">
+          <div id="home-business-metrics" style="display:grid; grid-template-columns:repeat(3,minmax(180px,1fr)); gap:12px; margin-bottom:16px"></div>
           <div class="card" style="padding:16px; margin-bottom:16px">
             <div class="bar" style="display:flex; align-items:center; justify-content:space-between">
               <h3 style="margin:0">收入/开支对比</h3>
@@ -1947,13 +3350,16 @@
                 </select>
               </div>
             </div>
-            <div id="home-chart" style="padding:12px; overflow-x:auto">
-              <div id="home-chart-rows" style="display:flex; gap:16px; align-items:flex-end; height:260px"></div>
+            <div id="home-chart" style="padding:12px; overflow:hidden; position:relative; height:300px">
+              <div id="home-chart-rows" style="display:flex; width:100%; height:100%; gap:clamp(4px,1vw,16px); align-items:flex-end"></div>
             </div>
           </div>
           <div class="card" style="padding:16px">
             <div class="bar" style="display:flex; align-items:center; justify-content:space-between">
-              <h3 style="margin:0">销售业绩</h3>
+              <div style="display:flex; align-items:center; gap:16px; min-width:0">
+                <h3 style="margin:0">销售业绩</h3>
+                <span id="sales-average" style="color:#94a3b8; font-size:13px; white-space:nowrap">平均：-</span>
+              </div>
               <div style="display:flex; gap:8px; align-items:center">
                 <input type="month" id="sales-month-picker" style="display:none; background:#0b1524; border:1px solid #233048; color:#fff; border-radius:8px; padding:6px 10px; outline:none; height:32px">
                 <input type="number" id="sales-year-picker" style="display:none; background:#0b1524; border:1px solid #233048; color:#fff; border-radius:8px; padding:6px 10px; outline:none; height:32px; width:80px" min="2000" max="2100" step="1">
@@ -2061,6 +3467,10 @@
                   <input id="acc-create-name" type="text" placeholder="请输入账户名称">
                 </div>
                 <div class="group">
+                  <span class="label">西班牙文账户名称</span>
+                  <input id="acc-create-name-es" type="text" placeholder="请输入西班牙文账户名称">
+                </div>
+                <div class="group">
                   <span class="label">账户说明</span>
                   <input id="acc-create-desc" type="text" placeholder="可选">
                 </div>
@@ -2096,6 +3506,10 @@
                 <div class="group">
                   <span class="label">账户名称</span>
                   <input id="acc-edit-name" type="text" placeholder="请输入账户名称">
+                </div>
+                <div class="group">
+                  <span class="label">西班牙文账户名称</span>
+                  <input id="acc-edit-name-es" type="text" placeholder="请输入西班牙文账户名称">
                 </div>
                 <div class="group">
                   <span class="label">账户说明</span>
@@ -2181,12 +3595,12 @@
             </div>
             <div class="card">
               <form class="form" id="pay-form">
-                <h3>应收 / 应付录入</h3>
+                <h3 id="pay-form-title">应收 / 应付录入</h3>
                 <div class="group">
-                  <span class="label">应收应付</span>
+                  <span class="label" id="pay-type-label">应收应付</span>
                   <div class="type-switch" id="type-switch">
-                    <button type="button" class="type-item" data-type="应收账款">应收账款</button>
-                    <button type="button" class="type-item" data-type="应付账款">应付账款</button>
+                    <button type="button" class="type-item" id="pay-type-recv-btn" data-type="应收账款">应收账款</button>
+                    <button type="button" class="type-item" id="pay-type-pay-btn" data-type="应付账款">应付账款</button>
                   </div>
                   <input id="pay-type" type="hidden" value="应收账款">
                 </div>
@@ -2242,7 +3656,7 @@
                   </select>
                 </div>
                 <div class="group">
-                  <span class="label">批量导入</span>
+                  <span class="label" id="pay-import-label">批量导入</span>
                   <input id="pay-import-file" type="file" accept=".jpg,.jpeg,.png,.pdf,.xls,.xlsx,.csv">
                   <div id="pay-import-hint" style="margin-top:6px; font-size:12px; color:#9ca3af">图片/PDF作为单条附件，Excel/CSV作为批量导入</div>
                 </div>
@@ -2259,7 +3673,7 @@
           <div id="pay-import-modal" class="modal-overlay" style="display:none">
             <div class="modal" style="width:90vw; max-width:1400px">
               <div class="modal-header">
-                <div class="modal-title">批量导入预览</div>
+                <div class="modal-title" id="pay-import-modal-title">批量导入预览</div>
               </div>
               <div class="modal-body">
                 <div class="panel-light">
@@ -2470,10 +3884,19 @@
                       </div>
                       <div class="group"><span class="label">电话</span><input id="ct-ship-phone" type="text"></div>
                       <div class="group"><span class="label">联系人</span><input id="ct-ship-contact" type="text"></div>
+                      <div class="group"><span class="label">营业时间</span><input id="ct-ship-business-hours" type="text" placeholder="例如：09:00-18:00"></div>
                       <div class="group">
                         <span class="label">Nota</span>
                         <input id="ct-invoice-nota" type="text" placeholder="显示到发票左下角 Nota">
                       </div>
+                      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px">
+                        <span class="label" style="margin:0">送货地址列表</span>
+                        <div style="display:flex; gap:8px">
+                          <button id="ct-ship-address-add" class="btn-secondary" type="button" style="padding:6px 12px">添加地址</button>
+                          <button id="ct-ship-address-clear" class="btn-secondary" type="button" style="padding:6px 12px">清空当前</button>
+                        </div>
+                      </div>
+                      <div id="ct-shipping-address-list" style="display:flex; flex-direction:column; gap:8px; max-height:220px; overflow-y:auto; padding:8px; border:1px solid var(--line); border-radius:8px; background:#0f172a"></div>
                     </div>
                   </div>
                   <div class="modal-actions" style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border)">
@@ -2534,8 +3957,12 @@
             </div>
             <div class="modal-body">
               <div class="group">
-                <span class="label">名称</span>
+                <span class="label">中文名称</span>
                 <input id="cat-modal-input" type="text" placeholder="请输入名称">
+              </div>
+              <div class="group">
+                <span class="label">西班牙语名称</span>
+                <input id="cat-modal-input-es" type="text" placeholder="请输入西班牙语名称">
               </div>
             </div>
             <div class="modal-actions">
@@ -2554,6 +3981,7 @@
                 <thead>
                   <tr>
                     <th>账户名称</th>
+                    <th>西班牙文账户名称</th>
                     <th>账户余额</th>
                     <th>账户说明</th>
                     <th>创建时间</th>
@@ -2563,6 +3991,111 @@
                 <tbody id="acc-rows"></tbody>
               </table>
             </div>
+          </div>
+        </div>
+        <div id="page-account-ledger" style="display:none">
+          <div class="card">
+            <div class="bar" style="display:flex; align-items:center; justify-content:space-between; gap:12px">
+              <h3 style="margin:0" id="account-ledger-title">账户流水</h3>
+              <button id="account-ledger-close" class="btn-secondary" type="button">返回账户管理</button>
+            </div>
+            <div class="table-wrap" style="max-height:calc(100vh - 220px); overflow:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>日期</th><th>往来单位</th><th>类型</th><th>子分类</th>
+                    <th>订单号</th><th>金额</th><th>支付方式</th><th>备注</th><th>账户余额</th>
+                  </tr>
+                </thead>
+                <tbody id="account-ledger-rows">
+                  <tr class="empty"><td colspan="9">暂无流水记录</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div id="account-ledger-pager" style="display:flex; align-items:center; justify-content:center; gap:8px; padding:12px 0"></div>
+          </div>
+        </div>
+        <div id="page-debt-ledger" style="display:none">
+          <div class="card">
+            <div class="bar" style="display:flex; align-items:center; justify-content:space-between; gap:12px">
+              <h3 style="margin:0">借款流水</h3>
+              <button id="debt-ledger-close" class="btn-secondary" type="button">返回股东概览</button>
+            </div>
+            <div class="table-wrap" style="max-height:calc(100vh - 220px); overflow:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>日期</th><th>往来单位</th><th>子分类</th>
+                    <th>订单号</th><th>金额</th><th>已还款</th><th>支付方式</th><th>备注</th><th>外债余额</th>
+                  </tr>
+                </thead>
+                <tbody id="debt-ledger-rows">
+                  <tr class="empty"><td colspan="9">暂无借款流水</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div id="debt-ledger-pager" style="display:flex; align-items:center; justify-content:center; gap:8px; padding:12px 0"></div>
+          </div>
+        </div>
+        <div id="page-shareholder-summary" style="display:none">
+          <div class="card">
+            <div class="bar" style="display:flex; align-items:center; justify-content:space-between; gap:12px">
+              <div>
+                <h3 style="margin:0">股东概览</h3>
+                <div style="margin-top:5px; color:#94a3b8; font-size:13px">项目投入、债务与经营资金总览</div>
+              </div>
+              <button id="shareholder-investment-add" class="btn" type="button" style="display:none">记录股东投入</button>
+            </div>
+            <div id="shareholder-metrics" style="display:grid; grid-template-columns:repeat(4,minmax(150px,1fr)); gap:12px; margin-top:16px"></div>
+          </div>
+          <div class="shareholder-summary-columns" style="display:grid; grid-template-columns:minmax(0,1fr) minmax(320px,0.8fr); gap:16px; margin-top:16px">
+            <div class="card">
+              <div class="bar"><h3 style="margin:0">股东投入明细</h3></div>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>股东</th><th>净投入</th><th>持股比例</th><th>投入比例</th></tr></thead>
+                  <tbody id="shareholder-summary-rows"><tr class="empty"><td colspan="4">暂无数据</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card" style="min-height:100%; display:flex; flex-direction:column">
+              <div class="bar"><h3 style="margin:0">投入比例构成</h3></div>
+              <div id="shareholder-investment-ratio-chart" style="display:flex; flex:1; align-items:center; justify-content:center; min-height:260px"></div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:16px">
+            <div class="bar"><h3 style="margin:0">投入记录</h3></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>日期</th><th>股东</th><th>类型</th><th>金额</th><th>备注</th><th id="shareholder-investment-action-header">操作</th></tr></thead>
+                <tbody id="shareholder-investment-rows"><tr class="empty"><td colspan="6">暂无记录</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div id="shareholder-investment-modal" class="modal-overlay" style="display:none">
+          <div class="modal" style="max-width:520px">
+            <div class="modal-header">
+              <div class="modal-title">记录股东投入</div>
+              <button id="shareholder-investment-cancel" class="btn-secondary" type="button">取消</button>
+            </div>
+            <div class="modal-body">
+              <div class="group"><span class="label">股东</span><select id="shareholder-investment-shareholder"></select></div>
+              <div class="group"><span class="label">类型</span><select id="shareholder-investment-kind"><option value="投入">投入</option><option value="撤资">撤资</option></select></div>
+              <div class="group"><span class="label">金额</span><input id="shareholder-investment-amount" type="number" min="0.01" step="0.01" placeholder="请输入金额"></div>
+              <div class="group"><span class="label">日期</span><input id="shareholder-investment-date" type="date"></div>
+              <div class="group"><span class="label">备注</span><input id="shareholder-investment-notes" type="text" placeholder="可选"></div>
+            </div>
+            <div class="modal-actions"><button id="shareholder-investment-save" class="btn" type="button">保存</button></div>
+          </div>
+        </div>
+        <div id="net-assets-modal" class="modal-overlay" style="display:none">
+          <div class="modal" style="max-width:520px">
+            <div class="modal-header">
+              <div class="modal-title">当前净资产计算说明</div>
+              <button id="net-assets-modal-close" class="btn-secondary" type="button">关闭</button>
+            </div>
+            <div id="net-assets-modal-body" class="modal-body" style="line-height:1.9"></div>
           </div>
         </div>
         <div id="page-user-accounts" style="display:none">
@@ -2593,6 +4126,7 @@
                     <th>编号</th>
                     <th>账号</th>
                     <th>角色</th>
+                    <th>语言</th>
                     <th>创建时间</th>
                     <th>状态</th>
                     <th>操作</th>
@@ -2608,6 +4142,25 @@
                 <span id="user-page">1</span>
                 <button id="user-next" class="btn-secondary">下一页</button>
               </div>
+            </div>
+          </div>
+          <div id="daily-order-action-assign-card" class="card" style="margin-top:16px; display:none">
+            <div class="bar">
+              <h3 style="margin:0">订单操作权限指派</h3>
+              <button id="daily-order-action-assign-save" class="btn">保存指派</button>
+            </div>
+            <div style="color:#94a3b8; margin-bottom:12px">把订单流程里的关键操作指定给多个账号处理；未指定时，保留原有可操作权限。</div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width:180px">操作</th>
+                    <th style="width:260px">指定人员（可多选）</th>
+                    <th>待处理规则</th>
+                  </tr>
+                </thead>
+                <tbody id="daily-order-action-assign-rows"></tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -2768,6 +4321,11 @@
                   <select id="u-role">
                     <option value="">选择角色</option>
                   </select>
+                  <input id="u-holding-percent" type="number" min="0" max="100" step="0.01" placeholder="股份比例 (%)">
+                  <select id="u-locale">
+                    <option value="zh-CN">中文</option>
+                    <option value="es-ES">西班牙语</option>
+                  </select>
                 </div>
               </div>
               <div class="modal-actions">
@@ -2886,7 +4444,7 @@
           <div class="card" style="padding:24px">
             <div class="light-top">
               <h3>出单系统</h3>
-              <div id="so-invoice-no" style="font-weight:600; color:var(--blue); font-size:16px">--</div>
+              <div id="so-invoice-no" style="font-weight:600; color:var(--blue); font-size:16px; cursor:pointer; user-select:none">--</div>
             </div>
             <div class="form" style="padding:0">
               <div style="display:flex; gap:12px; align-items:flex-end; margin-bottom:12px">
@@ -2939,11 +4497,14 @@
                   <table style="width:100%; border-collapse:collapse; color:#cbd5e1; font-size:13px">
                     <thead style="background:#1e293b; color:#94a3b8; font-weight:500">
                       <tr>
-                        <th style="padding:10px 16px; text-align:left; width:15%">商品名称</th>
-                        <th style="padding:10px 16px; text-align:left; width:15%">中文名称</th>
-                        <th style="padding:10px 16px; text-align:left; width:15%">规格</th>
+                          <th style="padding:10px 8px; text-align:center; width:44px">排序</th>
+                          <th style="padding:10px 16px; text-align:left; width:14%">商品名称</th>
+                          <th style="padding:10px 16px; text-align:left; width:14%">中文名称</th>
+                          <th style="padding:10px 16px; text-align:left; width:14%">规格</th>
+                          <th style="padding:10px 16px; text-align:center; width:12%">Lote</th>
                         <th style="padding:10px 16px; text-align:right; width:10%">数量</th>
                         <th style="padding:10px 16px; text-align:right; width:10%">单价</th>
+                        <th style="padding:10px 16px; text-align:right; width:9%">折扣%</th>
                         <th style="padding:10px 16px; text-align:right; width:10%">IVA</th>
                         <th style="padding:10px 16px; text-align:right; width:15%">金额</th>
                         <th style="padding:10px 16px; text-align:center; width:60px">操作</th>
@@ -2952,17 +4513,22 @@
                     <tbody id="so-items"></tbody>
                     <tfoot style="background:#0f172a; border-top:1px solid #1e293b">
                       <tr>
-                        <td colspan="5" style="padding:12px 16px; text-align:right; color:#94a3b8">总计 (不含税)：</td>
+                        <td colspan="9" style="padding:12px 16px; text-align:right; color:#94a3b8">总计 (不含税)：</td>
                         <td id="so-subtotal" style="padding:12px 16px; text-align:right; color:#e2e8f0; font-family:monospace">0.00</td>
                         <td></td>
                       </tr>
                       <tr>
-                        <td colspan="5" style="padding:12px 16px; text-align:right; color:#94a3b8">IVA 税额：</td>
+                        <td colspan="9" style="padding:12px 16px; text-align:right; color:#94a3b8">折扣金额：</td>
+                        <td id="so-discount-amount" style="padding:12px 16px; text-align:right; color:#f59e0b; font-family:monospace">0.00</td>
+                        <td></td>
+                      </tr>
+                      <tr>
+                        <td colspan="9" style="padding:12px 16px; text-align:right; color:#94a3b8">IVA 税额：</td>
                         <td id="so-tax" style="padding:12px 16px; text-align:right; color:#e2e8f0; font-family:monospace">0.00</td>
                         <td></td>
                       </tr>
                       <tr style="border-top:1px solid #334155">
-                        <td colspan="5" style="padding:12px 16px; text-align:right; color:#cbd5e1; font-weight:600">总金额：</td>
+                        <td colspan="9" style="padding:12px 16px; text-align:right; color:#cbd5e1; font-weight:600">总金额：</td>
                         <td id="so-total" style="padding:12px 16px; text-align:right; color:var(--blue); font-weight:600; font-size:16px; font-family:monospace">0.00</td>
                         <td></td>
                       </tr>
@@ -3036,11 +4602,44 @@
             <div id="inv-pager" style="display:flex; gap:8px; justify-content:center; padding-top:16px"></div>
           </div>
         </div>
+        <div id="page-sales-albaran" style="display:none">
+          <div class="card" style="padding:24px">
+            <div class="light-top">
+              <h3>Albaran列表</h3>
+              <div class="field">
+                <input type="text" id="alb-search" class="light-input" placeholder="搜索Albaran号/客户/公司名称/Albaran金额..." style="width:360px">
+                <button id="alb-refresh" class="light-btn">刷新</button>
+              </div>
+            </div>
+            <div class="table-scroll">
+              <table class="preview-table">
+                <thead>
+                  <tr>
+                    <th>序号</th>
+                    <th>Albaran号</th>
+                    <th>客户</th>
+                    <th>公司名称</th>
+                    <th>日期</th>
+                    <th>金额</th>
+                    <th>状态</th>
+                    <th>备注</th>
+                    <th style="text-align:center; min-width:240px">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="alb-rows">
+                  <tr class="empty"><td colspan="9">暂无Albaran数据</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div id="alb-pager" style="display:flex; gap:8px; justify-content:center; padding-top:16px"></div>
+          </div>
+        </div>
         <div id="page-sales-products" style="display:none">
           <div class="card" style="padding:24px">
             <div class="light-top">
               <h3>商品列表</h3>
               <div class="field">
+                <button id="prod-export" class="light-btn">导出excel</button>
                 <input type="text" id="prod-search" class="light-input" placeholder="搜索商品名称/货号/条码..." style="width:280px">
                 <button id="prod-refresh" class="light-btn">刷新</button>
                 <button id="prod-add" class="btn" style="margin-left:12px">+ 新增商品</button>
@@ -3131,40 +4730,58 @@
             </div>
             <form id="prod-form" style="display:flex; flex-direction:column; min-height:0; flex:1">
               <input type="hidden" id="prod-id">
-              <div class="modal-body" style="display:grid; grid-template-columns:1fr 1fr; gap:20px; overflow-y:auto; min-height:0; padding:24px; padding-bottom:96px">
-                <div class="group">
-                  <span class="label">* 货号 (SKU)</span>
-                  <input id="prod-sku" type="text" placeholder="唯一货号">
+              <div class="modal-body product-modal-body-grid">
+                <div class="product-top-stack">
+                  <div class="group">
+                    <span class="label">* 货号 (SKU)</span>
+                    <input id="prod-sku" type="text" placeholder="唯一货号">
+                  </div>
+                  <div class="group">
+                    <span class="label">* 商品名称</span>
+                    <input id="prod-name" type="text" placeholder="商品名称">
+                  </div>
+                  <div class="group">
+                    <span class="label">规格</span>
+                    <input id="prod-spec" type="text" placeholder="例如: 500g/包">
+                  </div>
+                  <div class="group">
+                    <span class="label">* 税率 (%)</span>
+                    <select id="prod-tax">
+                      <option value="10">10%</option>
+                      <option value="21">21%</option>
+                    </select>
+                  </div>
                 </div>
-                <div class="group">
-                  <span class="label">条码</span>
-                  <input id="prod-barcode" type="text" placeholder="条形码">
+                <div class="product-top-right-grid">
+                  <div class="product-side-fields">
+                    <div class="group">
+                      <span class="label">条码</span>
+                      <input id="prod-barcode" type="text" placeholder="条形码">
+                    </div>
+                    <div class="group">
+                      <span class="label">中文名称</span>
+                      <input id="prod-name-cn" type="text" placeholder="中文名称">
+                    </div>
+                    <div class="group">
+                      <span class="label">创建日期</span>
+                      <input id="prod-created-at" type="text" placeholder="保存后自动生成" readonly style="background:#0f172a; color:#94a3b8; cursor:not-allowed">
+                    </div>
+                  </div>
+                  <div class="group product-image-panel">
+                    <span class="label">商品图片</span>
+                    <div style="display:flex; align-items:center; gap:8px">
+                      <input id="prod-file" type="file" accept="image/*" style="display:none">
+                      <button type="button" class="btn-secondary" onclick="document.getElementById('prod-file').click()" style="padding:8px 12px; font-size:12px">选择图片</button>
+                      <span id="prod-file-name" style="font-size:12px; color:#94a3b8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:120px">未选择文件</span>
+                    </div>
+                    <div class="product-image-frame">
+                      <img id="prod-preview" src="">
+                    </div>
+                    <input id="prod-image" type="hidden">
+                  </div>
                 </div>
-                <div class="group">
-                  <span class="label">* 商品名称</span>
-                  <input id="prod-name" type="text" placeholder="商品名称">
-                </div>
-                <div class="group">
-                  <span class="label">中文名称</span>
-                  <input id="prod-name-cn" type="text" placeholder="中文名称">
-                </div>
-                <div class="group">
-                  <span class="label">规格</span>
-                  <input id="prod-spec" type="text" placeholder="例如: 500g/包">
-                </div>
-                <div class="group">
-                  <span class="label">创建日期</span>
-                  <input id="prod-created-at" type="text" placeholder="保存后自动生成" readonly style="background:#0f172a; color:#94a3b8; cursor:not-allowed">
-                </div>
-                <div class="group">
-                  <span class="label">* 税率 (%)</span>
-                  <select id="prod-tax">
-                    <option value="10">10%</option>
-                    <option value="21">21%</option>
-                  </select>
-                </div>
-                
-                <div style="grid-column:span 2; display:grid; grid-template-columns:1fr 1fr; gap:16px">
+
+                <div class="product-details-grid">
                   <div style="display:flex; flex-direction:column; gap:16px">
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px">
                       <div class="group">
@@ -3188,6 +4805,10 @@
                         <input id="prod-cost" type="number" step="0.01" placeholder="0.00">
                       </div>
                       <div class="group">
+                        <span class="label">重量kg</span>
+                        <input id="prod-weight-kg" type="number" step="0.001" min="0" placeholder="0.000">
+                      </div>
+                      <div class="group">
                         <span class="label">库存数量</span>
                         <input id="prod-stock" type="number" step="1" value="0" readonly style="background:#0f172a; color:#94a3b8; cursor:not-allowed">
                       </div>
@@ -3195,36 +4816,74 @@
                         <span class="label">提醒数量</span>
                         <input id="prod-remind-stock" type="number" min="0" step="1" value="0" placeholder="请输入提醒库存数量">
                       </div>
+                      <div class="group">
+                        <span class="label">原材料</span>
+                        <div style="display:flex; align-items:center; gap:8px">
+                          <input id="prod-raw-material-id" type="hidden">
+                          <input id="prod-raw-material-name" type="text" placeholder="点击选择原材料" readonly onclick="openProductRawMaterialSelector()" style="background:#0f172a; color:#e2e8f0; cursor:pointer">
+                          <button type="button" class="btn-secondary" onclick="openProductRawMaterialSelector()" style="padding:8px 12px; font-size:12px; white-space:nowrap">选择</button>
+                        </div>
+                      </div>
                       <div class="group" style="grid-column:span 2">
                         <span class="label">分红人员</span>
                         <div id="prod-dividend-users" style="display:flex; flex-wrap:wrap; gap:8px; min-height:44px; padding:10px; border:1px solid #334155; border-radius:8px; background:#020817"></div>
                       </div>
                     </div>
                   </div>
-                  
-                  <div class="group" style="height:100%">
-                    <span class="label">商品图片</span>
-                    <div style="display:flex; flex-direction:column; gap:8px; height:100%">
-                      <div style="display:flex; align-items:center; gap:8px">
-                        <input id="prod-file" type="file" accept="image/*" style="display:none">
-                        <button type="button" class="btn-secondary" onclick="document.getElementById('prod-file').click()" style="padding:8px 12px; font-size:12px">选择图片</button>
-                        <span id="prod-file-name" style="font-size:12px; color:#94a3b8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:120px">未选择文件</span>
+                  <div class="product-template-slot">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px">
+                      <div class="product-template-slot-title">贴纸模板信息</div>
+                      <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; color:#cbd5e1; cursor:pointer; white-space:nowrap">
+                        <input id="prod-print-label-enabled" type="checkbox" checked style="width:16px; height:16px; cursor:pointer">
+                        <span>是否打印</span>
+                      </label>
+                    </div>
+                    <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; margin-bottom:16px">
+                      <div id="prod-print-small-label-row" style="display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid #334155; border-radius:10px; background:#020817; cursor:pointer">
+                        <label for="prod-print-small-label-enabled" style="display:inline-flex; align-items:center; gap:8px; color:#e2e8f0; cursor:pointer; white-space:nowrap">
+                          <input id="prod-print-small-label-enabled" type="checkbox" style="width:16px; height:16px; cursor:pointer">
+                          <span>打印小标签</span>
+                        </label>
+                        <input id="prod-print-small-label-copies" type="number" min="1" step="1" value="1" placeholder="份数" style="width:92px; min-width:92px; margin-left:auto">
+                        <span style="color:#94a3b8; font-size:12px">份</span>
                       </div>
-                      <div style="flex:1; border:1px dashed #334155; border-radius:8px; display:flex; align-items:center; justify-content:center; overflow:hidden; background:#0f172a; min-height:160px; max-height:220px">
-                        <img id="prod-preview" src="" style="width:100%; height:100%; object-fit:contain; display:none;">
+                      <div id="prod-print-large-label-row" style="display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid #334155; border-radius:10px; background:#020817; cursor:pointer">
+                        <label for="prod-print-large-label-enabled" style="display:inline-flex; align-items:center; gap:8px; color:#e2e8f0; cursor:pointer; white-space:nowrap">
+                          <input id="prod-print-large-label-enabled" type="checkbox" style="width:16px; height:16px; cursor:pointer">
+                          <span>打印大标签</span>
+                        </label>
+                        <input id="prod-print-large-label-copies" type="number" min="1" step="1" value="1" placeholder="份数" style="width:92px; min-width:92px; margin-left:auto">
+                        <span style="color:#94a3b8; font-size:12px">份</span>
                       </div>
-                      <input id="prod-image" type="hidden">
+                    </div>
+                    <div class="group">
+                      <span class="label">商品编号</span>
+                      <input id="prod-product-code" type="text" placeholder="请输入商品编号">
+                    </div>
+                    <div class="group">
+                      <span class="label">商品配料表</span>
+                      <textarea id="prod-ingredients" placeholder="请输入商品配料表"></textarea>
+                    </div>
+                    <div class="group">
+                      <span class="label">营养成分表</span>
+                      <textarea id="prod-nutrition" placeholder="请输入营养成分表"></textarea>
+                    </div>
+                    <div class="group">
+                      <span class="label">过敏源</span>
+                      <textarea id="prod-allergens" placeholder="请输入过敏源信息"></textarea>
                     </div>
                   </div>
                 </div>
 
-                <div class="group">
-                  <span class="label">商品描述</span>
-                  <textarea id="prod-desc" style="min-height:60px" placeholder="详细描述..."></textarea>
-                </div>
-                <div class="group">
-                  <span class="label">备注</span>
-                  <input id="prod-notes" type="text" placeholder="备注信息">
+                <div style="display:flex; flex-direction:column; gap:20px">
+                  <div class="group">
+                    <span class="label">商品描述</span>
+                    <textarea id="prod-desc" style="min-height:60px" placeholder="详细描述..."></textarea>
+                  </div>
+                  <div class="group">
+                    <span class="label">备注</span>
+                    <input id="prod-notes" type="text" placeholder="备注信息">
+                  </div>
                 </div>
               </div>
               <div class="modal-actions" style="justify-content:space-between; gap:12px; flex-shrink:0; padding:16px 24px; border-top:1px solid #1e293b; background:#020817; position:sticky; bottom:0;">
@@ -3261,6 +4920,7 @@
               <input type="hidden" id="edit-id">
               <div class="light-top">
                 <div id="edit-invoice-no" style="font-weight:600; color:var(--blue); font-size:16px">--</div>
+                <button id="edit-convert-to-factura" type="button" class="btn-secondary" style="display:none; padding:8px 14px">转成发票</button>
               </div>
               <div class="form" style="padding:0">
                 <div style="display:flex; gap:12px; align-items:flex-end; margin-bottom:12px">
@@ -3307,32 +4967,50 @@
                   </div>
                   
                   <div style="background:#0f172a; border-radius:8px; overflow:hidden; border:1px solid #1e293b">
-                    <table style="width:100%; border-collapse:collapse; color:#cbd5e1; font-size:13px">
+                    <table style="width:100%; border-collapse:collapse; color:#cbd5e1; font-size:13px; table-layout:fixed">
                       <thead style="background:#1e293b; color:#94a3b8; font-weight:500">
                         <tr>
-                          <th style="padding:10px 16px; text-align:left; width:20%">商品名称</th>
-                          <th style="padding:10px 16px; text-align:left; width:20%">规格</th>
-                          <th style="padding:10px 16px; text-align:right; width:10%">数量</th>
-                          <th style="padding:10px 16px; text-align:right; width:15%">单价</th>
-                          <th style="padding:10px 16px; text-align:right; width:10%">IVA</th>
-                          <th style="padding:10px 16px; text-align:right; width:15%">金额</th>
-                          <th style="padding:10px 16px; text-align:center; width:60px">操作</th>
+                          <th style="padding:10px 6px; text-align:center; width:40px">排序</th>
+                          <th style="padding:10px 10px; text-align:left; width:30%">商品名称</th>
+                          <th style="padding:10px 8px; text-align:left; width:16%">规格</th>
+                          <th style="padding:10px 8px; text-align:center; width:11%">Lote</th>
+                          <th style="padding:10px 8px; text-align:right; width:7%">数量</th>
+                          <th style="padding:10px 8px; text-align:right; width:8%">单价</th>
+                          <th style="padding:10px 8px; text-align:right; width:8%">折扣%</th>
+                          <th style="padding:10px 8px; text-align:right; width:7%">IVA</th>
+                          <th style="padding:10px 8px; text-align:right; width:9%">金额</th>
+                          <th style="padding:10px 6px; text-align:center; width:44px">操作</th>
                         </tr>
                       </thead>
                       <tbody id="edit-items"></tbody>
                       <tfoot style="background:#0f172a; border-top:1px solid #1e293b">
                         <tr>
-                          <td colspan="5" style="padding:12px 16px; text-align:right; color:#94a3b8">总计 (不含税)：</td>
+                          <td colspan="8" style="padding:12px 16px; text-align:right; color:#94a3b8">总计 (不含税)：</td>
                           <td id="edit-subtotal" style="padding:12px 16px; text-align:right; color:#e2e8f0; font-family:monospace">0.00</td>
                           <td></td>
                         </tr>
                         <tr>
-                          <td colspan="5" style="padding:12px 16px; text-align:right; color:#94a3b8">IVA 税额：</td>
+                          <td colspan="8" style="padding:12px 16px; text-align:right; color:#94a3b8">折扣金额：</td>
+                          <td style="padding:8px 16px; text-align:right">
+                            <input
+                              id="edit-manual-discount-amount"
+                              type="text"
+                              inputmode="decimal"
+                              class="light-input"
+                              value="0.00"
+                              placeholder="0.00"
+                              style="width:140px; margin-left:auto; text-align:right; color:#f59e0b; font-family:monospace; background:#0f172a; border:1px solid #334155"
+                            >
+                          </td>
+                          <td></td>
+                        </tr>
+                        <tr>
+                          <td colspan="8" style="padding:12px 16px; text-align:right; color:#94a3b8">IVA 税额：</td>
                           <td id="edit-tax" style="padding:12px 16px; text-align:right; color:#e2e8f0; font-family:monospace">0.00</td>
                           <td></td>
                         </tr>
                         <tr style="border-top:1px solid #334155">
-                          <td colspan="5" style="padding:12px 16px; text-align:right; color:#cbd5e1; font-weight:600">总金额：</td>
+                          <td colspan="8" style="padding:12px 16px; text-align:right; color:#cbd5e1; font-weight:600">总金额：</td>
                           <td id="edit-total" style="padding:12px 16px; text-align:right; color:var(--blue); font-weight:600; font-size:16px; font-family:monospace">0.00</td>
                           <td></td>
                         </tr>
@@ -3361,11 +5039,12 @@
 
     <!-- Modals moved outside layout for better printing -->
     <div id="invoice-preview-modal" class="modal-overlay" style="display:none">
-      <div class="modal" style="width:900px; max-width:95vw; background:#525659; overflow-y:auto; max-height:90vh">
+      <div class="modal" style="width:min(1100px,98vw); max-width:98vw; height:min(96vh,1400px); background:#525659; overflow:hidden; display:flex; flex-direction:column">
         <div class="modal-header" style="background:#323639; color:white; border-bottom:1px solid #000">
-          <div class="modal-title">发票预览</div>
+              <div class="modal-title" id="invoice-preview-modal-title">发票预览</div>
           <div style="display:flex; gap:10px">
-            <button id="inv-prev-print" class="light-btn">打印 / 导出PDF</button>
+            <button id="inv-prev-print" class="light-btn">打印</button>
+            <button id="inv-prev-export-pdf" class="light-btn">导出PDF</button>
             <button id="inv-prev-close" class="btn-secondary" style="background:#323639; color:white; border:1px solid #5f6368">关闭</button>
           </div>
         </div>
@@ -3373,7 +5052,7 @@
           <div id="invoice-preview-stage" class="invoice-preview-stage">
           <div id="invoice-paper" class="invoice-paper">
             <div class="inv-meta-right">
-              <h1>FACTURA</h1>
+              <h1 id="prev-doc-title">FACTURA</h1>
               <div style="font-weight:700"># <span id="prev-no"></span></div>
               <div class="inv-status" id="prev-status">POR PAGAR</div>
             </div>
@@ -3388,39 +5067,56 @@
             </div>
 
             <div class="dates-grid">
-              Fecha de la factura: <span id="prev-date"></span><br>
-              <span id="prev-sales" style="color:#000;"></span>
+              <span id="prev-date-label">Fecha de la factura</span>: <span id="prev-date"></span><br>
+              <span id="prev-sales" style="color:#000; display:none"></span>
             </div>
             
             <table>
               <thead>
                 <tr>
                   <th class="item-idx">#</th>
-                  <th>Artículo</th>
-                  <th width="80" style="text-align:right">Cantidad</th>
-                  <th width="100" style="text-align:right">Precio</th>
-                  <th width="100" style="text-align:right">Impuesto</th>
-                  <th width="100" style="text-align:right">Valor</th>
+                  <th id="prev-item-name-label" class="item-main-col">Artículo</th>
+                  <th id="prev-qty-label" class="item-qty-col">Cantidad</th>
+                  <th id="prev-price-label" class="item-price-col">Precio</th>
+                  <th id="prev-discount-label" class="item-discount-col">Descuento</th>
+                  <th id="prev-tax-label" class="item-tax-col">Impuesto</th>
+                  <th id="prev-value-label" class="item-value-col">Valor</th>
                 </tr>
               </thead>
               <tbody id="prev-items"></tbody>
+              <tfoot>
+                <tr id="prev-qty-summary-row">
+                  <td></td>
+                  <td></td>
+                  <td style="text-align:right; font-weight:700; color:#111827; padding-top:8px; white-space:nowrap">
+                    <span id="prev-total-qty-label">一共：</span>
+                    <span id="prev-total-qty" style="margin-left:4px">0</span>
+                  </td>
+                  <td></td>
+                  <td></td>
+                </tr>
+              </tfoot>
             </table>
             
             <div class="totals-area">
               <table class="totals-table">
                 <tr>
-                  <td class="total-label">Total</td>
+                  <td class="total-label" id="prev-subtotal-label">Total</td>
                   <td class="total-val" id="prev-subtotal">0.00</td>
+                </tr>
+                <tr>
+                  <td class="total-label" id="prev-discount-amount-label">Descuento</td>
+                  <td class="total-val" id="prev-discount-amount">0.00</td>
                 </tr>
                 <tbody id="prev-tax-rows">
                   <!-- Tax rows injected here -->
                 </tbody>
                 <tr class="grand-total">
-                  <td class="total-label">Total a pagar</td>
+                  <td class="total-label" id="prev-grand-total-label">Total a pagar</td>
                   <td class="total-val" id="prev-grand-total">0.00€</td>
                 </tr>
                 <tr class="grand-total">
-                  <td class="total-label">Valor a pagar</td>
+                  <td class="total-label" id="prev-grand-total-2-label">Valor a pagar</td>
                   <td class="total-val" id="prev-grand-total-2">0.00€</td>
                 </tr>
               </table>
@@ -3428,7 +5124,7 @@
             
             <div class="footer-area">
               <div class="notes-area">
-                <div class="notes-label">Nota:</div>
+                <div class="notes-label" id="prev-notes-label">Nota:</div>
                 <div id="prev-notes" style="margin-bottom:8px"></div>
                 <div id="prev-payment-info" class="payment-info">
                   <!-- Payment info injected by JS -->
@@ -3447,7 +5143,8 @@
         <div class="modal-header" style="background:#323639; color:white; border-bottom:1px solid #000">
           <div class="modal-title">打印收货地址</div>
           <div style="display:flex; gap:10px">
-            <button id="ship-prev-print" class="light-btn">打印 / 导出PDF</button>
+            <button id="ship-prev-print" class="light-btn">打印</button>
+            <button id="ship-prev-export-pdf" class="light-btn">导出PDF</button>
             <button id="ship-prev-close" class="btn-secondary" style="background:#323639; color:white; border:1px solid #5f6368">关闭</button>
           </div>
         </div>
@@ -3463,6 +5160,17 @@
 
     <script>
       (function () {
+        try {
+          if (!localStorage.getItem('authToken')) {
+            location.replace('./login.html');
+          }
+        } catch (_) {
+          location.replace('./login.html');
+        }
+      })();
+    </script>
+    <script>
+      (function () {
         var el = document.getElementById('app-version');
         if (!el) return;
         function applyVersion() {
@@ -3475,6 +5183,6 @@
         document.head.appendChild(s);
       })();
     </script>
-    <script src="app.js?v=20260603-logistics-nav"></script>
+    <script src="app.js?v=20261107-raw-stock-audit-title-datetime"></script>
   </body>
 </html>

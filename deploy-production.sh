@@ -25,11 +25,14 @@ ssh "${SSH_OPTS[@]}" "$DEPLOY_HOST" \
 
 echo "==> 同步代码到 $DEPLOY_HOST:$DEPLOY_DIR"
 rsync -az --delete \
+  -e "ssh ${SSH_OPTS[*]} -o ServerAliveInterval=5 -o ServerAliveCountMax=3" \
   --exclude '.git/' \
   --exclude 'node_modules/' \
   --exclude 'server/node_modules/' \
   --exclude 'uploads/' \
   --exclude '.vercel/' \
+  --exclude '.dbg/' \
+  --exclude 'debug-*.md' \
   --exclude '.trae*' \
   --exclude 'server/certs/' \
   "$ROOT_DIR/" "$DEPLOY_HOST:$DEPLOY_DIR/"
@@ -38,6 +41,12 @@ echo "==> 重建并启动正式服务"
 ssh "${SSH_OPTS[@]}" "$DEPLOY_HOST" "
   git config --global --add safe.directory '$DEPLOY_DIR' >/dev/null 2>&1 || true
   cd '$DEPLOY_DIR'
+  mkdir -p /root/ThreeSquirrels/.well-known/acme-challenge
+  mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+  cat > /etc/letsencrypt/renewal/threesquirrels.didigo.es.conf <<'EOF'
+$(cat "$ROOT_DIR/server/certbot-renewal.conf")
+EOF
+  install -m 0755 '$DEPLOY_DIR/server/certbot-deploy-hook.sh' /etc/letsencrypt/renewal-hooks/deploy/threesquirrels-nginx-reload
   docker compose up -d --build ts-server ts-nginx
   docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' | sed -n '1,10p'
 "
