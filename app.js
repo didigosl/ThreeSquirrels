@@ -4927,6 +4927,8 @@ function fillContactsForm(r) {
       ctIva.value = "true";
     }
   }
+  const ctAdditionalTax = document.getElementById("ct-additional-tax");
+  if (ctAdditionalTax) ctAdditionalTax.checked = contactData.additional_tax === true || String(contactData.additional_tax) === "true";
   loadContactNotes(contactData.id);
 }
 function clearContactsForm() {
@@ -4949,6 +4951,8 @@ function clearContactsForm() {
   if (ctPrice) ctPrice.value = "price1";
   const ctIva = document.getElementById("ct-iva");
   if (ctIva) ctIva.value = "true";
+  const ctAdditionalTax = document.getElementById("ct-additional-tax");
+  if (ctAdditionalTax) ctAdditionalTax.checked = false;
   document.querySelectorAll(".group.error").forEach((el) => el.classList.remove("error"));
   document.querySelectorAll(".shake").forEach((el) => el.classList.remove("shake"));
   loadContactNotes(null);
@@ -4997,6 +5001,7 @@ ctUploadConfirm == null ? void 0 : ctUploadConfirm.addEventListener("click", asy
           const code = String(row["\u7A0E\u53F7"] || "").trim();
           const email = String(row["\u90AE\u7BB1"] || "").trim();
           const is_iva = String(row["\u662F\u5426 IVA"] || "").trim() === "\u662F";
+          const additional_tax = String(row["\u9644\u52A0\u7A0E"] || "").trim() === "\u662F";
           let use_price = "price1";
           const priceVal = String(row["\u4F7F\u7528\u4EF7\u683C"] || "").trim();
           if (["1", "\u4EF7\u683C1", "price1"].includes(priceVal)) use_price = "price1";
@@ -5020,6 +5025,7 @@ ctUploadConfirm == null ? void 0 : ctUploadConfirm.addEventListener("click", asy
             code,
             email,
             is_iva,
+            additional_tax,
             use_price,
             sales,
             address,
@@ -5126,6 +5132,7 @@ ctForm == null ? void 0 : ctForm.addEventListener("submit", async (e) => {
   const sales = (((_k = document.getElementById("ct-sales")) == null ? void 0 : _k.value) || "").trim();
   const use_price = (((_l = document.getElementById("ct-price")) == null ? void 0 : _l.value) || "price1").trim();
   const is_iva = ((_m = document.getElementById("ct-iva")) == null ? void 0 : _m.value) === "true";
+  const additional_tax = !!document.getElementById("ct-additional-tax")?.checked;
   let isValid = true;
   const requiredFields = [
     { id: "ct-name", val: name }
@@ -5149,7 +5156,7 @@ ctForm == null ? void 0 : ctForm.addEventListener("submit", async (e) => {
     if (editingIndex !== null) {
       const target = (_n = contactsData[editingTab]) == null ? void 0 : _n[editingIndex];
       const id = document.getElementById("ct-id").value;
-      await apiContactsUpdateById(id, { name, company, code, contact, phone, city, remark, invoice_nota, owner: contactsTab === "customers" ? "\u5BA2\u6237" : contactsTab === "merchants" ? "\u5546\u5BB6" : "\u5176\u5B83", country, address, zip, sales: sales || "", use_price, is_iva, email, province, ship_address: shippingTarget.ship_address, ship_zip: shippingTarget.ship_zip, ship_city: shippingTarget.ship_city, ship_province: shippingTarget.ship_province, ship_country: shippingTarget.ship_country, ship_phone: shippingTarget.ship_phone, ship_contact: shippingTarget.ship_contact, shipping_addresses });
+      await apiContactsUpdateById(id, { name, company, code, contact, phone, city, remark, invoice_nota, owner: contactsTab === "customers" ? "\u5BA2\u6237" : contactsTab === "merchants" ? "\u5546\u5BB6" : "\u5176\u5B83", country, address, zip, sales: sales || "", use_price, is_iva, additional_tax, email, province, ship_address: shippingTarget.ship_address, ship_zip: shippingTarget.ship_zip, ship_city: shippingTarget.ship_city, ship_province: shippingTarget.ship_province, ship_country: shippingTarget.ship_country, ship_phone: shippingTarget.ship_phone, ship_contact: shippingTarget.ship_contact, shipping_addresses });
       if (target) {
         target.name = name;
         target.company = company;
@@ -5165,6 +5172,7 @@ ctForm == null ? void 0 : ctForm.addEventListener("submit", async (e) => {
         target.sales = sales || "";
         target.use_price = use_price;
         target.is_iva = is_iva;
+        target.additional_tax = additional_tax;
         target.email = email;
         target.province = province;
         syncLegacyShippingFieldsFromList(target, shipping_addresses);
@@ -5176,7 +5184,7 @@ ctForm == null ? void 0 : ctForm.addEventListener("submit", async (e) => {
     } else {
       const now = /* @__PURE__ */ new Date();
       const created = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
-      const newContact = { name, contact, phone, city, remark, invoice_nota, owner: contactsTab === "customers" ? "\u5BA2\u6237" : contactsTab === "merchants" ? "\u5546\u5BB6" : "\u5176\u5B83", created, company, code, country, address, zip, sales: sales || "", use_price, is_iva, email, province, ship_address: shippingTarget.ship_address, ship_zip: shippingTarget.ship_zip, ship_city: shippingTarget.ship_city, ship_province: shippingTarget.ship_province, ship_country: shippingTarget.ship_country, ship_phone: shippingTarget.ship_phone, ship_contact: shippingTarget.ship_contact, shipping_addresses };
+      const newContact = { name, contact, phone, city, remark, invoice_nota, owner: contactsTab === "customers" ? "\u5BA2\u6237" : contactsTab === "merchants" ? "\u5546\u5BB6" : "\u5176\u5B83", created, company, code, country, address, zip, sales: sales || "", use_price, is_iva, additional_tax, email, province, ship_address: shippingTarget.ship_address, ship_zip: shippingTarget.ship_zip, ship_city: shippingTarget.ship_city, ship_province: shippingTarget.ship_province, ship_country: shippingTarget.ship_country, ship_phone: shippingTarget.ship_phone, ship_contact: shippingTarget.ship_contact, shipping_addresses };
       const newId = await apiContactsCreate(newContact);
       syncLegacyShippingFieldsFromList(newContact, shipping_addresses);
       newContact.id = newId || "";
@@ -6983,6 +6991,7 @@ async function apiContactsList(tab, q, page, size) {
       sales: x.sales,
       use_price: x.use_price,
       is_iva: x.is_iva,
+      additional_tax: !!x.additional_tax,
       invoice_nota: x.invoice_nota,
       email: x.email,
       province: x.province,
@@ -8080,6 +8089,12 @@ function renderSoCustomerDropdown() {
         }
       }
       soCustomerDD.style.display = "none";
+      Array.from(soItems.children).forEach((tr) => {
+        const baseRate = Number(tr.dataset.baseTaxRate || tr.dataset.taxRate || 0.1);
+        const extraRate = Number(tr.dataset.additionalTaxRate || 0);
+        tr.dataset.taxRate = item.is_iva === false ? "0" : String(baseRate + (item.additional_tax === true ? extraRate : 0));
+      });
+      updateSoTotal();
     });
     soCustomerList.appendChild(div);
   });
@@ -8111,7 +8126,8 @@ function updateSoTotal() {
   if (!soItems || !soTotal) return;
   let subtotal = 0;
   let discountAmount = 0;
-  let totalTax = 0;
+  let baseTax = 0;
+  let additionalTax = 0;
   Array.from(soItems.children).forEach((tr) => {
     const qty = parseFloat(tr.querySelector(".qty").value) || 0;
     const price = parseFloat(tr.querySelector(".price").value) || 0;
@@ -8121,20 +8137,28 @@ function updateSoTotal() {
     let taxRate = parseFloat(tr.dataset.taxRate);
     if (isNaN(taxRate)) taxRate = 0.1;
     if (taxRate >= 1) taxRate = taxRate / 100;
-    const taxAmt = amt * taxRate;
+    const baseRate = Math.max(0, Number(tr.dataset.baseTaxRate || taxRate));
+    const extraRate = Math.max(0, Number(tr.dataset.additionalTaxRate || 0));
+    const baseTaxAmt = amt * baseRate;
+    const additionalTaxAmt = amt * extraRate;
+    const taxAmt = baseTaxAmt + additionalTaxAmt;
     tr.querySelector(".iva-amt").textContent = taxAmt.toFixed(2);
     tr.querySelector(".amt").textContent = amt.toFixed(2);
     subtotal += amt;
     discountAmount += Math.max(0, rawAmount - amt);
-    totalTax += taxAmt;
+    baseTax += baseTaxAmt;
+    additionalTax += additionalTaxAmt;
   });
+  const totalTax = baseTax + additionalTax;
   const grandTotal = subtotal + totalTax;
   const soSubtotal = document.getElementById("so-subtotal");
   const soDiscountAmount = document.getElementById("so-discount-amount");
   const soTax = document.getElementById("so-tax");
+  const soAdditionalTax = document.getElementById("so-additional-tax");
   if (soSubtotal) soSubtotal.textContent = subtotal.toFixed(2);
   if (soDiscountAmount) soDiscountAmount.textContent = discountAmount.toFixed(2);
-  if (soTax) soTax.textContent = totalTax.toFixed(2);
+  if (soTax) soTax.textContent = baseTax.toFixed(2);
+  if (soAdditionalTax) soAdditionalTax.textContent = additionalTax.toFixed(2);
   soTotal.textContent = grandTotal.toFixed(2) + "\u20AC";
 }
 function clearSoItemDropHints() {
@@ -8680,6 +8704,16 @@ if (prodSelClose) {
   });
 }
 if (prodSelSearch) prodSelSearch.addEventListener("input", () => loadProductSelector());
+function getProductTaxRate(product = {}, customer = null) {
+  let baseRate = Number(product.tax_rate);
+  if (!Number.isFinite(baseRate)) baseRate = 0.1;
+  if (baseRate >= 1) baseRate /= 100;
+  let extraRate = Number(product.additional_tax_rate || 0);
+  if (!Number.isFinite(extraRate)) extraRate = 0;
+  if (extraRate >= 1) extraRate /= 100;
+  if (customer?.is_iva === false) return 0;
+  return baseRate + (customer?.additional_tax === true ? extraRate : 0);
+}
 function addSoItem(p) {
   let price = Number(p.price1 || 0);
   if (!currentSoCustomer && soCustomer.value) {
@@ -8696,21 +8730,14 @@ function addSoItem(p) {
       price = Number(p[tier]);
     }
   }
-  let taxRate = 0.1;
-  if (p.tax_rate !== void 0 && p.tax_rate !== null && p.tax_rate !== "") {
-    taxRate = Number(p.tax_rate);
-    if (taxRate >= 1) taxRate = taxRate / 100;
-  }
-  if (currentSoCustomer) {
-    if (currentSoCustomer.is_iva === false) {
-      taxRate = 0;
-    }
-  }
+  const taxRate = getProductTaxRate(p, currentSoCustomer);
   const discount = normalizeInvoiceDiscountValue(p.discount, 0);
   const editorFields = getInvoiceItemEditorFields(p);
   const tr = document.createElement("tr");
   tr.style.borderBottom = "1px solid #1e293b";
   tr.dataset.taxRate = taxRate;
+  tr.dataset.baseTaxRate = String(getProductTaxRate({ ...p, additional_tax_rate: 0 }, null));
+  tr.dataset.additionalTaxRate = String(Number(p.additional_tax_rate || 0) / 100);
   tr.dataset.productId = p.id || "";
   tr.dataset.sku = p.sku || "";
   tr.dataset.productName = p.name || "";
@@ -8771,7 +8798,9 @@ if (soSave) {
       if (taxRate >= 1) taxRate = taxRate / 100;
       const productId = tr.dataset.productId || "";
       const sku = tr.dataset.sku || "";
-      if (name) items.push({ name, name_cn: nameCn, description: desc, lote, qty, price, discount, total: getInvoiceDiscountedAmount(qty, price, discount), tax_rate: taxRate, productId, sku });
+      const baseTaxRate = Number(tr.dataset.baseTaxRate || taxRate);
+      const additionalTaxRate = Number(tr.dataset.additionalTaxRate || 0);
+      if (name) items.push({ name, name_cn: nameCn, description: desc, lote, qty, price, discount, total: getInvoiceDiscountedAmount(qty, price, discount), tax_rate: taxRate, base_tax_rate: baseTaxRate, additional_tax_rate: additionalTaxRate, productId, sku });
     });
     if (items.length === 0) {
       alert("\u8BF7\u81F3\u5C11\u6DFB\u52A0\u4E00\u4E2A\u5546\u54C1");
@@ -9201,8 +9230,8 @@ function getInvoicePrintStyles() {
     .invoice-paper .item-main-col { width:auto; min-width:0; }
     .invoice-paper .item-qty-col { width:44px; text-align:right; white-space:nowrap; padding-left:6px; padding-right:6px; }
     .invoice-paper .item-price-col { width:58px; text-align:right; white-space:nowrap; padding-left:6px; padding-right:6px; }
-    .invoice-paper .item-discount-col { width:48px; text-align:right; white-space:nowrap; padding-left:6px; padding-right:6px; }
-    .invoice-paper .item-tax-col { width:50px; text-align:right; white-space:nowrap; padding-left:6px; padding-right:6px; }
+    .invoice-paper .item-discount-col { width:68px; text-align:right; white-space:nowrap; padding-left:4px; padding-right:4px; }
+    .invoice-paper .item-tax-col { width:64px; text-align:right; white-space:nowrap; padding-left:4px; padding-right:4px; }
     .invoice-paper .item-value-col { width:68px; text-align:right; white-space:nowrap; padding-left:6px; padding-right:6px; }
     .invoice-paper .item-name { font-weight:700; color:#000; font-size:12px; white-space:normal; overflow-wrap:anywhere; word-break:break-word; }
     .invoice-paper .item-desc { color:#666; font-size:10px; margin-top:1px; white-space:normal; overflow-wrap:anywhere; word-break:break-word; }
@@ -9631,7 +9660,8 @@ window.previewInvoice = async function(id, language = "es") {
   let totalQty = 0;
   let subtotal = 0;
   let discountAmount = 0;
-  let taxDetails = {};
+  let baseTaxDetails = {};
+  let additionalTaxDetails = {};
   items.forEach((item, idx) => {
     const qty = Number(item.qty || 0);
     totalQty += qty;
@@ -9642,19 +9672,31 @@ window.previewInvoice = async function(id, language = "es") {
     let taxRate = Number(item.tax_rate);
     if (isNaN(taxRate) || item.tax_rate === void 0 || item.tax_rate === null || item.tax_rate === "") taxRate = 0.1;
     if (taxRate >= 1) taxRate = taxRate / 100;
+    let baseTaxRate = Number(item.base_tax_rate);
+    if (!Number.isFinite(baseTaxRate)) baseTaxRate = taxRate;
+    if (baseTaxRate >= 1) baseTaxRate /= 100;
+    let additionalTaxRate = Number(item.additional_tax_rate || 0);
+    if (!Number.isFinite(additionalTaxRate)) additionalTaxRate = 0;
+    if (additionalTaxRate >= 1) additionalTaxRate /= 100;
     const rowVal = getInvoiceDiscountedAmount(qty, price, discount);
     subtotal += rowVal;
     discountAmount += Math.max(0, rawAmount - rowVal);
-    const taxAmt = rowVal * taxRate;
-    if (taxRate > 0) {
-      const key = (taxRate * 100).toFixed(2);
-      if (!taxDetails[key]) taxDetails[key] = 0;
-      taxDetails[key] += taxAmt;
+    const baseTaxAmt = rowVal * baseTaxRate;
+    const additionalTaxAmt = rowVal * additionalTaxRate;
+    if (baseTaxRate > 0) {
+      const key = (baseTaxRate * 100).toFixed(2);
+      if (!baseTaxDetails[key]) baseTaxDetails[key] = 0;
+      baseTaxDetails[key] += baseTaxAmt;
+    }
+    if (additionalTaxRate > 0) {
+      const key = (additionalTaxRate * 100).toFixed(2);
+      if (!additionalTaxDetails[key]) additionalTaxDetails[key] = 0;
+      additionalTaxDetails[key] += additionalTaxAmt;
     }
     const tr = document.createElement("tr");
     let taxDisplay = "";
-    if (taxRate > 0) {
-      taxDisplay = previewTexts.taxDisplay(taxRate);
+    if (baseTaxRate > 0) {
+      taxDisplay = previewTexts.taxDisplay(baseTaxRate);
     }
     tr.innerHTML = `
       <td class="item-idx">${idx + 1}</td>
@@ -9673,7 +9715,8 @@ window.previewInvoice = async function(id, language = "es") {
   const totalQtyEl = document.getElementById("prev-total-qty");
   if (totalQtyEl) totalQtyEl.textContent = formatInvoicePreviewQty(totalQty);
   let totalTax = 0;
-  Object.values(taxDetails).forEach((v) => totalTax += v);
+  Object.values(baseTaxDetails).forEach((v) => totalTax += v);
+  Object.values(additionalTaxDetails).forEach((v) => totalTax += v);
   const grandTotal = Math.max(0, subtotal + totalTax - manualDiscountAmount);
   document.getElementById("prev-subtotal").textContent = subtotal.toFixed(2);
   const prevDiscountAmountEl = document.getElementById("prev-discount-amount");
@@ -9681,11 +9724,20 @@ window.previewInvoice = async function(id, language = "es") {
   const taxRowsContainer = document.getElementById("prev-tax-rows");
   if (taxRowsContainer) {
     taxRowsContainer.innerHTML = "";
-    Object.keys(taxDetails).sort((a, b) => Number(b) - Number(a)).forEach((rate) => {
-      const amt = taxDetails[rate];
+    Object.keys(baseTaxDetails).sort((a, b) => Number(b) - Number(a)).forEach((rate) => {
+      const amt = baseTaxDetails[rate];
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td class="total-label">${previewTexts.taxRowLabel(rate)}</td>
+        <td class="total-label">IVA (${rate}%)</td>
+        <td class="total-val">${amt.toFixed(2)}</td>
+      `;
+      taxRowsContainer.appendChild(tr);
+    });
+    Object.keys(additionalTaxDetails).sort((a, b) => Number(b) - Number(a)).forEach((rate) => {
+      const amt = additionalTaxDetails[rate];
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="total-label">Recargo (${rate}%)</td>
         <td class="total-val">${amt.toFixed(2)}</td>
       `;
       taxRowsContainer.appendChild(tr);
@@ -9832,11 +9884,9 @@ function renderEditCustomerList(filter = "") {
         }
         editCustomerDd.style.display = "none";
         Array.from(editItems.children).forEach((tr) => {
-          let taxRate = 0.1;
-          const stored = parseFloat(tr.dataset.taxRate);
-          if (!isNaN(stored)) taxRate = stored;
-          if (c.is_iva === false) taxRate = 0;
-          else if (taxRate === 0 && stored !== 0) taxRate = 0.1;
+          const baseRate = Number(tr.dataset.baseTaxRate || tr.dataset.taxRate || 0.1);
+          const extraRate = Number(tr.dataset.additionalTaxRate || 0);
+          const taxRate = c.is_iva === false ? 0 : baseRate + (c.additional_tax === true ? extraRate : 0);
           tr.dataset.taxRate = taxRate;
           const qty = parseFloat(tr.querySelector(".qty").value) || 0;
           const price = parseFloat(tr.querySelector(".price").value) || 0;
@@ -10186,15 +10236,12 @@ function addEditItem(p = {}) {
   const tr = document.createElement("tr");
   tr.style.borderBottom = "1px solid #1e293b";
   tr.dataset.autoPickLote = p.__preserveEmptyLote === true ? "0" : "1";
-  let taxRate = 0.1;
-  if (p.tax_rate !== void 0 && p.tax_rate !== null && p.tax_rate !== "") {
-    taxRate = Number(p.tax_rate);
-    if (taxRate >= 1) taxRate = taxRate / 100;
-  }
-  if (currentEditCustomer && currentEditCustomer.is_iva === false) {
-    taxRate = 0;
-  }
+  const baseTaxRate = getProductTaxRate({ ...p, additional_tax_rate: 0 }, null);
+  const additionalTaxRate = Number(p.additional_tax_rate || 0) / 100;
+  const taxRate = getProductTaxRate(p, currentEditCustomer);
   tr.dataset.taxRate = taxRate;
+  tr.dataset.baseTaxRate = String(baseTaxRate);
+  tr.dataset.additionalTaxRate = String(Number.isFinite(additionalTaxRate) ? additionalTaxRate : 0);
   tr.dataset.productId = p.productId || p.id || "";
   tr.dataset.sku = p.sku || "";
   tr.dataset.nameCn = p.name_cn || "";
@@ -11375,6 +11422,7 @@ async function openProdModal(x, listIndex = -1) {
   document.getElementById("prod-spec").value = (nextProduct == null ? void 0 : nextProduct.spec) || "";
   document.getElementById("prod-created-at").value = (nextProduct == null ? void 0 : nextProduct.created_at) ? formatDisplayDateTimeValue(Number(nextProduct.created_at)) : "";
   document.getElementById("prod-tax").value = (nextProduct == null ? void 0 : nextProduct.tax_rate) || "10";
+  document.getElementById("prod-additional-tax").value = String((nextProduct == null ? void 0 : nextProduct.additional_tax_rate) || "0");
   document.getElementById("prod-p1").value = (nextProduct == null ? void 0 : nextProduct.price1) || "";
   document.getElementById("prod-p2").value = (nextProduct == null ? void 0 : nextProduct.price2) || "";
   document.getElementById("prod-p3").value = (nextProduct == null ? void 0 : nextProduct.price3) || "";
@@ -11545,6 +11593,7 @@ if (prodForm) {
         name_cn: document.getElementById("prod-name-cn").value,
         spec: document.getElementById("prod-spec").value,
         tax_rate: document.getElementById("prod-tax").value,
+        additional_tax_rate: document.getElementById("prod-additional-tax").value,
         price1: document.getElementById("prod-p1").value,
         price2: document.getElementById("prod-p2").value,
         price3: document.getElementById("prod-p3").value,
@@ -13401,13 +13450,13 @@ function syncTaskModeUI(tab) {
 function syncProductionPlanLocale() {
   const isEs = getCurrentAppLocale() === "es-ES";
   const createBtn = document.getElementById("production-plan-create-btn");
-  const tabBtn = document.getElementById("task-tab-production-plan");
   const currentTitleText = document.getElementById("production-plan-current-title-text");
   const nextTitleText = document.getElementById("production-plan-next-title-text");
   const currentWeekdayHeader = document.getElementById("production-plan-current-weekday-header");
   const nextWeekdayHeader = document.getElementById("production-plan-next-weekday-header");
   if (createBtn) createBtn.textContent = isEs ? "+ Nuevo plan" : "+ \u65B0\u5EFA\u8BA1\u5212";
-  if (tabBtn) tabBtn.textContent = isEs ? "Produccion" : "\u751F\u4EA7\u8BA1\u5212";
+  const tabLabel = document.getElementById("task-tab-production-plan-label");
+  if (tabLabel) tabLabel.textContent = isEs ? "Produccion" : "\u751F\u4EA7\u8BA1\u5212";
   if (currentTitleText) currentTitleText.textContent = isEs ? "Produccion" : "\u672C\u5468\u751F\u4EA7";
   if (nextTitleText) nextTitleText.textContent = isEs ? "Plan para proxima semana" : "\u4E0B\u5468\u751F\u4EA7\u8BA1\u5212";
   if (currentWeekdayHeader) currentWeekdayHeader.textContent = isEs ? "Semana" : "\u661F\u671F";
@@ -13719,6 +13768,7 @@ async function loadProductionPlans() {
     items: Array.isArray(group.items) ? group.items : []
   }));
   currentProductionPlanList = [...currentWeek, ...nextWeek, ...currentProductionPlanFutureGroups.flatMap((group) => group.items || [])];
+  updateProductionPlanBadgeCount(currentProductionPlanList.length);
   currentProductionPlanList.forEach((item) => {
     const itemId = Number(item.id || 0);
     if (String(item.material_name || "").trim()) productionPlanInvalidMaterialIds.delete(itemId);
@@ -14982,6 +15032,8 @@ var logisticsReviewSelectedIds = /* @__PURE__ */ new Set();
 var logisticsOngoingBadgeCountCache = null;
 var currentLogisticsCompanyEditId = 0;
 var navTaskBadgeCountCache = null;
+var navManualTaskBadgeCountCache = null;
+var navProductionPlanBadgeCountCache = 0;
 var navOrderBadgeCountCache = null;
 var globalBadgesRequestSeq = 0;
 function ensureLogisticsReviewSelectedIds() {
@@ -15023,7 +15075,9 @@ function updateNavDailyOpsBadgeCount() {
   }
 }
 function updateNavTaskBadgeCount(count) {
-  const total = Number(count || 0) || 0;
+  const manualTotal = Number(count || 0) || 0;
+  navManualTaskBadgeCountCache = manualTotal;
+  const total = manualTotal + (Number(navProductionPlanBadgeCountCache || 0) || 0);
   navTaskBadgeCountCache = total;
   writeBadgeCountCache("nav-task-badge-cache", total);
   const el = document.getElementById("nav-task-badge");
@@ -15032,6 +15086,18 @@ function updateNavTaskBadgeCount(count) {
     el.style.display = total > 0 ? "inline-block" : "none";
   }
   updateNavDailyOpsBadgeCount();
+}
+function updateProductionPlanBadgeCount(count) {
+  const total = Number(count || 0) || 0;
+  navProductionPlanBadgeCountCache = total;
+  const el = document.getElementById("tab-production-plan-badge");
+  if (el) {
+    el.textContent = String(total);
+    el.style.display = total > 0 ? "inline-block" : "none";
+  }
+  if (navManualTaskBadgeCountCache !== null) {
+    updateNavTaskBadgeCount(navManualTaskBadgeCountCache);
+  }
 }
 function updateNavOrderBadgeCount(count) {
   const total = Number(count || 0) || 0;
@@ -20590,6 +20656,19 @@ async function updateGlobalBadges() {
       }
     } catch (e) {
     }
+    let productionPlanCount = 0;
+    try {
+      const pRes = await fetchWithAuth(`/api/production-plans?tz_offset_minutes=${encodeURIComponent((/* @__PURE__ */ new Date()).getTimezoneOffset())}&_t=${Date.now()}`);
+      if (pRes.ok) {
+        const pData = await pRes.json();
+        const futureGroups = Array.isArray(pData.futureGroups) ? pData.futureGroups : [];
+        productionPlanCount =
+          (Array.isArray(pData.currentWeek) ? pData.currentWeek.length : 0) +
+          (Array.isArray(pData.nextWeek) ? pData.nextWeek.length : 0) +
+          futureGroups.reduce((total, group) => total + (Array.isArray(group.items) ? group.items.length : 0), 0);
+      }
+    } catch (e) {
+    }
     let orderCount = 0;
     try {
       const oRes = await fetchWithAuth(`/api/daily-orders/stats?_t=${Date.now()}`);
@@ -20646,6 +20725,7 @@ async function updateGlobalBadges() {
     };
     if (requestSeq !== globalBadgesRequestSeq) return;
     updateNavTaskBadgeCount(taskCount);
+    updateProductionPlanBadgeCount(productionPlanCount);
     updateNavOrderBadgeCount(orderCount);
     if (logisticsOngoingCount !== null) {
       updateLogisticsOngoingBadgeCount(logisticsOngoingCount);

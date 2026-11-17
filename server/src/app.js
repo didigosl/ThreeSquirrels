@@ -145,6 +145,7 @@ async function ensureSchema() {
       address text,
       zip text,
       sales text,
+      additional_tax boolean default false,
       shipping_addresses jsonb not null default '[]'::jsonb
     );
     create table if not exists accounts (
@@ -248,6 +249,7 @@ async function ensureSchema() {
       price3 numeric default 0,
       price4 numeric default 0,
       tax_rate numeric default 0,
+      additional_tax_rate numeric default 0,
       cost_price numeric default 0,
       weight_kg numeric default 0,
       dividend_enabled boolean default false,
@@ -386,6 +388,8 @@ async function ensureSchema() {
   await query('alter table contacts add column if not exists sales text', []);
   await query('alter table contacts add column if not exists use_price text', []);
   await query('alter table contacts add column if not exists is_iva boolean default true', []);
+  await query('alter table contacts add column if not exists additional_tax boolean default false', []);
+  await query('update contacts set additional_tax=false where additional_tax is null', []);
   await query('alter table contacts add column if not exists invoice_nota text', []);
   await query('alter table contacts add column if not exists email text', []);
   await query('alter table contacts add column if not exists province text', []);
@@ -398,6 +402,7 @@ async function ensureSchema() {
   await query('alter table contacts add column if not exists ship_contact text', []);
   await query(`alter table contacts add column if not exists shipping_addresses jsonb not null default '[]'::jsonb`, []);
   await query('alter table materials add column if not exists merchant_id int', []);
+  await query('alter table products add column if not exists additional_tax_rate numeric default 0', []);
   await query('alter table materials add column if not exists merchant_name text', []);
   await query('alter table material_logs add column if not exists merchant_name text', []);
   await query(`
@@ -3584,12 +3589,13 @@ app.post('/api/contacts', authRequired, ensureAllow('contacts','create'), async 
   const x = req.body || {};
   const owner = x.owner || '客户';
   const isIva = x.is_iva === undefined ? true : Boolean(x.is_iva);
+  const additionalTax = !!x.additional_tax;
   const shippingAddresses = JSON.stringify(Array.isArray(x.shipping_addresses) ? x.shipping_addresses : []);
   try {
     const r = await query(`
-      insert into contacts(name, contact, phone, city, remark, owner, created, company, code, country, address, zip, sales, use_price, is_iva, invoice_nota, email, province, ship_address, ship_zip, ship_city, ship_province, ship_country, ship_phone, ship_contact, shipping_addresses)
-      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26::jsonb) returning id
-    `, [x.name||'', x.contact||'', x.phone||'', x.city||'', x.remark||'', owner, x.created||'', x.company||'', x.code||'', x.country||'', x.address||'', x.zip||'', x.sales||'', x.use_price||'price1', isIva, x.invoice_nota||'', x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'', shippingAddresses]);
+      insert into contacts(name, contact, phone, city, remark, owner, created, company, code, country, address, zip, sales, use_price, is_iva, additional_tax, invoice_nota, email, province, ship_address, ship_zip, ship_city, ship_province, ship_country, ship_phone, ship_contact, shipping_addresses)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27::jsonb) returning id
+    `, [x.name||'', x.contact||'', x.phone||'', x.city||'', x.remark||'', owner, x.created||'', x.company||'', x.code||'', x.country||'', x.address||'', x.zip||'', x.sales||'', x.use_price||'price1', isIva, additionalTax, x.invoice_nota||'', x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'', shippingAddresses]);
     res.json({ id: r.rows[0].id });
   } catch (e) {
     if (e.code === '23505') { // Unique violation
@@ -3719,6 +3725,7 @@ app.put('/api/contacts/:id', authRequired, ensureAllow('contacts','edit'), async
   const x = req.body || {};
   const owner = x.owner || '客户';
   const isIva = x.is_iva === undefined ? true : Boolean(x.is_iva);
+  const additionalTax = !!x.additional_tax;
   const shippingAddresses = JSON.stringify(Array.isArray(x.shipping_addresses) ? x.shipping_addresses : []);
   try {
     const before = await query('select id, name, owner from contacts where id=$1 limit 1', [id]);
@@ -3731,11 +3738,11 @@ app.put('/api/contacts/:id', authRequired, ensureAllow('contacts','edit'), async
     try {
       const r = await query(`
         update contacts set name=$1, contact=$2, phone=$3, city=$4, remark=$5, company=$6, code=$7, country=$8, address=$9, zip=$10, sales=$11, use_price=$12, is_iva=$13,
-        invoice_nota=$14, email=$15, province=$16, ship_address=$17, ship_zip=$18, ship_city=$19, ship_province=$20, ship_country=$21, ship_phone=$22, ship_contact=$23, owner=$24, shipping_addresses=$25::jsonb
-        where id=$26
+        invoice_nota=$14, email=$15, province=$16, ship_address=$17, ship_zip=$18, ship_city=$19, ship_province=$20, ship_country=$21, ship_phone=$22, ship_contact=$23, owner=$24, additional_tax=$25, shipping_addresses=$26::jsonb
+        where id=$27
       `, [x.name||'', x.contact||'', x.phone||'', x.city||'', x.remark||'', x.company||'', x.code||'', x.country||'', x.address||'', x.zip||'', x.sales||'', x.use_price||'price1', isIva,
           x.invoice_nota||'', x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'', owner,
-          shippingAddresses, id]);
+          additionalTax, shippingAddresses, id]);
       if (r.rowCount === 0) {
         await query('rollback');
         return res.status(404).json({ error: 'not_found' });
@@ -3761,14 +3768,15 @@ app.put('/api/contacts/by-name', authRequired, ensureAllow('contacts','edit'), a
   const x = req.body || {};
   const owner = x.owner || '客户';
   const isIva = x.is_iva === undefined ? true : Boolean(x.is_iva);
+  const additionalTax = !!x.additional_tax;
   const shippingAddresses = JSON.stringify(Array.isArray(x.shipping_addresses) ? x.shipping_addresses : []);
   await query(`
     update contacts set contact=$1, phone=$2, city=$3, remark=$4, company=$5, code=$6, country=$7, address=$8, zip=$9, sales=$10, use_price=$11, is_iva=$12,
-    invoice_nota=$13, email=$14, province=$15, ship_address=$16, ship_zip=$17, ship_city=$18, ship_province=$19, ship_country=$20, ship_phone=$21, ship_contact=$22, shipping_addresses=$23::jsonb
-    where owner=$24 and name=$25
+    invoice_nota=$13, email=$14, province=$15, ship_address=$16, ship_zip=$17, ship_city=$18, ship_province=$19, ship_country=$20, ship_phone=$21, ship_contact=$22, additional_tax=$23, shipping_addresses=$24::jsonb
+    where owner=$25 and name=$26
   `, [x.contact||'', x.phone||'', x.city||'', x.remark||'', x.company||'', x.code||'', x.country||'', x.address||'', x.zip||'', x.sales||'', x.use_price||'price1', isIva,
       x.invoice_nota||'', x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'',
-      shippingAddresses, owner, x.name||'']);
+      additionalTax, shippingAddresses, owner, x.name||'']);
   res.json({ ok: true });
 });
 
@@ -3776,6 +3784,7 @@ app.put('/api/contacts/by-company', authRequired, ensureAllow('contacts','edit')
   const x = req.body || {};
   const owner = x.owner || '客户';
   const isIva = x.is_iva === undefined ? true : Boolean(x.is_iva);
+  const additionalTax = !!x.additional_tax;
   const shippingAddresses = JSON.stringify(Array.isArray(x.shipping_addresses) ? x.shipping_addresses : []);
 
   const exist = await query('select id, name, owner from contacts where owner=$1 and company=$2 limit 1', [owner, x.company]);
@@ -3788,11 +3797,11 @@ app.put('/api/contacts/by-company', authRequired, ensureAllow('contacts','edit')
   try {
     await query(`
       update contacts set name=$1, contact=$2, phone=$3, city=$4, remark=$5, code=$6, country=$7, address=$8, zip=$9, sales=$10, use_price=$11, is_iva=$12,
-      invoice_nota=$13, email=$14, province=$15, ship_address=$16, ship_zip=$17, ship_city=$18, ship_province=$19, ship_country=$20, ship_phone=$21, ship_contact=$22, shipping_addresses=$23::jsonb
-      where id=$24
+      invoice_nota=$13, email=$14, province=$15, ship_address=$16, ship_zip=$17, ship_city=$18, ship_province=$19, ship_country=$20, ship_phone=$21, ship_contact=$22, additional_tax=$23, shipping_addresses=$24::jsonb
+      where id=$25
     `, [x.name||'', x.contact||'', x.phone||'', x.city||'', x.remark||'', x.code||'', x.country||'', x.address||'', x.zip||'', x.sales||'', x.use_price||'price1', isIva,
         x.invoice_nota||'', x.email||'', x.province||'', x.ship_address||'', x.ship_zip||'', x.ship_city||'', x.ship_province||'', x.ship_country||'', x.ship_phone||'', x.ship_contact||'',
-        shippingAddresses, exist.rows[0].id]);
+        additionalTax, shippingAddresses, exist.rows[0].id]);
     let renamedRefs = { daily_orders: 0, invoices: 0, payables: 0, ledger: 0 };
     if (oldOwner === '客户' && oldName && nextName && oldName !== nextName) {
       renamedRefs = await syncCustomerNameReferences(oldName, nextName);
@@ -4570,10 +4579,10 @@ app.post('/api/products', authRequired, ensureAllow('sales_products','create'), 
   const printLargeLabelCopies = printLargeLabelEnabled ? Math.max(1, parseInt(x.print_large_label_copies, 10) || 1) : 0;
   try {
     const r = await query(`
-      insert into products(sku, product_code, print_label_enabled, print_small_label_enabled, print_small_label_copies, print_large_label_enabled, print_large_label_copies, barcode, name, name_cn, raw_material_id, raw_material_name, image, description, ingredients, nutrition_facts, allergens, price1, price2, price3, price4, tax_rate, cost_price, weight_kg, dividend_enabled, dividend_users, spec, stock, remind_stock, notes, created_at, created_by)
-      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32) returning id
+      insert into products(sku, product_code, print_label_enabled, print_small_label_enabled, print_small_label_copies, print_large_label_enabled, print_large_label_copies, barcode, name, name_cn, raw_material_id, raw_material_name, image, description, ingredients, nutrition_facts, allergens, price1, price2, price3, price4, tax_rate, additional_tax_rate, cost_price, weight_kg, dividend_enabled, dividend_users, spec, stock, remind_stock, notes, created_at, created_by)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33) returning id
     `, [x.sku||'', x.product_code||'', x.print_label_enabled !== false, printSmallLabelEnabled, printSmallLabelCopies, printLargeLabelEnabled, printLargeLabelCopies, x.barcode||'', x.name||'', x.name_cn||'', Number(x.raw_material_id || 0) || null, x.raw_material_name||'', x.image||'', x.description||'', x.ingredients||'', x.nutrition_facts||'', x.allergens||'',
-        Number(x.price1||0), Number(x.price2||0), Number(x.price3||0), Number(x.price4||0), Number(x.tax_rate||0),
+        Number(x.price1||0), Number(x.price2||0), Number(x.price3||0), Number(x.price4||0), Number(x.tax_rate||0), Number(x.additional_tax_rate||0),
         Number(x.cost_price||0), Math.max(0, Number(x.weight_kg||0)), dividendEnabled, JSON.stringify(dividendUsers), x.spec||'', Number(x.stock||0), Math.max(0, Number(x.remind_stock||0)), x.notes||'', now, req.user.name||'']);
     res.json({ id: r.rows[0].id });
   } catch (e) {
@@ -4599,10 +4608,10 @@ app.put('/api/products/:id', authRequired, ensureAllow('sales_products','edit'),
   try {
     const r = await query(`
       update products set sku=$1, product_code=$2, print_label_enabled=$3, print_small_label_enabled=$4, print_small_label_copies=$5, print_large_label_enabled=$6, print_large_label_copies=$7, barcode=$8, name=$9, name_cn=$10, image=$11, description=$12, ingredients=$13, nutrition_facts=$14, allergens=$15,
-      raw_material_id=$16, raw_material_name=$17, price1=$18, price2=$19, price3=$20, price4=$21, tax_rate=$22, cost_price=$23, weight_kg=$24, dividend_enabled=$25, dividend_users=$26, spec=$27, stock=$28, remind_stock=$29, notes=$30
-      where id=$31 returning id
+      raw_material_id=$16, raw_material_name=$17, price1=$18, price2=$19, price3=$20, price4=$21, tax_rate=$22, additional_tax_rate=$23, cost_price=$24, weight_kg=$25, dividend_enabled=$26, dividend_users=$27, spec=$28, stock=$29, remind_stock=$30, notes=$31
+      where id=$32 returning id
     `, [x.sku||'', x.product_code||'', x.print_label_enabled !== false, printSmallLabelEnabled, printSmallLabelCopies, printLargeLabelEnabled, printLargeLabelCopies, x.barcode||'', x.name||'', x.name_cn||'', x.image||'', x.description||'', x.ingredients||'', x.nutrition_facts||'', x.allergens||'', Number(x.raw_material_id || 0) || null, x.raw_material_name||'',
-        Number(x.price1||0), Number(x.price2||0), Number(x.price3||0), Number(x.price4||0), Number(x.tax_rate||0),
+        Number(x.price1||0), Number(x.price2||0), Number(x.price3||0), Number(x.price4||0), Number(x.tax_rate||0), Number(x.additional_tax_rate||0),
         Number(x.cost_price||0), Math.max(0, Number(x.weight_kg||0)), dividendEnabled, JSON.stringify(dividendUsers), x.spec||'', Number(x.stock||0), Math.max(0, Number(x.remind_stock||0)), x.notes||'', id]);
     if (!r.rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json({ ok: true });
